@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Icestasy Order Desk</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="header-inner">
+      <span class="brand">🍦 Icestasy Order Desk</span>
+      <button class="btn-ghost" onclick="resetAll()">New Order</button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- STEP 0: Paste -->
+    <section class="step" id="step-paste">
+      <div class="step-label">Paste order message</div>
+      <textarea id="orderText" class="paste-box" rows="6"
+        placeholder="2 Bulk Belgian&#10;3 Square Mango&#10;Advance&#10;Client: Trevor"></textarea>
+      <button class="btn-primary" onclick="parseOrder()">Parse Order →</button>
+    </section>
+
+    <!-- STEP 1: Cart review + SKU disambiguation -->
+    <section class="step hidden" id="step-cart">
+      <div class="step-label">Order Items</div>
+      <div id="cartItems"></div>
+    </section>
+
+    <!-- STEP 2: Payment -->
+    <section class="step hidden" id="step-payment">
+      <div class="step-label">Payment Mode</div>
+      <div class="btn-group" id="paymentBtns">
+        <button class="btn-option" onclick="selectPayment('advance')">Advance</button>
+        <button class="btn-option" onclick="selectPayment('invoice')">Invoice</button>
+        <button class="btn-option" onclick="selectPayment('credit')">Credit</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: Client -->
+    <section class="step hidden" id="step-client">
+      <div class="step-label">Client</div>
+      <div class="search-row">
+        <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
+               oninput="debounceSearch(this.value)">
+      </div>
+      <div id="clientResults" class="option-list"></div>
+    </section>
+
+    <!-- STEP 4: Address -->
+    <section class="step hidden" id="step-address">
+      <div class="step-label">Shipping Address</div>
+      <div id="addressList" class="option-list"></div>
+    </section>
+
+    <!-- STEP 5: Confirm -->
+    <section class="step hidden" id="step-confirm">
+      <div class="step-label">Order Summary</div>
+      <div id="summaryBox" class="summary-box"></div>
+      <button class="btn-primary btn-green" onclick="placeOrder()">✓ Confirm &amp; Place Order</button>
+      <button class="btn-ghost mt8" onclick="resetAll()">Cancel</button>
+    </section>
+
+    <!-- STEP 6: Done -->
+    <section class="step hidden" id="step-done">
+      <div id="doneBox" class="done-box"></div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let state = {
+  items: [],        // [{qty, resolved_sku, unit_price, ambiguous, candidates}]
+  payment: null,
+  client: null,
+  address_id: null,
+  address_label: null,
+};
+let searchTimer = null;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 0});
+const show = id => document.getElementById(id).classList.remove("hidden");
+const hide = id => document.getElementById(id).classList.add("hidden");
+
+function resetAll() {
+  state = {items: [], payment: null, client: null, address_id: null, address_label: null};
+  ["step-cart","step-payment","step-client","step-address","step-confirm","step-done"]
+    .forEach(hide);
+  document.getElementById("orderText").value = "";
+  document.getElementById("clientSearch").value = "";
+  document.getElementById("clientResults").innerHTML = "";
+  show("step-paste");
+}
+
+// ── STEP 0: Parse ───────────────────────────────────────────────────────────
+async function parseOrder() {
+  const text = document.getElementById("orderText").value.trim();
+  if (!text) return;
+  const res = await fetch("/api/parse", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({text}),
+  }).then(r => r.json());
+
+  if (!res.items || !res.items.length) {
+    alert("Could not detect any items. Check the format:\n2 Bulk Belgian\n3 Square Mango");
+    return;
+  }
+
+  state.items = res.items.map(i => ({...i}));
+  state.payment = res.payment || null;
+
+  hide("step-paste");
+  renderCart();
+  show("step-cart");
+
+  // Pre-fill client search if hint provided
+  if (res.client_hint) {
+    document.getElementById("clientSearch").value = res.client_hint;
+  }
+}
+
+// ── STEP 1: Cart ─────────────────────────────────────────────────────────────
+function renderCart() {
+  const box = document.getElementById("cartItems");
+  box.innerHTML = "";
+
+  let allResolved = true;
+
+  state.items.forEach((item, idx) => {
+    const div = document.createElement("div");
+    div.className = "cart-item-card";
+
+    if (!item.ambiguous && item.resolved_sku) {
+      const sku = item.resolved_sku;
+      const total = item.qty * item.unit_price;
+      div.innerHTML = `
+        <div class="ci-info">
+          <span class="ci-name">${sku.flavour_name}</span>
+          <span class="ci-fmt">${sku.pack_format_name}</span>
+        </div>
+        <div class="ci-right">
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="changeQty(${idx},-1)">−</button>
+            <span class="qty-val" id="qty-${idx}">${item.qty}</span>
+            <button class="qty-btn" onclick="changeQty(${idx},1)">+</button>
+          </div>
+          <span class="ci-price" id="price-${idx}">${fmt(total)}</span>
+        </div>`;
+    } else {
+      // Ambiguous — show candidate buttons
+      allResolved = false;
+      const candidates = item.candidates.map((c, ci) => `
+        <button class="btn-option btn-sm" onclick="resolveSku(${idx},${ci})">
+          ${c.flavour_name} — ${c.pack_format_name} (${fmt(c.unit_price)})
+        </button>`).join("");
+      div.innerHTML = `
+        <div class="ambig-label">⚠ Select SKU for item ${idx + 1} (qty: ${item.qty})</div>
+        <div class="btn-group vertical">${candidates}</div>`;
+    }
+
+    box.appendChild(div);
+  });
+
+  // Subtotal row
+  if (allResolved) {
+    const sub = state.items.reduce((s,i) => s + i.qty * i.unit_price, 0);
+    box.innerHTML += `<div class="subtotal-row">Subtotal <strong>${fmt(sub)}</strong></div>`;
+    renderNextAfterCart();
+  }
+}
+
+function changeQty(idx, delta) {
+  state.items[idx].qty = Math.max(1, state.items[idx].qty + delta);
+  renderCart();
+}
+
+function resolveSku(itemIdx, candidateIdx) {
+  const item = state.items[itemIdx];
+  const sku = item.candidates[candidateIdx];
+  item.resolved_sku = sku;
+  item.unit_price = sku.unit_price;
+  item.ambiguous = false;
+  renderCart();
+}
+
+function renderNextAfterCart() {
+  if (!state.payment) {
+    show("step-payment");
+  } else {
+    markPayment(state.payment);
+    show("step-client");
+    if (document.getElementById("clientSearch").value.length >= 2) {
+      _searchClients(document.getElementById("clientSearch").value);
+    }
+  }
+}
+
+// ── STEP 2: Payment ──────────────────────────────────────────────────────────
+function selectPayment(mode) {
+  state.payment = mode;
+  document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll("#paymentBtns .btn-option")
+    .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
+  hide("step-payment");
+  show("step-client");
+  if (document.getElementById("clientSearch").value.length >= 2) {
+    _searchClients(document.getElementById("clientSearch").value);
+  }
+}
+
+function markPayment(mode) {
+  // Payment was pre-filled — don't show step but mark label
+  document.querySelectorAll("#paymentBtns .btn-option")
+    .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
+}
+
+// ── STEP 3: Client ───────────────────────────────────────────────────────────
+function debounceSearch(val) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => _searchClients(val), 300);
+}
+
+async function _searchClients(q) {
+  const box = document.getElementById("clientResults");
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="searching">Searching…</div>`;
+  const data = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`).then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    return;
+  }
+  const clients = data.clients || [];
+  if (!clients.length) { box.innerHTML = `<div class="opt-muted">No clients found</div>`; return; }
+  box.innerHTML = clients.map(c => `
+    <button class="option-btn" onclick='selectClient(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+      <span class="opt-name">${c.business_name}</span>
+      <span class="opt-sub">${c.primary_contact_phone || ""}</span>
+    </button>`).join("");
+}
+
+async function selectClient(client) {
+  state.client = client;
+  document.getElementById("clientResults").innerHTML =
+    `<div class="selected-pill">✓ ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+  document.getElementById("clientSearch").style.display = "none";
+
+  hide("step-client");
+  const data = await fetch(`/api/clients/${client.id}/addresses`).then(r => r.json());
+  const addrs = data.addresses || [];
+  const box = document.getElementById("addressList");
+  if (!addrs.length) {
+    box.innerHTML = `<div class="opt-muted">No addresses found — skipping</div>`;
+    show("step-address");
+    setTimeout(showConfirm, 800);
+  } else {
+    box.innerHTML = addrs.map(a => `
+      <button class="option-btn" onclick="selectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}')">
+        ${a.label}
+      </button>`).join("");
+    show("step-address");
+  }
+}
+
+function changeClient() {
+  state.client = null;
+  document.getElementById("clientSearch").style.display = "";
+  document.getElementById("clientResults").innerHTML = "";
+  document.getElementById("clientSearch").value = "";
+  document.getElementById("clientSearch").focus();
+}
+
+// ── STEP 4: Address ──────────────────────────────────────────────────────────
+function selectAddress(id, label) {
+  state.address_id = id;
+  state.address_label = label;
+  document.getElementById("addressList").innerHTML =
+    `<div class="selected-pill">✓ ${label} <button class="pill-change" onclick="changeAddress()">change</button></div>`;
+  hide("step-address");
+  showConfirm();
+}
+
+function changeAddress() {
+  state.address_id = null;
+  document.getElementById("addressList").querySelectorAll(".option-btn").forEach(b => b.style.display = "");
+  document.querySelector(".selected-pill")?.remove();
+  show("step-address");
+  hide("step-confirm");
+}
+
+// ── STEP 5: Confirm ──────────────────────────────────────────────────────────
+function showConfirm() {
+  const subtotal = state.items.reduce((s,i) => s + i.qty * i.unit_price, 0);
+  const itemRows = state.items.map(i =>
+    `<tr><td>${i.resolved_sku.flavour_name}</td><td>${i.resolved_sku.pack_format_name}</td>
+     <td class="num">${i.qty}</td><td class="num">${fmt(i.unit_price)}</td>
+     <td class="num">${fmt(i.qty * i.unit_price)}</td></tr>`
+  ).join("");
+
+  document.getElementById("summaryBox").innerHTML = `
+    <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"}</strong></div>
+    <div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())}</strong></div>
+    <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"}</strong></div>
+    <table class="summary-table">
+      <thead><tr><th>Item</th><th>Format</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+    <div class="summary-total">Total <strong>${fmt(subtotal)}</strong></div>`;
+  show("step-confirm");
+}
+
+// ── STEP 6: Place ────────────────────────────────────────────────────────────
+async function placeOrder() {
+  const btn = document.querySelector("#step-confirm .btn-green");
+  btn.disabled = true; btn.textContent = "Placing…";
+
+  const lines = state.items.map(i => ({
+    sku_id: i.resolved_sku.id,
+    sku_code: i.resolved_sku.sku_code,
+    flavour_name: i.resolved_sku.flavour_name,
+    format_name: i.resolved_sku.pack_format_name,
+    quantity: i.qty,
+    unit_price: i.unit_price,
+    line_discount: 0,
+  }));
+
+  const res = await fetch("/api/orders", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      client_id: state.client.id,
+      payment_mode: state.payment,
+      lines,
+      shipping_address_id: state.address_id,
+      billing_address_id: state.address_id,
+    }),
+  }).then(r => r.json());
+
+  btn.disabled = false; btn.textContent = "✓ Confirm & Place Order";
+  hide("step-confirm");
+
+  if (res.ok) {
+    const order = res.order;
+    const total = fmt(order.total);
+    const linesList = (order.lines || []).map(l =>
+      `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
+    ).join("");
+    document.getElementById("doneBox").innerHTML = `
+      <div class="done-icon">✅</div>
+      <div class="done-title">Order Confirmed</div>
+      <div class="done-no">${order.order_no}</div>
+      <div class="done-meta">${state.client.business_name} · ${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())}</div>
+      <ul class="done-lines">${linesList}</ul>
+      <div class="done-total">Total: <strong>${total}</strong></div>
+      <button class="btn-primary mt16" onclick="resetAll()">New Order</button>`;
+    show("step-done");
+  } else {
+    alert("Order failed: " + (res.error || "Unknown error"));
+    show("step-confirm");
+  }
+}
+</script>
+</body>
+</html>
