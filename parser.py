@@ -100,3 +100,30 @@ def parse_order_text(text: str) -> dict:
             })
 
     return {"items": items, "payment": payment, "client_hint": client_hint}
+
+def _enrich(raw_items):
+    result = []
+    for item in raw_items:
+        candidates = _match_skus(item.get("flavour_id"), item.get("format_id"))
+        if not candidates:
+            result.append({
+                "qty": item.get("qty", 1),
+                "flavour_id": item.get("flavour_id"),
+                "format_id": item.get("format_id"),
+                "candidates": [], "ambiguous": False,
+                "resolved_sku": None, "unit_price": None, "not_found": True,
+            })
+            continue
+        ambiguous = len(candidates) > 1
+        for c in candidates:
+            c["unit_price"] = _get_price(c)
+        result.append({
+            "qty": item.get("qty", 1),
+            "flavour_id": item.get("flavour_id"),
+            "format_id": item.get("format_id"),
+            "candidates": candidates, "ambiguous": ambiguous,
+            "resolved_sku": candidates[0] if not ambiguous else None,
+            "unit_price": candidates[0]["unit_price"] if not ambiguous else None,
+            "not_found": False,
+        })
+    return result

@@ -12,7 +12,8 @@ FLAVOUR_ALIASES = {
     "modak": 5, "ukadiche": 5,
     "coffee": 6, "kaaphi": 6, "kaapi": 6, "chikkamagaluru": 6,
     "mysore paak": 7, "mysore pak": 7, "mysore": 7,
-    "speculoos": 8, "belgian": 8, "biscuit": 8,
+    "belgian speculoos": 8, "speculoos": 8, "biscuit": 8,
+    "belgian chocolate": 9, "chocolate": 9, "choco": 9,
 }
 
 FORMAT_ALIASES = {
@@ -24,7 +25,7 @@ FORMAT_ALIASES = {
 FLAVOUR_NAMES = {
     1: "Ratnagiri Hapoos Mango", 2: "Guava", 3: "Jackfruit",
     4: "Tender Coconut", 5: "Ukadiche Modak", 6: "Chikkamagaluru Kaaphi",
-    7: "Mysore Paak", 8: "Belgian Speculoos",
+    7: "Mysore Paak", 8: "Belgian Speculoos", 9: "Belgian Chocolate",
 }
 
 FORMAT_NAMES = {1: "4L Bulk", 2: "12 Square", 3: "50ml Sample"}

@@ -137,7 +137,10 @@ function renderCart() {
     const div = document.createElement("div");
     div.className = "cart-item-card";
 
-    if (!item.ambiguous && item.resolved_sku) {
+if (item.not_found) {
+  div.innerHTML = `<div class="ambig-label" style="color:#c0392b">⚠ No SKU found for item ${idx + 1} (qty: ${item.qty}) — not in active catalogue</div>`;
+  allResolved = false;
+} else if (!item.ambiguous && item.resolved_sku) {
       const sku = item.resolved_sku;
       const total = item.qty * item.unit_price;
       div.innerHTML = `
@@ -168,12 +171,16 @@ function renderCart() {
     box.appendChild(div);
   });
 
+
+
   // Subtotal row
   if (allResolved) {
     const sub = state.items.reduce((s,i) => s + i.qty * i.unit_price, 0);
     box.innerHTML += `<div class="subtotal-row">Subtotal <strong>${fmt(sub)}</strong></div>`;
     renderNextAfterCart();
   }
+
+  
 }
 
 function changeQty(idx, delta) {
@@ -191,14 +198,24 @@ function resolveSku(itemIdx, candidateIdx) {
 }
 
 function renderNextAfterCart() {
-  if (!state.payment) {
-    show("step-payment");
-  } else {
+  show("step-payment");
+  if (state.payment) {
     markPayment(state.payment);
-    show("step-client");
-    if (document.getElementById("clientSearch").value.length >= 2) {
-      _searchClients(document.getElementById("clientSearch").value);
+    const label = document.getElementById("paymentBtns");
+    if (!document.getElementById("payment-auto-note")) {
+      const note = document.createElement("div");
+      note.id = "payment-auto-note";
+      note.style.cssText = "font-size:12px;color:#1D9E75;margin-top:6px";
+      note.textContent = "Auto-detected from message — tap to change";
+      label.parentNode.appendChild(note);
     }
+    setTimeout(() => {
+      hide("step-payment");
+      document.getElementById("payment-auto-note")?.remove();
+      show("step-client");
+      const q = document.getElementById("clientSearch").value;
+      if (q.length >= 2) _searchClients(q);
+    }, 1500);
   }
 }
 
