@@ -103,10 +103,17 @@ function resetAll() {
 async function parseOrder() {
   const text = document.getElementById("orderText").value.trim();
   if (!text) return;
-  const res = await fetch("/api/parse", {
-    method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({text}),
-  }).then(r => r.json());
+  const btn = document.querySelector("#step-paste .btn-primary");
+  btn.disabled = true; btn.textContent = "Parsing…";
+  let res;
+  try {
+    res = await fetch("/api/parse", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({text}),
+    }).then(r => r.json());
+  } finally {
+    btn.disabled = false; btn.textContent = "Parse Order →";
+  }
 
   if (!res.items || !res.items.length) {
     alert("Could not detect any items. Check the format:\n2 Bulk Belgian\n3 Square Mango");
@@ -137,10 +144,10 @@ function renderCart() {
     const div = document.createElement("div");
     div.className = "cart-item-card";
 
-if (item.not_found) {
-  div.innerHTML = `<div class="ambig-label" style="color:#c0392b">⚠ No SKU found for item ${idx + 1} (qty: ${item.qty}) — not in active catalogue</div>`;
-  allResolved = false;
-} else if (!item.ambiguous && item.resolved_sku) {
+    if (item.not_found) {
+      div.innerHTML = `<div class="ambig-label" style="color:#c0392b">⚠ No SKU found for item ${idx + 1} (qty: ${item.qty}) — not in active catalogue</div>`;
+      allResolved = false;
+    } else if (!item.ambiguous && item.resolved_sku) {
       const sku = item.resolved_sku;
       const total = item.qty * item.unit_price;
       div.innerHTML = `
@@ -171,16 +178,12 @@ if (item.not_found) {
     box.appendChild(div);
   });
 
-
-
-  // Subtotal row
-  if (allResolved) {
-    const sub = state.items.reduce((s,i) => s + i.qty * i.unit_price, 0);
+  const proceedable = state.items.every(i => i.not_found || (!i.ambiguous && i.resolved_sku));
+  if (proceedable) {
+    const sub = state.items.filter(i => !i.not_found && i.resolved_sku).reduce((s,i) => s + i.qty * i.unit_price, 0);
     box.innerHTML += `<div class="subtotal-row">Subtotal <strong>${fmt(sub)}</strong></div>`;
     renderNextAfterCart();
   }
-
-  
 }
 
 function changeQty(idx, delta) {
@@ -254,11 +257,14 @@ async function _searchClients(q) {
     return;
   }
   const clients = data.clients || [];
-  if (!clients.length) { box.innerHTML = `<div class="opt-muted">No clients found</div>`; return; }
+  if (!clients.length) {
+    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name</div>`;
+    return;
+  }
   box.innerHTML = clients.map(c => `
     <button class="option-btn" onclick='selectClient(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
       <span class="opt-name">${c.business_name}</span>
-      <span class="opt-sub">${c.primary_contact_phone || ""}</span>
+      <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}</span>
     </button>`).join("");
 }
 
@@ -313,8 +319,9 @@ function changeAddress() {
 
 // ── STEP 5: Confirm ──────────────────────────────────────────────────────────
 function showConfirm() {
-  const subtotal = state.items.reduce((s,i) => s + i.qty * i.unit_price, 0);
-  const itemRows = state.items.map(i =>
+  const resolved = state.items.filter(i => !i.not_found && i.resolved_sku);
+  const subtotal = resolved.reduce((s,i) => s + i.qty * i.unit_price, 0);
+  const itemRows = resolved.map(i =>
     `<tr><td>${i.resolved_sku.flavour_name}</td><td>${i.resolved_sku.pack_format_name}</td>
      <td class="num">${i.qty}</td><td class="num">${fmt(i.unit_price)}</td>
      <td class="num">${fmt(i.qty * i.unit_price)}</td></tr>`
@@ -337,7 +344,7 @@ async function placeOrder() {
   const btn = document.querySelector("#step-confirm .btn-green");
   btn.disabled = true; btn.textContent = "Placing…";
 
-  const lines = state.items.map(i => ({
+  const lines = state.items.filter(i => !i.not_found && i.resolved_sku).map(i => ({
     sku_id: i.resolved_sku.id,
     sku_code: i.resolved_sku.sku_code,
     flavour_name: i.resolved_sku.flavour_name,

@@ -21,7 +21,7 @@ def search_clients(query: str) -> list:
     result = (
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, default_payment_mode, primary_contact_name, primary_contact_phone, gstin")
-        .or_(f"business_name.ilike.%{q}%,primary_contact_phone.ilike.%{q}%,gstin.ilike.%{q}%")
+        .or_(f"business_name.ilike.%{q}%,primary_contact_name.ilike.%{q}%,primary_contact_phone.ilike.%{q}%,gstin.ilike.%{q}%")
         .eq("status", "active").limit(8).execute()
     )
     return result.data
