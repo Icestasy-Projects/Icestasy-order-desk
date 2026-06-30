@@ -8,7 +8,7 @@ except ImportError:
     pass
 
 from parser import parse_order_text
-from order_engine import search_clients, get_client_addresses, addr_label, create_order
+from order_engine import search_clients, get_client_addresses, addr_label, create_order, register_client
 
 app = Flask(__name__)
 
@@ -44,6 +44,18 @@ def api_clients():
         return jsonify({"clients": [], "error": str(e)}), 200
     except Exception as e:
         return jsonify({"clients": [], "error": str(e)}), 200
+
+
+@app.route("/api/clients", methods=["POST"])
+def api_register_client():
+    body = request.get_json(force=True)
+    try:
+        client = register_client(body)
+        return jsonify({"ok": True, "client": client})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/clients/<int:client_id>/addresses")

@@ -104,6 +104,9 @@ def _keyword_extract(text: str):
             flavour_id = _find_flavour(lower)
             format_id = _find_format(lower)
             if flavour_id is None and format_id is None:
+                # Not an item line — treat as a client name if we don't have one yet
+                if client_hint is None and line.strip():
+                    client_hint = line.strip()
                 continue
             # Extract hint words for fuzzy matching when flavour not found
             flavour_hint = None
@@ -172,10 +175,15 @@ def _enrich(raw_items):
     for item in raw_items:
         flavour_id = item.get("flavour_id")
         format_id = item.get("format_id")
-        candidates = _match_skus(flavour_id, format_id)
-        # When flavour wasn't identified, try fuzzy match on hint words
-        if not candidates and item.get("flavour_hint"):
-            candidates = _match_skus_fuzzy(item["flavour_hint"], format_id)
+        flavour_hint = item.get("flavour_hint")
+        # When flavour wasn't identified but a hint exists, prefer fuzzy match
+        # over _match_skus(None, ...) which returns every SKU in the format
+        if flavour_id is None and flavour_hint:
+            candidates = _match_skus_fuzzy(flavour_hint, format_id)
+            if not candidates:
+                candidates = _match_skus(flavour_id, format_id)
+        else:
+            candidates = _match_skus(flavour_id, format_id)
         # Expand to sibling flavours (e.g. "Belgian" → Speculoos + Chocolate)
         if candidates and flavour_id is not None:
             siblings = _get_sibling_skus(flavour_id, format_id)

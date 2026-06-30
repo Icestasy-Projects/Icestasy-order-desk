@@ -257,15 +257,67 @@ async function _searchClients(q) {
     return;
   }
   const clients = data.clients || [];
+  const registerBtn = `<button class="btn-option btn-sm mt8" onclick="showRegisterForm(${JSON.stringify(q).replace(/'/g,"&#39;")})">+ Register new client</button>`;
   if (!clients.length) {
-    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name</div>`;
+    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name</div>${registerBtn}`;
     return;
   }
   box.innerHTML = clients.map(c => `
     <button class="option-btn" onclick='selectClient(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
       <span class="opt-name">${c.business_name}</span>
       <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}</span>
-    </button>`).join("");
+    </button>`).join("") + registerBtn;
+}
+
+// ── Register new client ────────────────────────────────────────────────────
+function showRegisterForm(prefillName) {
+  const box = document.getElementById("clientResults");
+  const name = (prefillName || "").replace(/"/g, "&quot;");
+  box.innerHTML = `
+    <div class="register-form">
+      <input id="regName" class="search-input" placeholder="Business name *" value="${name}">
+      <input id="regPhone" class="search-input mt8" placeholder="Phone number *">
+      <input id="regContact" class="search-input mt8" placeholder="Contact name">
+      <select id="regType" class="search-input mt8">
+        <option value="horeca">HoReCa</option>
+        <option value="retail">Retail</option>
+        <option value="distributor">Distributor</option>
+      </select>
+      <input id="regGstin" class="search-input mt8" placeholder="GSTIN (optional)">
+      <input id="regFssai" class="search-input mt8" placeholder="FSSAI No (optional)">
+      <input id="regEmail" class="search-input mt8" placeholder="Email (optional)">
+      <div id="regError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="submitRegister()">Register &amp; Select</button>
+        <button class="btn-ghost" onclick="_searchClients(document.getElementById('clientSearch').value)">Cancel</button>
+      </div>
+    </div>`;
+}
+
+async function submitRegister() {
+  const errBox = document.getElementById("regError");
+  const payload = {
+    business_name: document.getElementById("regName").value.trim(),
+    primary_contact_phone: document.getElementById("regPhone").value.trim(),
+    primary_contact_name: document.getElementById("regContact").value.trim(),
+    client_type: document.getElementById("regType").value,
+    gstin: document.getElementById("regGstin").value.trim(),
+    fssai_no: document.getElementById("regFssai").value.trim(),
+    email: document.getElementById("regEmail").value.trim(),
+  };
+  if (!payload.business_name || !payload.primary_contact_phone) {
+    errBox.textContent = "Business name and phone number are required";
+    return;
+  }
+  const res = await fetch("/api/clients", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not register client";
+    return;
+  }
+  selectClient(res.client);
 }
 
 async function selectClient(client) {
