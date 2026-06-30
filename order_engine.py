@@ -4,6 +4,24 @@ from sku_data import MOCK_PRICES
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 
+INDIA_STATE_CODES = {
+    "jammu and kashmir": "01", "himachal pradesh": "02", "punjab": "03",
+    "chandigarh": "04", "uttarakhand": "05", "haryana": "06", "delhi": "07",
+    "rajasthan": "08", "uttar pradesh": "09", "bihar": "10", "sikkim": "11",
+    "arunachal pradesh": "12", "nagaland": "13", "manipur": "14", "mizoram": "15",
+    "tripura": "16", "meghalaya": "17", "assam": "18", "west bengal": "19",
+    "jharkhand": "20", "odisha": "21", "chhattisgarh": "22", "madhya pradesh": "23",
+    "gujarat": "24", "daman and diu": "25", "dadra and nagar haveli": "26",
+    "maharashtra": "27", "karnataka": "29", "goa": "30", "lakshadweep": "31",
+    "kerala": "32", "tamil nadu": "33", "puducherry": "34",
+    "andaman and nicobar islands": "35", "telangana": "36", "andhra pradesh": "37",
+    "ladakh": "38",
+}
+
+
+def _state_code_for(state_name: str) -> str:
+    return INDIA_STATE_CODES.get(state_name.strip().lower(), "00")
+
 
 def _sb():
     key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
@@ -82,6 +100,38 @@ def register_client(data: dict) -> dict:
 def get_client_addresses(client_id: int) -> list:
     sb = _sb()
     return sb.schema("sales").from_("addresses").select("*").eq("client_id", client_id).execute().data
+
+
+def create_address(client_id: int, data: dict) -> dict:
+    sb = _sb()
+    line1 = (data.get("line1") or "").strip()
+    city = (data.get("city") or "").strip()
+    state = (data.get("state") or "").strip()
+    pincode = (data.get("pincode") or "").strip()
+
+    if not line1:
+        raise ValueError("Address line is required")
+    if not city:
+        raise ValueError("City is required")
+    if not state:
+        raise ValueError("State is required")
+    if not pincode:
+        raise ValueError("Pincode is required")
+
+    row = {
+        "client_id": client_id,
+        "address_type": data.get("address_type") or "shipping",
+        "gstin": (data.get("gstin") or "").strip() or None,
+        "line1": line1,
+        "line2": (data.get("line2") or "").strip() or None,
+        "city": city,
+        "state": state,
+        "state_code": _state_code_for(state),
+        "pincode": pincode,
+        "is_default": bool(data.get("is_default", False)),
+    }
+    res = sb.schema("sales").from_("addresses").insert(row).execute()
+    return res.data[0]
 
 
 def addr_label(addr: dict) -> str:
