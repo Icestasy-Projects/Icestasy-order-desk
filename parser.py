@@ -104,6 +104,9 @@ def _keyword_extract(text: str):
             flavour_id = _find_flavour(lower)
             format_id = _find_format(lower)
             if flavour_id is None and format_id is None:
+                # Not an item line — treat as a client name if we don't have one yet
+                if client_hint is None and line.strip():
+                    client_hint = line.strip()
                 continue
             # Extract hint words for fuzzy matching when flavour not found
             flavour_hint = None

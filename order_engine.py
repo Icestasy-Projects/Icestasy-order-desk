@@ -27,6 +27,58 @@ def search_clients(query: str) -> list:
     return result.data
 
 
+def register_client(data: dict) -> dict:
+    sb = _sb()
+    business_name = (data.get("business_name") or "").strip()
+    phone = (data.get("primary_contact_phone") or "").strip() or None
+    gstin = (data.get("gstin") or "").strip() or None
+    fssai_no = (data.get("fssai_no") or "").strip() or None
+
+    if not business_name:
+        raise ValueError("Business name is required")
+    if not phone:
+        raise ValueError("Phone number is required")
+
+    or_parts = [f"primary_contact_phone.eq.{phone}"]
+    if gstin:
+        or_parts.append(f"gstin.eq.{gstin}")
+    if fssai_no:
+        or_parts.append(f"fssai_no.eq.{fssai_no}")
+
+    existing = (
+        sb.schema("sales").from_("clients")
+        .select("id, business_name, gstin, fssai_no, primary_contact_phone")
+        .or_(",".join(or_parts))
+        .execute()
+    )
+    if existing.data:
+        dupe = existing.data[0]
+        if gstin and dupe.get("gstin") == gstin:
+            reason = "GSTIN"
+        elif fssai_no and dupe.get("fssai_no") == fssai_no:
+            reason = "FSSAI No"
+        else:
+            reason = "phone number"
+        raise ValueError(f"A client already exists with this {reason}: {dupe['business_name']}")
+
+    row = {
+        "business_name": business_name,
+        "client_type": data.get("client_type") or "horeca",
+        "is_roi_dealer": False,
+        "gstin": gstin,
+        "fssai_no": fssai_no,
+        "primary_contact_name": (data.get("primary_contact_name") or "").strip() or None,
+        "primary_contact_phone": phone,
+        "email": (data.get("email") or "").strip() or None,
+        "credit_terms_days": 0,
+        "default_payment_mode": data.get("default_payment_mode") or "advance",
+        "status": "active",
+        "registered_by": 1,
+    }
+    res = sb.schema("sales").from_("clients").insert(row).execute()
+    return res.data[0]
+
+
 def get_client_addresses(client_id: int) -> list:
     sb = _sb()
     return sb.schema("sales").from_("addresses").select("*").eq("client_id", client_id).execute().data
