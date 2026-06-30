@@ -48,13 +48,16 @@
         <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
                oninput="debounceSearch(this.value)">
       </div>
-      <div id="clientResults" class="option-list"></div>
+      <button class="btn-option btn-sm mt8" id="registerToggleBtn"
+              onclick="showRegisterForm(document.getElementById('clientSearch').value)">+ Register new client</button>
+      <div id="clientResults" class="option-list mt8"></div>
     </section>
 
     <!-- STEP 4: Address -->
     <section class="step hidden" id="step-address">
       <div class="step-label">Shipping Address</div>
       <div id="addressList" class="option-list"></div>
+      <button class="btn-option btn-sm mt8" id="addAddressToggleBtn" onclick="showAddressForm()">+ Add new address</button>
     </section>
 
     <!-- STEP 5: Confirm -->
@@ -95,7 +98,11 @@ function resetAll() {
     .forEach(hide);
   document.getElementById("orderText").value = "";
   document.getElementById("clientSearch").value = "";
+  document.getElementById("clientSearch").style.display = "";
   document.getElementById("clientResults").innerHTML = "";
+  document.getElementById("registerToggleBtn").style.display = "";
+  document.getElementById("addressList").innerHTML = "";
+  document.getElementById("addAddressToggleBtn").style.display = "";
   show("step-paste");
 }
 
@@ -257,21 +264,21 @@ async function _searchClients(q) {
     return;
   }
   const clients = data.clients || [];
-  const registerBtn = `<button class="btn-option btn-sm mt8" onclick="showRegisterForm(${JSON.stringify(q).replace(/'/g,"&#39;")})">+ Register new client</button>`;
   if (!clients.length) {
-    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name</div>${registerBtn}`;
+    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name, or register below</div>`;
     return;
   }
   box.innerHTML = clients.map(c => `
     <button class="option-btn" onclick='selectClient(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
       <span class="opt-name">${c.business_name}</span>
       <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}</span>
-    </button>`).join("") + registerBtn;
+    </button>`).join("");
 }
 
 // ── Register new client ────────────────────────────────────────────────────
 function showRegisterForm(prefillName) {
   const box = document.getElementById("clientResults");
+  document.getElementById("registerToggleBtn").style.display = "none";
   const name = (prefillName || "").replace(/"/g, "&quot;");
   box.innerHTML = `
     <div class="register-form">
@@ -289,9 +296,16 @@ function showRegisterForm(prefillName) {
       <div id="regError" class="opt-error mt8"></div>
       <div class="btn-group mt8">
         <button class="btn-primary" onclick="submitRegister()">Register &amp; Select</button>
-        <button class="btn-ghost" onclick="_searchClients(document.getElementById('clientSearch').value)">Cancel</button>
+        <button class="btn-ghost" onclick="cancelRegisterForm()">Cancel</button>
       </div>
     </div>`;
+}
+
+function cancelRegisterForm() {
+  document.getElementById("registerToggleBtn").style.display = "";
+  const q = document.getElementById("clientSearch").value;
+  if (q.length >= 2) _searchClients(q);
+  else document.getElementById("clientResults").innerHTML = "";
 }
 
 async function submitRegister() {
@@ -325,27 +339,149 @@ async function selectClient(client) {
   document.getElementById("clientResults").innerHTML =
     `<div class="selected-pill">✓ ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientSearch").style.display = "none";
+  document.getElementById("registerToggleBtn").style.display = "none";
 
   hide("step-client");
-  const data = await fetch(`/api/clients/${client.id}/addresses`).then(r => r.json());
+  await loadAddresses(client.id);
+  show("step-address");
+}
+
+async function loadAddresses(clientId) {
+  const data = await fetch(`/api/clients/${clientId}/addresses`).then(r => r.json());
   const addrs = data.addresses || [];
   const box = document.getElementById("addressList");
   if (!addrs.length) {
-    box.innerHTML = `<div class="opt-muted">No addresses found — skipping</div>`;
-    show("step-address");
-    setTimeout(showConfirm, 800);
+    box.innerHTML = `<div class="opt-muted">No addresses found — add one below, or skip</div>
+      <button class="btn-ghost mt8" onclick="skipAddress()">Skip for now</button>`;
   } else {
     box.innerHTML = addrs.map(a => `
       <button class="option-btn" onclick="selectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}')">
         ${a.label}
       </button>`).join("");
-    show("step-address");
   }
+}
+
+function skipAddress() {
+  state.address_id = null;
+  state.address_label = null;
+  hide("step-address");
+  showConfirm();
+}
+
+const CITIES_BY_STATE = {
+  "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Nashik", "Thane", "Aurangabad", "Vile Parle", "Andheri", "Navi Mumbai"],
+  "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar"],
+  "Karnataka": ["Bengaluru", "Mysuru", "Mangaluru", "Hubballi"],
+  "Delhi": ["New Delhi"],
+  "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli"],
+  "Telangana": ["Hyderabad", "Warangal"],
+  "West Bengal": ["Kolkata", "Howrah", "Durgapur"],
+  "Rajasthan": ["Jaipur", "Jodhpur", "Udaipur", "Kota"],
+  "Uttar Pradesh": ["Lucknow", "Noida", "Ghaziabad", "Kanpur", "Agra", "Varanasi"],
+  "Madhya Pradesh": ["Bhopal", "Indore", "Jabalpur", "Gwalior"],
+  "Punjab": ["Chandigarh", "Ludhiana", "Amritsar", "Jalandhar"],
+  "Haryana": ["Gurugram", "Faridabad", "Panipat"],
+  "Kerala": ["Kochi", "Thiruvananthapuram", "Kozhikode"],
+  "Goa": ["Panaji", "Margao"],
+  "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur"],
+  "Bihar": ["Patna", "Gaya"],
+  "Odisha": ["Bhubaneswar", "Cuttack"],
+  "Chhattisgarh": ["Raipur", "Bhilai"],
+  "Jharkhand": ["Ranchi", "Jamshedpur"],
+  "Assam": ["Guwahati"],
+  "Uttarakhand": ["Dehradun", "Haridwar"],
+  "Himachal Pradesh": ["Shimla"],
+  "Jammu and Kashmir": ["Srinagar", "Jammu"],
+  "Chandigarh": ["Chandigarh"],
+  "Puducherry": ["Puducherry"],
+};
+const INDIA_STATES = ["Maharashtra","Gujarat","Karnataka","Delhi","Tamil Nadu","Telangana","West Bengal",
+  "Rajasthan","Uttar Pradesh","Madhya Pradesh","Punjab","Haryana","Kerala","Goa","Andhra Pradesh","Bihar",
+  "Odisha","Chhattisgarh","Jharkhand","Assam","Uttarakhand","Himachal Pradesh","Jammu and Kashmir",
+  "Chandigarh","Puducherry","Sikkim","Arunachal Pradesh","Nagaland","Manipur","Mizoram","Tripura",
+  "Meghalaya","Daman and Diu","Dadra and Nagar Haveli","Lakshadweep","Andaman and Nicobar Islands","Ladakh"];
+
+function showAddressForm() {
+  const box = document.getElementById("addressList");
+  document.getElementById("addAddressToggleBtn").style.display = "none";
+  const stateOpts = `<option value="">Select state *</option>` +
+    INDIA_STATES.map(s => `<option value="${s}">${s}</option>`).join("");
+  box.innerHTML = `
+    <div class="register-form">
+      <input id="addrLine1" class="search-input" placeholder="Address line 1 *">
+      <input id="addrLine2" class="search-input mt8" placeholder="Address line 2 (optional)">
+      <select id="addrState" class="search-input mt8" onchange="updateCityOptions()">${stateOpts}</select>
+      <select id="addrCity" class="search-input mt8"><option value="">Select state first</option></select>
+      <input id="addrCityOther" class="search-input mt8" placeholder="City name" style="display:none">
+      <input id="addrPincode" class="search-input mt8" placeholder="Pincode *">
+      <select id="addrType" class="search-input mt8">
+        <option value="shipping">Shipping</option>
+        <option value="billing">Billing</option>
+      </select>
+      <div id="addrError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="submitAddress()">Save &amp; Select</button>
+        <button class="btn-ghost" onclick="cancelAddressForm()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function updateCityOptions() {
+  const stateName = document.getElementById("addrState").value;
+  const citySel = document.getElementById("addrCity");
+  const cityOther = document.getElementById("addrCityOther");
+  cityOther.style.display = "none";
+  cityOther.value = "";
+  const cities = CITIES_BY_STATE[stateName] || [];
+  citySel.innerHTML = `<option value="">Select city *</option>` +
+    cities.map(c => `<option value="${c}">${c}</option>`).join("") +
+    `<option value="__other__">Other (type manually)</option>`;
+  citySel.onchange = () => {
+    if (citySel.value === "__other__") {
+      cityOther.style.display = "";
+    } else {
+      cityOther.style.display = "none";
+      cityOther.value = "";
+    }
+  };
+}
+
+function cancelAddressForm() {
+  document.getElementById("addAddressToggleBtn").style.display = "";
+  loadAddresses(state.client.id);
+}
+
+async function submitAddress() {
+  const errBox = document.getElementById("addrError");
+  const citySel = document.getElementById("addrCity").value;
+  const city = citySel === "__other__" ? document.getElementById("addrCityOther").value.trim() : citySel;
+  const payload = {
+    line1: document.getElementById("addrLine1").value.trim(),
+    line2: document.getElementById("addrLine2").value.trim(),
+    city: city,
+    state: document.getElementById("addrState").value.trim(),
+    pincode: document.getElementById("addrPincode").value.trim(),
+    address_type: document.getElementById("addrType").value,
+  };
+  if (!payload.line1 || !payload.city || !payload.state || !payload.pincode) {
+    errBox.textContent = "Address line, city, state, and pincode are required";
+    return;
+  }
+  const res = await fetch(`/api/clients/${state.client.id}/addresses`, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not save address";
+    return;
+  }
+  selectAddress(res.address.id, res.address.label);
 }
 
 function changeClient() {
   state.client = null;
   document.getElementById("clientSearch").style.display = "";
+  document.getElementById("registerToggleBtn").style.display = "";
   document.getElementById("clientResults").innerHTML = "";
   document.getElementById("clientSearch").value = "";
   document.getElementById("clientSearch").focus();
@@ -357,14 +493,15 @@ function selectAddress(id, label) {
   state.address_label = label;
   document.getElementById("addressList").innerHTML =
     `<div class="selected-pill">✓ ${label} <button class="pill-change" onclick="changeAddress()">change</button></div>`;
+  document.getElementById("addAddressToggleBtn").style.display = "none";
   hide("step-address");
   showConfirm();
 }
 
 function changeAddress() {
   state.address_id = null;
-  document.getElementById("addressList").querySelectorAll(".option-btn").forEach(b => b.style.display = "");
-  document.querySelector(".selected-pill")?.remove();
+  document.getElementById("addAddressToggleBtn").style.display = "";
+  loadAddresses(state.client.id);
   show("step-address");
   hide("step-confirm");
 }
