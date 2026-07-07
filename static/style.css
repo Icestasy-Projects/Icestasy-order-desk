@@ -32,8 +32,8 @@ body {
 /* Header */
 .header {
   background: var(--white);
-  padding: 0 20px;
-  height: 60px;
+  padding: 10px 20px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   position: sticky;
@@ -44,19 +44,20 @@ body {
 .header-inner {
   max-width: 720px; width: 100%; margin: 0 auto;
   display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 8px 12px;
 }
 .brand { color: var(--slate-900); font-weight: 800; font-size: 18px; letter-spacing: -.3px;
-         display: flex; align-items: center; gap: 8px; }
+         display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .btn-ghost {
   background: var(--brand-soft); border: none; color: var(--brand-dk);
   padding: 9px 18px; border-radius: 20px; cursor: pointer; font-size: 13px;
   font-weight: 700; transition: background .15s, transform .1s;
-  min-height: 38px;
+  min-height: 38px; white-space: nowrap;
 }
 .btn-ghost:hover { background: #FFE3C4; }
 .btn-ghost:active { transform: scale(.96); }
 
-.header-right { display: flex; align-items: center; gap: 12px; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .user-email { font-size: 12.5px; color: var(--slate-500); font-weight: 600; display: none; }
 
 /* Page-level tab bar (e.g. Orders / Team on the dashboard) */
@@ -87,7 +88,7 @@ body {
   padding: 22px 20px; box-shadow: var(--shadow);
   animation: fadeIn .25s ease;
 }
-.step.hidden { display: none; }
+.hidden { display: none; }
 .step-label {
   font-size: 11px; font-weight: 800; letter-spacing: .08em;
   text-transform: uppercase; color: var(--slate-500); margin-bottom: 16px;
@@ -287,14 +288,24 @@ body {
 
 /* Mobile fine-tuning */
 @media (max-width: 480px) {
-  .header { padding: 0 16px; height: 56px; }
-  .brand { font-size: 16px; }
+  .header { padding: 8px 16px; min-height: 52px; position: static; }
+  .header-inner { justify-content: flex-start; }
+  .brand { font-size: 16px; width: 100%; }
+  .header-right { width: 100%; }
+  .btn-ghost { padding: 8px 14px; font-size: 12px; }
+  .tab-bar { position: static; }
   .main { padding: 16px 12px 100px; gap: 14px; }
   .step { padding: 18px 16px; border-radius: 18px; }
   .cart-item-card { padding: 14px; }
   .ci-right { width: 100%; justify-content: space-between; }
   .btn-group { gap: 8px; }
   .summary-table { font-size: 12px; }
+  .dash-title-row { flex-direction: column; align-items: flex-start; }
+  .dash-stats { width: 100%; justify-content: space-between; gap: 10px; }
+  .dash-stat { align-items: flex-start; }
+  .dash-stat-num { font-size: 17px; }
+  .dash-order-row { flex-direction: column; align-items: flex-start; }
+  .dash-order-side { width: 100%; justify-content: flex-start; }
 }
 
 /* Larger screens: comfier card padding */
