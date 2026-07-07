@@ -1,13 +1,11 @@
--- Marketing collateral library, standalone from orders (own tab in the UI).
+-- Marketing collateral dispatched with (or independently of) an order.
 create table if not exists sales.order_collateral (
     id bigint generated always as identity primary key,
-    title text not null,
-    description text,
-    category text not null default 'general',
-    file_url text not null,
-    created_by integer,
+    order_id integer not null references sales.orders(id),
+    collateral_type text not null,
+    quantity integer not null,
+    notes text,
     created_at timestamptz not null default now()
 );
 
-create index if not exists idx_order_collateral_category on sales.order_collateral (category);
-create index if not exists idx_order_collateral_created_at on sales.order_collateral (created_at desc);
+create index if not exists idx_order_collateral_order_id on sales.order_collateral (order_id);

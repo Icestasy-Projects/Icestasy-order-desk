@@ -10,7 +10,7 @@ except ImportError:
 from parser import parse_order_text
 from order_engine import (
     search_clients, get_client_addresses, addr_label, create_order,
-    register_client, create_address, list_collateral, create_collateral,
+    register_client, create_address,
 )
 
 app = Flask(__name__)
@@ -137,29 +137,9 @@ def api_orders():
             billing_address_id=body.get("billing_address_id"),
             shipping_address_id=body.get("shipping_address_id"),
             notes=body.get("notes"),
+            collateral=body.get("collateral"),
         )
         return jsonify({"ok": True, "order": order})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/collateral")
-def api_collateral():
-    try:
-        items = list_collateral()
-        return jsonify({"items": items})
-    except Exception as e:
-        return jsonify({"items": [], "error": str(e)}), 200
-
-
-@app.route("/api/collateral", methods=["POST"])
-def api_create_collateral():
-    body = request.get_json(force=True)
-    try:
-        item = create_collateral(body)
-        return jsonify({"ok": True, "item": item})
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

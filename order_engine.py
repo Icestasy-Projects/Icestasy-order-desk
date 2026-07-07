@@ -148,33 +148,6 @@ def addr_label(addr: dict) -> str:
     return ", ".join(parts) if parts else f"Address #{addr.get('id','?')}"
 
 
-def list_collateral() -> list:
-    sb = _sb()
-    return (
-        sb.schema("sales").from_("order_collateral")
-        .select("*").order("created_at", desc=True).execute().data
-    )
-
-
-def create_collateral(data: dict) -> dict:
-    sb = _sb()
-    title = (data.get("title") or "").strip()
-    file_url = (data.get("file_url") or "").strip()
-    if not title:
-        raise ValueError("Title is required")
-    if not file_url:
-        raise ValueError("File URL is required")
-    row = {
-        "title": title,
-        "description": (data.get("description") or "").strip() or None,
-        "category": (data.get("category") or "general").strip() or "general",
-        "file_url": file_url,
-        "created_by": 1,
-    }
-    res = sb.schema("sales").from_("order_collateral").insert(row).execute()
-    return res.data[0]
-
-
 def get_sku_price(sku_id: int, pack_format_id: int) -> float:
     try:
         sb = _sb()
@@ -205,8 +178,20 @@ def _next_order_no(sb) -> str:
     return f"ORD-{year}-000001"
 
 
-def create_order(client_id, payment_mode, lines, billing_address_id=None, shipping_address_id=None, notes=None):
+def add_order_collateral(sb, order_id: int, collateral: list) -> list:
+    rows = [{
+        "order_id": order_id,
+        "collateral_type": c["type"],
+        "quantity": c["quantity"],
+        "notes": (c.get("notes") or "").strip() or None,
+    } for c in collateral]
+    res = sb.schema("sales").from_("order_collateral").insert(rows).execute()
+    return res.data
+
+
+def create_order(client_id, payment_mode, lines, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None):
     sb = _sb()
+    payment_mode = payment_mode or "advance"  # payment_mode is NOT NULL; not asked for collateral-only orders
     subtotal = sum(l["quantity"] * l["unit_price"] for l in lines)
     discount = sum(l.get("line_discount", 0.0) * l["quantity"] for l in lines)
     total = subtotal - discount
@@ -235,10 +220,19 @@ def create_order(client_id, payment_mode, lines, billing_address_id=None, shippi
             "line_discount_amount": str(disc * qty),
             "line_total": str(qty * price - disc * qty), "status": "active",
         })
-    sb.schema("sales").from_("order_lines").insert(line_rows).execute()
+    if line_rows:
+        sb.schema("sales").from_("order_lines").insert(line_rows).execute()
+
+    collateral_out = []
+    if collateral:
+        saved = add_order_collateral(sb, order_id, collateral)
+        collateral_out = [{"type": c["collateral_type"], "quantity": c["quantity"], "notes": c.get("notes")}
+                           for c in saved]
+
     return {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
             "lines": [{"sku_code": l["sku_code"], "flavour_name": l["flavour_name"],
                        "format_name": l["format_name"], "quantity": l["quantity"],
                        "unit_price": l["unit_price"],
                        "line_total": l["quantity"] * l["unit_price"] - l.get("line_discount", 0.0) * l["quantity"]}
-                      for l in lines]}
+                      for l in lines],
+            "collateral": collateral_out}
