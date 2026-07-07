@@ -61,8 +61,12 @@
         <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
                oninput="debounceSearch(this.value)">
       </div>
+      {% if can_onboard_clients %}
       <button class="btn-option btn-sm mt8" id="registerToggleBtn"
               onclick="showRegisterForm(document.getElementById('clientSearch').value)">+ Register new client</button>
+      {% else %}
+      <div class="opt-muted mt8">New client? Ask your Head of Sales or Client Onboarding to register them first.</div>
+      {% endif %}
       <div id="clientResults" class="option-list mt8"></div>
     </section>
 
@@ -107,6 +111,11 @@ const COLLATERAL_TYPES = ["Tent Cards","Acrylic Tent Cards","Acrylic Stands","In
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 0});
 const show = id => document.getElementById(id).classList.remove("hidden");
 const hide = id => document.getElementById(id).classList.add("hidden");
+// Register-new-client button is only rendered for roles allowed to onboard clients — no-op otherwise.
+const showRegisterToggle = visible => {
+  const btn = document.getElementById("registerToggleBtn");
+  if (btn) btn.style.display = visible ? "" : "none";
+};
 
 function resetAll() {
   state = {items: [], payment: null, client: null, address_id: null, address_label: null,
@@ -117,7 +126,7 @@ function resetAll() {
   document.getElementById("clientSearch").value = "";
   document.getElementById("clientSearch").style.display = "";
   document.getElementById("clientResults").innerHTML = "";
-  document.getElementById("registerToggleBtn").style.display = "";
+  showRegisterToggle(true);
   document.getElementById("addressList").innerHTML = "";
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
@@ -380,7 +389,7 @@ async function _searchClients(q) {
 // ── Register new client ────────────────────────────────────────────────────
 function showRegisterForm(prefillName) {
   const box = document.getElementById("clientResults");
-  document.getElementById("registerToggleBtn").style.display = "none";
+  showRegisterToggle(false);
   const name = (prefillName || "").replace(/"/g, "&quot;");
   box.innerHTML = `
     <div class="register-form">
@@ -404,7 +413,7 @@ function showRegisterForm(prefillName) {
 }
 
 function cancelRegisterForm() {
-  document.getElementById("registerToggleBtn").style.display = "";
+  showRegisterToggle(true);
   const q = document.getElementById("clientSearch").value;
   if (q.length >= 2) _searchClients(q);
   else document.getElementById("clientResults").innerHTML = "";
@@ -441,7 +450,7 @@ async function selectClient(client) {
   document.getElementById("clientResults").innerHTML =
     `<div class="selected-pill">✓ ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientSearch").style.display = "none";
-  document.getElementById("registerToggleBtn").style.display = "none";
+  showRegisterToggle(false);
 
   hide("step-client");
   await loadAddresses(client.id);
@@ -583,7 +592,7 @@ async function submitAddress() {
 function changeClient() {
   state.client = null;
   document.getElementById("clientSearch").style.display = "";
-  document.getElementById("registerToggleBtn").style.display = "";
+  showRegisterToggle(true);
   document.getElementById("clientResults").innerHTML = "";
   document.getElementById("clientSearch").value = "";
   document.getElementById("clientSearch").focus();
