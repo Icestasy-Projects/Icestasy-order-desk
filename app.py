@@ -16,7 +16,11 @@ from order_engine import (
 )
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
+app.secret_key = os.environ.get("SECRET_KEY")
+if not app.secret_key:
+    # A random fallback breaks sessions on serverless: each request can hit a different
+    # cold-started instance with its own random key, invalidating every other instance's cookies.
+    raise RuntimeError("SECRET_KEY environment variable must be set to a persistent value")
 
 PUBLIC_ENDPOINTS = {"login", "static"}
 HEAD_OF_SALES_ROLE = "manager"
