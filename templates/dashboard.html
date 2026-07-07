@@ -22,7 +22,7 @@
   <nav class="tab-bar">
     <div class="tab-bar-inner">
       <button class="tab-btn active" id="page-tab-orders" onclick="switchPage('orders', this)">📦 Orders</button>
-      {% if is_head_of_sales %}
+      {% if can_view_team %}
       <button class="tab-btn" id="page-tab-team" onclick="switchPage('team', this)">👥 Team</button>
       {% endif %}
     </div>
@@ -34,7 +34,7 @@
         <div class="dash-title-row">
           <div>
             <div class="step-label" style="margin-bottom:2px">Orders Dashboard</div>
-            <div class="dash-subtitle">{{ full_name }} · {{ "Head of Sales" if role == "manager" else ("Client Onboarding" if role == "onboarding" else "Sales Team Member") }}</div>
+            <div class="dash-subtitle">{{ full_name }} · {{ role_label }}</div>
           </div>
           <div id="dashStats" class="dash-stats"></div>
         </div>
@@ -44,7 +44,7 @@
           <button class="tab-btn-flat" onclick="setGrouping('month', this)">Month on Month</button>
           <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
           <button class="tab-btn-flat" onclick="setGrouping('city', this)">By City</button>
-          {% if is_head_of_sales %}
+          {% if can_view_team %}
           <button class="tab-btn-flat" onclick="setGrouping('salesperson', this)">By Salesperson</button>
           {% endif %}
         </div>
@@ -53,12 +53,14 @@
       </section>
     </div>
 
-    {% if is_head_of_sales %}
+    {% if can_view_team %}
     <div id="page-team" class="hidden">
       <section class="step">
         <div class="step-label">Sales Team</div>
         <div id="teamList" class="option-list"></div>
+        {% if is_head_of_sales %}
         <button class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
+        {% endif %}
       </section>
     </div>
     {% endif %}
@@ -67,6 +69,9 @@
 
 <script>
 const IS_HEAD = {{ "true" if is_head_of_sales else "false" }};
+const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
+const ROLE_LABELS = {{ role_labels_json | safe }};
+const REGION_OPTIONS = {{ region_options_json | safe }};
 let allOrders = [];
 let grouping = "none";
 let expandedGroup = null;
@@ -78,8 +83,6 @@ function switchPage(page, btn) {
   const teamPage = document.getElementById("page-team");
   if (teamPage) teamPage.classList.toggle("hidden", page !== "team");
 }
-
-const ROLE_LABELS = { manager: "Head of Sales", onboarding: "Client Onboarding", salesperson: "Sales Team Member" };
 
 const STATUS_LABELS = {
   draft: "Order Pending", pending_approval: "In Progress", approved: "In Progress",
@@ -127,14 +130,14 @@ function setGrouping(g, btn) {
 }
 
 function orderRow(o) {
-  const payAction = (IS_HEAD && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
+  const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
   return `
     <div class="dash-order-row">
       <div class="dash-order-main">
         <span class="dash-order-no">${o.order_no}</span>
         <span class="dash-order-client">${o.client_name}${o.city !== "—" ? " · " + o.city : ""}</span>
-        ${IS_HEAD ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
+        ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
         <span class="badge ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
@@ -200,17 +203,38 @@ async function markPaid(orderId) {
   loadOrders();
 }
 
-// ── Sales Team (Head of Sales only) ─────────────────────────────────────────
+// ── Sales Team ───────────────────────────────────────────────────────────────
+let teamData = [];
+
+function roleOptionsHtml(selected) {
+  return Object.entries(ROLE_LABELS).map(([value, label]) =>
+    `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`).join("");
+}
+
+function regionOptionsHtml(selected) {
+  const opts = [`<option value=""${!selected ? " selected" : ""}>Not assigned</option>`];
+  REGION_OPTIONS.forEach(r => opts.push(`<option value="${r}"${r === selected ? " selected" : ""}>${r}</option>`));
+  return opts.join("");
+}
+
 async function loadTeam() {
-  if (!IS_HEAD) return;
+  if (!CAN_VIEW_TEAM) return;
   const box = document.getElementById("teamList");
   box.innerHTML = `<div class="searching">Loading…</div>`;
   const data = await fetch("/api/team").then(r => r.json());
-  const team = data.team || [];
-  box.innerHTML = team.map(t => `
+  teamData = data.team || [];
+  renderTeam();
+}
+
+function renderTeam() {
+  const box = document.getElementById("teamList");
+  box.innerHTML = teamData.map(t => `
     <div class="option-btn" style="cursor:default">
-      <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
-      <span class="opt-sub">${ROLE_LABELS[t.role] || t.role} · ${t.email}</span>
+      <div>
+        <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
+        <span class="opt-sub">${ROLE_LABELS[t.role] || t.role}${t.region ? " · " + t.region : ""} · ${t.email}</span>
+      </div>
+      ${IS_HEAD ? `<button class="btn-ghost" onclick="showEditTeamForm(${t.id})">Edit</button>` : ""}
     </div>`).join("");
 }
 
@@ -221,15 +245,12 @@ function showAddTeamForm() {
       <input id="tmName" class="search-input" placeholder="Full name *">
       <input id="tmEmail" class="search-input mt8" type="email" placeholder="Email *">
       <input id="tmPhone" class="search-input mt8" placeholder="Phone (optional)">
-      <select id="tmRole" class="search-input mt8">
-        <option value="salesperson">Sales Team Member</option>
-        <option value="onboarding">Client Onboarding</option>
-        <option value="manager">Head of Sales</option>
-      </select>
+      <select id="tmRole" class="search-input mt8">${roleOptionsHtml("salesperson")}</select>
+      <select id="tmRegion" class="search-input mt8">${regionOptionsHtml(null)}</select>
       <div id="tmError" class="opt-error mt8"></div>
       <div class="btn-group mt8">
         <button class="btn-primary" onclick="submitTeamMember()">Add &amp; Send Invite</button>
-        <button class="btn-ghost" onclick="loadTeam()">Cancel</button>
+        <button class="btn-ghost" onclick="renderTeam()">Cancel</button>
       </div>
     </div>`);
 }
@@ -241,6 +262,7 @@ async function submitTeamMember() {
     email: document.getElementById("tmEmail").value.trim(),
     phone: document.getElementById("tmPhone").value.trim(),
     role: document.getElementById("tmRole").value,
+    region: document.getElementById("tmRegion").value,
   };
   if (!payload.full_name || !payload.email) {
     errBox.textContent = "Full name and email are required";
@@ -252,6 +274,45 @@ async function submitTeamMember() {
   }).then(r => r.json());
   if (!res.ok) {
     errBox.textContent = res.error || "Could not add sales person";
+    return;
+  }
+  loadTeam();
+}
+
+function showEditTeamForm(staffId) {
+  const t = teamData.find(m => m.id === staffId);
+  if (!t) return;
+  const box = document.getElementById("teamList");
+  box.innerHTML = `
+    <div class="register-form mt8" id="editTeamForm">
+      <div class="opt-name mt8">${t.full_name} · ${t.email}</div>
+      <select id="etRole" class="search-input mt8">${roleOptionsHtml(t.role)}</select>
+      <select id="etRegion" class="search-input mt8">${regionOptionsHtml(t.region)}</select>
+      <select id="etActive" class="search-input mt8">
+        <option value="true"${t.is_active ? " selected" : ""}>Active</option>
+        <option value="false"${!t.is_active ? " selected" : ""}>Inactive</option>
+      </select>
+      <div id="etError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="submitEditTeamMember(${staffId})">Save</button>
+        <button class="btn-ghost" onclick="renderTeam()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+async function submitEditTeamMember(staffId) {
+  const errBox = document.getElementById("etError");
+  const payload = {
+    role: document.getElementById("etRole").value,
+    region: document.getElementById("etRegion").value,
+    is_active: document.getElementById("etActive").value === "true",
+  };
+  const res = await fetch(`/api/team/${staffId}`, {
+    method: "PATCH", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not update sales person";
     return;
   }
   loadTeam();

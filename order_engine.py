@@ -4,6 +4,36 @@ from sku_data import MOCK_PRICES
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 
+REGION_HEAD_ROLES = {
+    "mumbai_head": "Mumbai",
+    "pune_head": "Pune",
+    "bangalore_head": "Bangalore",
+    "hyderabad_head": "Hyderabad",
+    "delhi_head": "Delhi",
+    "roi_head": "Rest of India",
+}
+ROLE_LABELS = {
+    "manager": "Head of Sales",
+    "onboarding": "Client Onboarding",
+    "salesperson": "Sales Team Member",
+    **{role: f"{label} Head" for role, label in REGION_HEAD_ROLES.items()},
+}
+_REGION_CITIES = {
+    "mumbai_head": {"mumbai", "navi mumbai", "thane", "vasai", "vile parle", "andheri"},
+    "pune_head": {"pune"},
+    "bangalore_head": {"bengaluru", "bangalore"},
+    "hyderabad_head": {"hyderabad"},
+    "delhi_head": {"delhi", "new delhi"},
+}
+
+
+def _region_role_for_city(city: str) -> str:
+    c = (city or "").strip().lower()
+    for role, cities in _REGION_CITIES.items():
+        if c in cities:
+            return role
+    return "roi_head"
+
 INDIA_STATE_CODES = {
     "jammu and kashmir": "01", "himachal pradesh": "02", "punjab": "03",
     "chandigarh": "04", "uttarakhand": "05", "haryana": "06", "delhi": "07",
@@ -255,7 +285,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, shipping_address_id")
         .order("created_at", desc=True)
     )
-    if role != "manager":
+    if role != "manager" and role not in REGION_HEAD_ROLES:
         q = q.eq("created_by_user_id", user_id)
     orders = q.execute().data
     if not orders:
@@ -297,6 +327,9 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
             "salesperson_name": sp.get("full_name", "—"),
             "payment_status": payment["status"] if payment else "not_recorded",
         })
+
+    if role in REGION_HEAD_ROLES:
+        out = [o for o in out if _region_role_for_city(o["city"]) == role]
     return out
 
 
@@ -315,13 +348,27 @@ def mark_payment_received(order_id: int, received_by: int) -> dict:
     return res.data[0]
 
 
-def list_team() -> list:
+VALID_STAFF_ROLES = {"salesperson", "manager", "onboarding", *REGION_HEAD_ROLES}
+VALID_REGIONS = set(REGION_HEAD_ROLES.values())
+
+
+def _clean_region(value) -> str | None:
+    region = (value or "").strip() or None
+    if region and region not in VALID_REGIONS:
+        raise ValueError(f"Invalid region: {region}")
+    return region
+
+
+def list_team(region: str | None = None) -> list:
     sb = _sb()
-    return (
+    q = (
         sb.schema("sales").from_("users")
-        .select("id,full_name,role,email,is_active,created_at")
-        .order("full_name").execute().data
+        .select("id,full_name,role,email,is_active,created_at,region")
+        .order("full_name")
     )
+    if region:
+        q = q.eq("region", region)
+    return q.execute().data
 
 
 def create_team_member(data: dict) -> dict:
@@ -329,12 +376,13 @@ def create_team_member(data: dict) -> dict:
     full_name = (data.get("full_name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     role = data.get("role") or "salesperson"
+    region = _clean_region(data.get("region"))
 
     if not full_name:
         raise ValueError("Full name is required")
     if not email:
         raise ValueError("Email is required")
-    if role not in ("salesperson", "manager", "onboarding"):
+    if role not in VALID_STAFF_ROLES:
         raise ValueError("Invalid role")
 
     existing = sb.schema("sales").from_("users").select("id").eq("email", email).execute()
@@ -344,6 +392,7 @@ def create_team_member(data: dict) -> dict:
     row = {
         "full_name": full_name, "role": role, "email": email,
         "phone": (data.get("phone") or "").strip() or None,
+        "region": region,
     }
     res = sb.schema("sales").from_("users").insert(row).execute()
     staff = res.data[0]
@@ -353,3 +402,24 @@ def create_team_member(data: dict) -> dict:
     except Exception as e:
         staff["invite_error"] = str(e)
     return staff
+
+
+def update_team_member(staff_id: int, data: dict) -> dict:
+    sb = _sb()
+    updates = {}
+    if "role" in data:
+        role = data["role"]
+        if role not in VALID_STAFF_ROLES:
+            raise ValueError("Invalid role")
+        updates["role"] = role
+    if "region" in data:
+        updates["region"] = _clean_region(data.get("region"))
+    if "is_active" in data:
+        updates["is_active"] = bool(data["is_active"])
+    if not updates:
+        raise ValueError("Nothing to update")
+
+    res = sb.schema("sales").from_("users").update(updates).eq("id", staff_id).execute()
+    if not res.data:
+        raise ValueError("Staff member not found")
+    return res.data[0]

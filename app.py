@@ -1,3 +1,4 @@
+import json
 import os
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
@@ -13,6 +14,7 @@ from order_engine import (
     search_clients, get_client_addresses, addr_label, create_order,
     register_client, create_address, get_staff_by_email,
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
+    update_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
 )
 
 app = Flask(__name__)
@@ -25,6 +27,9 @@ if not app.secret_key:
 PUBLIC_ENDPOINTS = {"login", "static"}
 HEAD_OF_SALES_ROLE = "manager"
 CLIENT_ONBOARDING_ROLES = {"manager", "onboarding"}
+# Manager sees everything; regional heads see their region's orders/team, not just their own.
+BROAD_VIEW_ROLES = {HEAD_OF_SALES_ROLE, *REGION_HEAD_ROLES}
+ROLE_LABELS_JSON = json.dumps(ROLE_LABELS)
 
 
 def _auth_client():
@@ -64,6 +69,15 @@ def client_onboarding_required(view):
     return wrapped
 
 
+def broad_view_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("role") not in BROAD_VIEW_ROLES:
+            return jsonify({"error": "forbidden"}), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
@@ -94,17 +108,23 @@ def logout():
 
 @app.route("/")
 def index():
+    role = session.get("role")
     return render_template("dashboard.html", user_email=session.get("user_email"),
-                            full_name=session.get("full_name"), role=session.get("role"),
-                            is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE)
+                            full_name=session.get("full_name"), role=role,
+                            role_label=ROLE_LABELS.get(role, role),
+                            is_head_of_sales=role == HEAD_OF_SALES_ROLE,
+                            can_view_team=role in BROAD_VIEW_ROLES,
+                            role_labels_json=ROLE_LABELS_JSON,
+                            region_options_json=json.dumps(list(REGION_HEAD_ROLES.values())))
 
 
 @app.route("/new-order")
 def new_order():
+    role = session.get("role")
     return render_template("index.html", user_email=session.get("user_email"),
-                            full_name=session.get("full_name"), role=session.get("role"),
-                            is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE,
-                            can_onboard_clients=session.get("role") in CLIENT_ONBOARDING_ROLES)
+                            full_name=session.get("full_name"), role=role,
+                            is_head_of_sales=role == HEAD_OF_SALES_ROLE,
+                            can_onboard_clients=role in CLIENT_ONBOARDING_ROLES)
 
 
 @app.route("/api/parse", methods=["POST"])
@@ -198,7 +218,7 @@ def api_dashboard_orders():
 
 
 @app.route("/api/dashboard/orders/<int:order_id>/mark-paid", methods=["POST"])
-@head_of_sales_required
+@broad_view_required
 def api_mark_paid(order_id):
     try:
         payment = mark_payment_received(order_id, received_by=session["user_id"])
@@ -210,10 +230,12 @@ def api_mark_paid(order_id):
 
 
 @app.route("/api/team")
-@head_of_sales_required
+@broad_view_required
 def api_team():
+    role = session.get("role")
+    region = REGION_HEAD_ROLES.get(role) if role != HEAD_OF_SALES_ROLE else None
     try:
-        team = list_team()
+        team = list_team(region=region)
         return jsonify({"team": team})
     except Exception as e:
         return jsonify({"team": [], "error": str(e)}), 200
@@ -225,6 +247,19 @@ def api_create_team_member():
     body = request.get_json(force=True)
     try:
         member = create_team_member(body)
+        return jsonify({"ok": True, "member": member})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/team/<int:staff_id>", methods=["PATCH"])
+@head_of_sales_required
+def api_update_team_member(staff_id):
+    body = request.get_json(force=True)
+    try:
+        member = update_team_member(staff_id, body)
         return jsonify({"ok": True, "member": member})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
