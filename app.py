@@ -1,4 +1,5 @@
 import os
+from functools import wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 
 try:
@@ -10,13 +11,15 @@ except ImportError:
 from parser import parse_order_text
 from order_engine import (
     search_clients, get_client_addresses, addr_label, create_order,
-    register_client, create_address,
+    register_client, create_address, get_staff_by_email,
+    list_dashboard_orders, mark_payment_received, list_team, create_team_member,
 )
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
 
 PUBLIC_ENDPOINTS = {"login", "static"}
+HEAD_OF_SALES_ROLE = "manager"
 
 
 def _auth_client():
@@ -32,10 +35,19 @@ def _auth_client():
 def require_login():
     if request.endpoint in PUBLIC_ENDPOINTS or request.path.startswith("/static/"):
         return
-    if not session.get("user_email"):
+    if not session.get("user_id"):
         if request.path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
         return redirect(url_for("login"))
+
+
+def head_of_sales_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("role") != HEAD_OF_SALES_ROLE:
+            return jsonify({"error": "forbidden"}), 403
+        return view(*args, **kwargs)
+    return wrapped
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -48,7 +60,13 @@ def login():
     try:
         sb = _auth_client()
         result = sb.auth.sign_in_with_password({"email": email, "password": password})
+        staff = get_staff_by_email(result.user.email)
+        if not staff or not staff["is_active"]:
+            return redirect(url_for("login", error="Your account is not registered as staff. Contact your Head of Sales."))
         session["user_email"] = result.user.email
+        session["user_id"] = staff["id"]
+        session["role"] = staff["role"]
+        session["full_name"] = staff["full_name"]
     except Exception:
         return redirect(url_for("login", error="Invalid email or password"))
     return redirect(url_for("index"))
@@ -62,7 +80,16 @@ def logout():
 
 @app.route("/")
 def index():
-    return render_template("index.html", user_email=session.get("user_email"))
+    return render_template("index.html", user_email=session.get("user_email"),
+                            full_name=session.get("full_name"), role=session.get("role"),
+                            is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE)
+
+
+@app.route("/dashboard")
+def dashboard():
+    return render_template("dashboard.html", user_email=session.get("user_email"),
+                            full_name=session.get("full_name"), role=session.get("role"),
+                            is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE)
 
 
 @app.route("/api/parse", methods=["POST"])
@@ -97,7 +124,7 @@ def api_clients():
 def api_register_client():
     body = request.get_json(force=True)
     try:
-        client = register_client(body)
+        client = register_client(body, registered_by=session["user_id"])
         return jsonify({"ok": True, "client": client})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -134,12 +161,57 @@ def api_orders():
             client_id=body["client_id"],
             payment_mode=body["payment_mode"],
             lines=body["lines"],
+            user_id=session["user_id"],
             billing_address_id=body.get("billing_address_id"),
             shipping_address_id=body.get("shipping_address_id"),
             notes=body.get("notes"),
             collateral=body.get("collateral"),
         )
         return jsonify({"ok": True, "order": order})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/dashboard/orders")
+def api_dashboard_orders():
+    try:
+        orders = list_dashboard_orders(user_id=session["user_id"], role=session["role"])
+        return jsonify({"orders": orders})
+    except Exception as e:
+        return jsonify({"orders": [], "error": str(e)}), 200
+
+
+@app.route("/api/dashboard/orders/<int:order_id>/mark-paid", methods=["POST"])
+@head_of_sales_required
+def api_mark_paid(order_id):
+    try:
+        payment = mark_payment_received(order_id, received_by=session["user_id"])
+        return jsonify({"ok": True, "payment": payment})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/team")
+@head_of_sales_required
+def api_team():
+    try:
+        team = list_team()
+        return jsonify({"team": team})
+    except Exception as e:
+        return jsonify({"team": [], "error": str(e)}), 200
+
+
+@app.route("/api/team", methods=["POST"])
+@head_of_sales_required
+def api_create_team_member():
+    body = request.get_json(force=True)
+    try:
+        member = create_team_member(body)
+        return jsonify({"ok": True, "member": member})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard · Icestasy Order Desk</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="header-inner">
+      <span class="brand">🍦 Icestasy Order Desk</span>
+      <div class="header-right">
+        <a class="btn-ghost" href="/">🧾 New Order</a>
+        <span class="user-email">{{ user_email }}</span>
+        <a class="btn-ghost" href="/logout">Log out</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="step">
+      <div class="dash-title-row">
+        <div>
+          <div class="step-label" style="margin-bottom:2px">Orders Dashboard</div>
+          <div class="dash-subtitle">{{ full_name }} · {{ "Head of Sales" if is_head_of_sales else "Sales Team Member" }}</div>
+        </div>
+        <div id="dashStats" class="dash-stats"></div>
+      </div>
+
+      <div class="tab-bar-flat" id="groupTabs">
+        <button class="tab-btn-flat active" onclick="setGrouping('none', this)">All Orders</button>
+        <button class="tab-btn-flat" onclick="setGrouping('month', this)">Month on Month</button>
+        <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
+        <button class="tab-btn-flat" onclick="setGrouping('city', this)">By City</button>
+      </div>
+
+      <div id="ordersBox" class="mt16"></div>
+    </section>
+
+    {% if is_head_of_sales %}
+    <section class="step">
+      <div class="step-label">Sales Team</div>
+      <div id="teamList" class="option-list"></div>
+      <button class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
+    </section>
+    {% endif %}
+  </main>
+</div>
+
+<script>
+const IS_HEAD = {{ "true" if is_head_of_sales else "false" }};
+let allOrders = [];
+let grouping = "none";
+
+const STATUS_LABELS = {
+  draft: "Order Pending", pending_approval: "In Progress", approved: "In Progress",
+  in_production: "In Progress", dispatched: "In Progress", delivered: "Completed",
+  rejected: "Rejected", cancelled: "Cancelled", invoiced: "Invoiced",
+};
+const STATUS_CLASS = {
+  draft: "badge-amber", pending_approval: "badge-blue", approved: "badge-blue",
+  in_production: "badge-blue", dispatched: "badge-purple", delivered: "badge-green",
+  rejected: "badge-red", cancelled: "badge-red", invoiced: "badge-blue",
+};
+const PAY_LABELS = { received: "Payment Completed", pending: "Payment Pending", failed: "Payment Failed", refunded: "Refunded", not_recorded: "Not Recorded" };
+const PAY_CLASS = { received: "badge-green", pending: "badge-amber", failed: "badge-red", refunded: "badge-red", not_recorded: "badge-gray" };
+
+const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 0});
+
+async function loadOrders() {
+  const box = document.getElementById("ordersBox");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/dashboard/orders").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    return;
+  }
+  allOrders = data.orders || [];
+  renderStats();
+  renderOrders();
+}
+
+function renderStats() {
+  const total = allOrders.length;
+  const totalValue = allOrders.reduce((s, o) => s + o.total_amount, 0);
+  const paid = allOrders.filter(o => o.payment_status === "received").length;
+  document.getElementById("dashStats").innerHTML = `
+    <div class="dash-stat"><span class="dash-stat-num">${total}</span><span class="dash-stat-label">Orders</span></div>
+    <div class="dash-stat"><span class="dash-stat-num">${fmt(totalValue)}</span><span class="dash-stat-label">Total Value</span></div>
+    <div class="dash-stat"><span class="dash-stat-num">${paid}</span><span class="dash-stat-label">Paid</span></div>`;
+}
+
+function setGrouping(g, btn) {
+  grouping = g;
+  document.querySelectorAll("#groupTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderOrders();
+}
+
+function orderRow(o) {
+  const payAction = (IS_HEAD && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
+    ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
+  return `
+    <div class="dash-order-row">
+      <div class="dash-order-main">
+        <span class="dash-order-no">${o.order_no}</span>
+        <span class="dash-order-client">${o.client_name}${o.city !== "—" ? " · " + o.city : ""}</span>
+        ${IS_HEAD ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
+      </div>
+      <div class="dash-order-side">
+        <span class="badge ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
+        <span class="badge ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>
+        <span class="ci-price">${fmt(o.total_amount)}</span>
+        ${payAction}
+      </div>
+    </div>`;
+}
+
+function groupKey(o) {
+  if (grouping === "month") return new Date(o.created_at).toLocaleString("en-IN", {month: "long", year: "numeric"});
+  if (grouping === "client") return o.client_name;
+  if (grouping === "city") return o.city;
+  return null;
+}
+
+function renderOrders() {
+  const box = document.getElementById("ordersBox");
+  if (!allOrders.length) {
+    box.innerHTML = `<div class="opt-muted">No orders yet</div>`;
+    return;
+  }
+  if (grouping === "none") {
+    box.innerHTML = allOrders.map(orderRow).join("");
+    return;
+  }
+  const groups = {};
+  allOrders.forEach(o => {
+    const k = groupKey(o);
+    (groups[k] = groups[k] || []).push(o);
+  });
+  box.innerHTML = Object.entries(groups).map(([name, orders]) => {
+    const groupTotal = orders.reduce((s, o) => s + o.total_amount, 0);
+    return `
+      <div class="dash-group">
+        <div class="dash-group-header">
+          <span>${name}</span>
+          <span class="opt-sub">${orders.length} orders · ${fmt(groupTotal)}</span>
+        </div>
+        ${orders.map(orderRow).join("")}
+      </div>`;
+  }).join("");
+}
+
+async function markPaid(orderId) {
+  const res = await fetch(`/api/dashboard/orders/${orderId}/mark-paid`, {method: "POST"}).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not mark payment");
+    return;
+  }
+  loadOrders();
+}
+
+// ── Sales Team (Head of Sales only) ─────────────────────────────────────────
+async function loadTeam() {
+  if (!IS_HEAD) return;
+  const box = document.getElementById("teamList");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/team").then(r => r.json());
+  const team = data.team || [];
+  box.innerHTML = team.map(t => `
+    <div class="option-btn" style="cursor:default">
+      <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
+      <span class="opt-sub">${t.role === "manager" ? "Head of Sales" : "Sales Team Member"} · ${t.email}</span>
+    </div>`).join("");
+}
+
+function showAddTeamForm() {
+  const box = document.getElementById("teamList");
+  box.insertAdjacentHTML("beforeend", `
+    <div class="register-form mt8" id="teamForm">
+      <input id="tmName" class="search-input" placeholder="Full name *">
+      <input id="tmEmail" class="search-input mt8" type="email" placeholder="Email *">
+      <input id="tmPhone" class="search-input mt8" placeholder="Phone (optional)">
+      <select id="tmRole" class="search-input mt8">
+        <option value="salesperson">Sales Team Member</option>
+        <option value="manager">Head of Sales</option>
+      </select>
+      <div id="tmError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="submitTeamMember()">Add &amp; Send Invite</button>
+        <button class="btn-ghost" onclick="loadTeam()">Cancel</button>
+      </div>
+    </div>`);
+}
+
+async function submitTeamMember() {
+  const errBox = document.getElementById("tmError");
+  const payload = {
+    full_name: document.getElementById("tmName").value.trim(),
+    email: document.getElementById("tmEmail").value.trim(),
+    phone: document.getElementById("tmPhone").value.trim(),
+    role: document.getElementById("tmRole").value,
+  };
+  if (!payload.full_name || !payload.email) {
+    errBox.textContent = "Full name and email are required";
+    return;
+  }
+  const res = await fetch("/api/team", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not add sales person";
+    return;
+  }
+  loadTeam();
+}
+
+loadOrders();
+loadTeam();
+</script>
+</body>
+</html>
