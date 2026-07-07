@@ -334,7 +334,7 @@ def create_team_member(data: dict) -> dict:
         raise ValueError("Full name is required")
     if not email:
         raise ValueError("Email is required")
-    if role not in ("salesperson", "manager"):
+    if role not in ("salesperson", "manager", "onboarding"):
         raise ValueError("Invalid role")
 
     existing = sb.schema("sales").from_("users").select("id").eq("email", email).execute()

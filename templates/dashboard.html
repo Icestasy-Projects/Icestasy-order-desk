@@ -34,7 +34,7 @@
         <div class="dash-title-row">
           <div>
             <div class="step-label" style="margin-bottom:2px">Orders Dashboard</div>
-            <div class="dash-subtitle">{{ full_name }} · {{ "Head of Sales" if is_head_of_sales else "Sales Team Member" }}</div>
+            <div class="dash-subtitle">{{ full_name }} · {{ "Head of Sales" if role == "manager" else ("Client Onboarding" if role == "onboarding" else "Sales Team Member") }}</div>
           </div>
           <div id="dashStats" class="dash-stats"></div>
         </div>
@@ -78,6 +78,8 @@ function switchPage(page, btn) {
   const teamPage = document.getElementById("page-team");
   if (teamPage) teamPage.classList.toggle("hidden", page !== "team");
 }
+
+const ROLE_LABELS = { manager: "Head of Sales", onboarding: "Client Onboarding", salesperson: "Sales Team Member" };
 
 const STATUS_LABELS = {
   draft: "Order Pending", pending_approval: "In Progress", approved: "In Progress",
@@ -208,7 +210,7 @@ async function loadTeam() {
   box.innerHTML = team.map(t => `
     <div class="option-btn" style="cursor:default">
       <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
-      <span class="opt-sub">${t.role === "manager" ? "Head of Sales" : "Sales Team Member"} · ${t.email}</span>
+      <span class="opt-sub">${ROLE_LABELS[t.role] || t.role} · ${t.email}</span>
     </div>`).join("");
 }
 
@@ -221,6 +223,7 @@ function showAddTeamForm() {
       <input id="tmPhone" class="search-input mt8" placeholder="Phone (optional)">
       <select id="tmRole" class="search-input mt8">
         <option value="salesperson">Sales Team Member</option>
+        <option value="onboarding">Client Onboarding</option>
         <option value="manager">Head of Sales</option>
       </select>
       <div id="tmError" class="opt-error mt8"></div>

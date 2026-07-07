@@ -24,6 +24,7 @@ if not app.secret_key:
 
 PUBLIC_ENDPOINTS = {"login", "static"}
 HEAD_OF_SALES_ROLE = "manager"
+CLIENT_ONBOARDING_ROLES = {"manager", "onboarding"}
 
 
 def _auth_client():
@@ -50,6 +51,15 @@ def head_of_sales_required(view):
     def wrapped(*args, **kwargs):
         if session.get("role") != HEAD_OF_SALES_ROLE:
             return jsonify({"error": "forbidden"}), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def client_onboarding_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("role") not in CLIENT_ONBOARDING_ROLES:
+            return jsonify({"ok": False, "error": "Only Head of Sales or Client Onboarding can register new clients. Ask them to add this client first."}), 403
         return view(*args, **kwargs)
     return wrapped
 
@@ -93,7 +103,8 @@ def index():
 def new_order():
     return render_template("index.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=session.get("role"),
-                            is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE)
+                            is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE,
+                            can_onboard_clients=session.get("role") in CLIENT_ONBOARDING_ROLES)
 
 
 @app.route("/api/parse", methods=["POST"])
@@ -125,6 +136,7 @@ def api_clients():
 
 
 @app.route("/api/clients", methods=["POST"])
+@client_onboarding_required
 def api_register_client():
     body = request.get_json(force=True)
     try:
