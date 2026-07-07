@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign In · Icestasy Order Desk</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+<div class="login-card">
+  <div class="login-badge">🍦</div>
+  <h1 class="login-title">Icestasy Order Desk</h1>
+  <p class="login-sub">Sign in to your account</p>
+
+  {% if error %}
+  <div class="opt-error login-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="/login" class="login-form">
+    <label class="login-label" for="email">Email</label>
+    <input class="search-input" id="email" name="email" type="email" required autocomplete="email" autofocus>
+
+    <label class="login-label mt8" for="password">Password</label>
+    <input class="search-input" id="password" name="password" type="password" required autocomplete="current-password">
+
+    <button class="btn-primary mt16" type="submit">Sign In</button>
+  </form>
+</div>
+</body>
+</html>

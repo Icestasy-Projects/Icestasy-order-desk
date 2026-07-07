@@ -11,7 +11,10 @@
   <header class="header">
     <div class="header-inner">
       <span class="brand">🍦 Icestasy Order Desk</span>
-      <button class="btn-ghost" onclick="resetAll()">New Order</button>
+      <div class="header-right">
+        <span class="user-email">{{ user_email }}</span>
+        <a class="btn-ghost" href="/logout">Log out</a>
+      </div>
     </div>
   </header>
 
@@ -23,12 +26,21 @@
       <textarea id="orderText" class="paste-box" rows="6"
         placeholder="2 Bulk Belgian&#10;3 Square Mango&#10;Advance&#10;Client: Trevor"></textarea>
       <button class="btn-primary" onclick="parseOrder()">Parse Order →</button>
+      <button class="btn-ghost mt16" style="width:100%" onclick="startCollateralOnly()">📦 Marketing Collateral Only (no product order)</button>
     </section>
 
     <!-- STEP 1: Cart review + SKU disambiguation -->
     <section class="step hidden" id="step-cart">
       <div class="step-label">Order Items</div>
       <div id="cartItems"></div>
+    </section>
+
+    <!-- STEP 1.5: Marketing Collateral -->
+    <section class="step hidden" id="step-collateral">
+      <div class="step-label">Marketing Collateral <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate-500)">(optional)</span></div>
+      <div id="collateralList"></div>
+      <button class="btn-option btn-sm mt8" onclick="showCollateralForm()">+ Add collateral</button>
+      <button class="btn-primary mt16" onclick="proceedFromCollateral()">Continue →</button>
     </section>
 
     <!-- STEP 2: Payment -->
@@ -84,8 +96,11 @@ let state = {
   client: null,
   address_id: null,
   address_label: null,
+  collateral: [],    // [{type, quantity, notes}]
+  collateralOnly: false,
 };
 let searchTimer = null;
+const COLLATERAL_TYPES = ["Tent Cards","Acrylic Tent Cards","Acrylic Stands","Inserts (for Acrylic)","Posters","Flyers"];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 0});
@@ -93,8 +108,9 @@ const show = id => document.getElementById(id).classList.remove("hidden");
 const hide = id => document.getElementById(id).classList.add("hidden");
 
 function resetAll() {
-  state = {items: [], payment: null, client: null, address_id: null, address_label: null};
-  ["step-cart","step-payment","step-client","step-address","step-confirm","step-done"]
+  state = {items: [], payment: null, client: null, address_id: null, address_label: null,
+           collateral: [], collateralOnly: false};
+  ["step-cart","step-collateral","step-payment","step-client","step-address","step-confirm","step-done"]
     .forEach(hide);
   document.getElementById("orderText").value = "";
   document.getElementById("clientSearch").value = "";
@@ -103,7 +119,109 @@ function resetAll() {
   document.getElementById("registerToggleBtn").style.display = "";
   document.getElementById("addressList").innerHTML = "";
   document.getElementById("addAddressToggleBtn").style.display = "";
+  document.getElementById("collateralList").innerHTML = "";
   show("step-paste");
+}
+
+// ── Marketing Collateral ────────────────────────────────────────────────────
+function startCollateralOnly() {
+  state.items = [];
+  state.collateralOnly = true;
+  hide("step-paste");
+  show("step-collateral");
+  renderCollateralList();
+}
+
+function renderCollateralList() {
+  const box = document.getElementById("collateralList");
+  if (!state.collateral.length) {
+    box.innerHTML = `<div class="opt-muted">No collateral added yet</div>`;
+    return;
+  }
+  box.innerHTML = state.collateral.map((c, idx) => `
+    <div class="cart-item-card">
+      <div class="ci-info">
+        <span class="ci-name">${c.type}</span>
+        <span class="ci-fmt">Qty: ${c.quantity}${c.notes ? " · " + c.notes : ""}</span>
+      </div>
+      <button class="qty-btn" onclick="removeCollateral(${idx})">✕</button>
+    </div>`).join("");
+}
+
+function showCollateralForm() {
+  const box = document.getElementById("collateralList");
+  const typeOpts = COLLATERAL_TYPES.map(t => `<option value="${t}">${t}</option>`).join("");
+  box.insertAdjacentHTML("beforeend", `
+    <div class="register-form mt8" id="collateralForm">
+      <select id="colType" class="search-input">${typeOpts}</select>
+      <input id="colQty" class="search-input mt8" type="number" min="1" value="1" placeholder="Quantity *">
+      <textarea id="colNotes" class="paste-box mt8" rows="2" placeholder="Notes / specification (optional)"></textarea>
+      <div id="colError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="addCollateralLine()">Add</button>
+        <button class="btn-ghost" onclick="renderCollateralList()">Cancel</button>
+      </div>
+    </div>`);
+}
+
+function addCollateralLine() {
+  const qty = parseInt(document.getElementById("colQty").value, 10);
+  const errBox = document.getElementById("colError");
+  if (!qty || qty < 1) {
+    errBox.textContent = "Enter a valid quantity";
+    return;
+  }
+  state.collateral.push({
+    type: document.getElementById("colType").value,
+    quantity: qty,
+    notes: document.getElementById("colNotes").value.trim(),
+  });
+  renderCollateralList();
+}
+
+function removeCollateral(idx) {
+  state.collateral.splice(idx, 1);
+  renderCollateralList();
+}
+
+function proceedFromCollateral() {
+  if (state.collateral.length === 0) {
+    if (state.collateralOnly) {
+      alert("Add at least one marketing collateral item to proceed.");
+      return;
+    }
+    if (!confirm("Are you sure you want to proceed without adding marketing collateral?")) return;
+  }
+  hide("step-collateral");
+
+  if (state.collateralOnly) {
+    state.payment = null;
+    show("step-client");
+    if (document.getElementById("clientSearch").value.length >= 2) {
+      _searchClients(document.getElementById("clientSearch").value);
+    }
+    return;
+  }
+
+  show("step-payment");
+  if (state.payment) {
+    markPayment(state.payment);
+    const label = document.getElementById("paymentBtns");
+    if (!document.getElementById("payment-auto-note")) {
+      const note = document.createElement("div");
+      note.id = "payment-auto-note";
+      note.style.cssText = "font-size:12px;color:#1D9E75;margin-top:6px";
+      note.textContent = "Auto-detected from message — tap to change";
+      label.parentNode.appendChild(note);
+    }
+    setTimeout(() => {
+      hide("step-payment");
+      document.getElementById("payment-auto-note")?.remove();
+      show("step-client");
+      const q = document.getElementById("clientSearch").value;
+      if (q.length >= 2) _searchClients(q);
+    }, 1500);
+  }
 }
 
 // ── STEP 0: Parse ───────────────────────────────────────────────────────────
@@ -208,25 +326,8 @@ function resolveSku(itemIdx, candidateIdx) {
 }
 
 function renderNextAfterCart() {
-  show("step-payment");
-  if (state.payment) {
-    markPayment(state.payment);
-    const label = document.getElementById("paymentBtns");
-    if (!document.getElementById("payment-auto-note")) {
-      const note = document.createElement("div");
-      note.id = "payment-auto-note";
-      note.style.cssText = "font-size:12px;color:#1D9E75;margin-top:6px";
-      note.textContent = "Auto-detected from message — tap to change";
-      label.parentNode.appendChild(note);
-    }
-    setTimeout(() => {
-      hide("step-payment");
-      document.getElementById("payment-auto-note")?.remove();
-      show("step-client");
-      const q = document.getElementById("clientSearch").value;
-      if (q.length >= 2) _searchClients(q);
-    }, 1500);
-  }
+  show("step-collateral");
+  renderCollateralList();
 }
 
 // ── STEP 2: Payment ──────────────────────────────────────────────────────────
@@ -516,14 +617,19 @@ function showConfirm() {
      <td class="num">${fmt(i.qty * i.unit_price)}</td></tr>`
   ).join("");
 
+  const collateralRows = state.collateral.map(c =>
+    `<div class="summary-row"><span>${c.type}${c.notes ? " (" + c.notes + ")" : ""}</span><strong>Qty ${c.quantity}</strong></div>`
+  ).join("");
+
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"}</strong></div>
-    <div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())}</strong></div>
+    ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())}</strong></div>`}
     <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"}</strong></div>
-    <table class="summary-table">
+    ${resolved.length ? `<table class="summary-table">
       <thead><tr><th>Item</th><th>Format</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
       <tbody>${itemRows}</tbody>
-    </table>
+    </table>` : ""}
+    ${collateralRows ? `<div class="step-label mt16">Marketing Collateral</div>${collateralRows}` : ""}
     <div class="summary-total">Total <strong>${fmt(subtotal)}</strong></div>`;
   show("step-confirm");
 }
@@ -551,6 +657,7 @@ async function placeOrder() {
       lines,
       shipping_address_id: state.address_id,
       billing_address_id: state.address_id,
+      collateral: state.collateral,
     }),
   }).then(r => r.json());
 
@@ -562,12 +669,14 @@ async function placeOrder() {
     const total = fmt(order.total);
     const linesList = (order.lines || []).map(l =>
       `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
+    ).join("") + (order.collateral || []).map(c =>
+      `<li>${c.quantity} × ${c.type}${c.notes ? " — " + c.notes : ""}</li>`
     ).join("");
     document.getElementById("doneBox").innerHTML = `
       <div class="done-icon">✅</div>
       <div class="done-title">Order Confirmed</div>
       <div class="done-no">${order.order_no}</div>
-      <div class="done-meta">${state.client.business_name} · ${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())}</div>
+      <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
       <ul class="done-lines">${linesList}</ul>
       <div class="done-total">Total: <strong>${total}</strong></div>
       <button class="btn-primary mt16" onclick="resetAll()">New Order</button>`;
