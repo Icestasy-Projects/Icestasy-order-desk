@@ -1,5 +1,5 @@
 import os
-from datetime import date
+from datetime import date, datetime, timezone
 from sku_data import MOCK_PRICES
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -31,6 +31,16 @@ def _sb():
     return create_client(SUPABASE_URL, key)
 
 
+def get_staff_by_email(email: str) -> dict | None:
+    sb = _sb()
+    result = (
+        sb.schema("sales").from_("users")
+        .select("id, full_name, role, email, is_active")
+        .eq("email", email.strip().lower()).limit(1).execute()
+    )
+    return result.data[0] if result.data else None
+
+
 def search_clients(query: str) -> list:
     q = query.strip()
     if not q:
@@ -45,7 +55,7 @@ def search_clients(query: str) -> list:
     return result.data
 
 
-def register_client(data: dict) -> dict:
+def register_client(data: dict, registered_by: int) -> dict:
     sb = _sb()
     business_name = (data.get("business_name") or "").strip()
     phone = (data.get("primary_contact_phone") or "").strip() or None
@@ -91,7 +101,7 @@ def register_client(data: dict) -> dict:
         "credit_terms_days": 0,
         "default_payment_mode": data.get("default_payment_mode") or "advance",
         "status": "active",
-        "registered_by": 1,
+        "registered_by": registered_by,
     }
     res = sb.schema("sales").from_("clients").insert(row).execute()
     return res.data[0]
@@ -189,7 +199,7 @@ def add_order_collateral(sb, order_id: int, collateral: list) -> list:
     return res.data
 
 
-def create_order(client_id, payment_mode, lines, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None):
+def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None):
     sb = _sb()
     payment_mode = payment_mode or "advance"  # payment_mode is NOT NULL; not asked for collateral-only orders
     subtotal = sum(l["quantity"] * l["unit_price"] for l in lines)
@@ -202,7 +212,7 @@ def create_order(client_id, payment_mode, lines, billing_address_id=None, shippi
         "payment_mode": payment_mode,
         "billing_address_id": billing_address_id,
         "shipping_address_id": shipping_address_id,
-        "status": "draft", "salesperson_id": 1,
+        "status": "draft", "salesperson_id": user_id, "created_by_user_id": user_id,
         "placed_by_client": False, "source": "whatsapp_ai",
         "is_urgent": False,
         "subtotal_amount": str(subtotal), "discount_amount": str(discount),
@@ -236,3 +246,110 @@ def create_order(client_id, payment_mode, lines, billing_address_id=None, shippi
                        "line_total": l["quantity"] * l["unit_price"] - l.get("line_discount", 0.0) * l["quantity"]}
                       for l in lines],
             "collateral": collateral_out}
+
+
+def list_dashboard_orders(user_id: int, role: str) -> list:
+    sb = _sb()
+    q = (
+        sb.schema("sales").from_("orders")
+        .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, shipping_address_id")
+        .order("created_at", desc=True)
+    )
+    if role != "manager":
+        q = q.eq("created_by_user_id", user_id)
+    orders = q.execute().data
+    if not orders:
+        return []
+
+    client_ids = list({o["client_id"] for o in orders if o.get("client_id")})
+    addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
+    sp_ids = list({o["salesperson_id"] for o in orders if o.get("salesperson_id")})
+    order_ids = [o["id"] for o in orders]
+
+    clients = {c["id"]: c for c in (
+        sb.schema("sales").from_("clients").select("id,business_name").in_("id", client_ids).execute().data
+        if client_ids else [])}
+    addrs = {a["id"]: a for a in (
+        sb.schema("sales").from_("addresses").select("id,city,state").in_("id", addr_ids).execute().data
+        if addr_ids else [])}
+    staff = {u["id"]: u for u in (
+        sb.schema("sales").from_("users").select("id,full_name").in_("id", sp_ids).execute().data
+        if sp_ids else [])}
+    payments = {}
+    if order_ids:
+        for p in (
+            sb.schema("sales").from_("payments").select("order_id,status,amount,payment_type,received_at")
+            .in_("order_id", order_ids).order("received_at", desc=True).execute().data
+        ):
+            payments.setdefault(p["order_id"], p)  # most recent per order (already sorted desc)
+
+    out = []
+    for o in orders:
+        client = clients.get(o.get("client_id"), {})
+        addr = addrs.get(o.get("shipping_address_id"), {})
+        sp = staff.get(o.get("salesperson_id"), {})
+        payment = payments.get(o["id"])
+        out.append({
+            "id": o["id"], "order_no": o["order_no"], "status": o["status"],
+            "total_amount": float(o["total_amount"]), "created_at": o["created_at"],
+            "client_name": client.get("business_name", "—"),
+            "city": addr.get("city") or "—",
+            "salesperson_name": sp.get("full_name", "—"),
+            "payment_status": payment["status"] if payment else "not_recorded",
+        })
+    return out
+
+
+def mark_payment_received(order_id: int, received_by: int) -> dict:
+    sb = _sb()
+    order = sb.schema("sales").from_("orders").select("total_amount").eq("id", order_id).limit(1).execute()
+    if not order.data:
+        raise ValueError("Order not found")
+    row = {
+        "order_id": order_id, "payment_type": "full",
+        "amount": order.data[0]["total_amount"],
+        "status": "received", "received_by": received_by,
+        "received_at": datetime.now(timezone.utc).isoformat(),
+    }
+    res = sb.schema("sales").from_("payments").insert(row).execute()
+    return res.data[0]
+
+
+def list_team() -> list:
+    sb = _sb()
+    return (
+        sb.schema("sales").from_("users")
+        .select("id,full_name,role,email,is_active,created_at")
+        .order("full_name").execute().data
+    )
+
+
+def create_team_member(data: dict) -> dict:
+    sb = _sb()
+    full_name = (data.get("full_name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    role = data.get("role") or "salesperson"
+
+    if not full_name:
+        raise ValueError("Full name is required")
+    if not email:
+        raise ValueError("Email is required")
+    if role not in ("salesperson", "manager"):
+        raise ValueError("Invalid role")
+
+    existing = sb.schema("sales").from_("users").select("id").eq("email", email).execute()
+    if existing.data:
+        raise ValueError(f"A staff member already exists with this email: {email}")
+
+    row = {
+        "full_name": full_name, "role": role, "email": email,
+        "phone": (data.get("phone") or "").strip() or None,
+    }
+    res = sb.schema("sales").from_("users").insert(row).execute()
+    staff = res.data[0]
+
+    try:
+        sb.auth.admin.invite_user_by_email(email)
+    except Exception as e:
+        staff["invite_error"] = str(e)
+    return staff

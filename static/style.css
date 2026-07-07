@@ -221,6 +221,54 @@ body {
 .done-lines li:last-child { border: none; }
 .done-total { font-size: 16px; }
 
+/* Dashboard */
+.dash-title-row {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
+}
+.dash-subtitle { font-size: 12.5px; color: var(--slate-500); }
+.dash-stats { display: flex; gap: 18px; }
+.dash-stat { display: flex; flex-direction: column; align-items: flex-end; }
+.dash-stat-num { font-size: 20px; font-weight: 800; color: var(--brand-dk); }
+.dash-stat-label { font-size: 11px; color: var(--slate-500); text-transform: uppercase; letter-spacing: .04em; }
+
+.tab-bar-flat { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1.5px solid var(--slate-100); padding-bottom: 12px; }
+.tab-btn-flat {
+  background: var(--slate-100); border: none; padding: 8px 14px; border-radius: 16px;
+  font-size: 12.5px; font-weight: 700; color: var(--slate-700); cursor: pointer;
+  transition: all .15s; min-height: 36px;
+}
+.tab-btn-flat:hover { background: var(--brand-soft); color: var(--brand-dk); }
+.tab-btn-flat.active { background: var(--brand); color: #fff; }
+
+.dash-group { margin-top: 18px; }
+.dash-group-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-weight: 800; font-size: 13.5px; padding-bottom: 8px;
+  border-bottom: 1.5px dashed var(--slate-300); margin-bottom: 8px;
+}
+
+.dash-order-row {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+  padding: 12px; border: 1.5px solid var(--slate-100); border-radius: var(--radius-sm);
+  margin-bottom: 8px; background: var(--slate-100);
+}
+.dash-order-main { display: flex; flex-direction: column; gap: 2px; }
+.dash-order-no { font-weight: 700; font-size: 14px; }
+.dash-order-client { font-size: 12px; color: var(--slate-500); }
+.dash-order-side { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.badge {
+  display: inline-block; padding: 4px 10px; border-radius: 12px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.badge-amber { background: #FFF1D6; color: #A15C00; }
+.badge-blue  { background: #DCEBFF; color: #1D5FBF; }
+.badge-purple{ background: #EAE0FF; color: #6D3FCB; }
+.badge-green { background: #DDF3EA; color: #167A5A; }
+.badge-red   { background: #FCE1E1; color: #B3261E; }
+.badge-gray  { background: var(--slate-100); color: var(--slate-500); }
+
 /* Mobile fine-tuning */
 @media (max-width: 480px) {
   .header { padding: 0 16px; height: 56px; }
