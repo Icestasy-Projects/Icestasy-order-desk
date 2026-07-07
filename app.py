@@ -80,14 +80,14 @@ def logout():
 
 @app.route("/")
 def index():
-    return render_template("index.html", user_email=session.get("user_email"),
+    return render_template("dashboard.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=session.get("role"),
                             is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE)
 
 
-@app.route("/dashboard")
-def dashboard():
-    return render_template("dashboard.html", user_email=session.get("user_email"),
+@app.route("/new-order")
+def new_order():
+    return render_template("index.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=session.get("role"),
                             is_head_of_sales=session.get("role") == HEAD_OF_SALES_ROLE)
 

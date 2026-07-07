@@ -12,39 +12,55 @@
     <div class="header-inner">
       <span class="brand">🍦 Icestasy Order Desk</span>
       <div class="header-right">
-        <a class="btn-ghost" href="/">🧾 New Order</a>
+        <a class="btn-ghost" href="/new-order">🧾 New Order</a>
         <span class="user-email">{{ user_email }}</span>
         <a class="btn-ghost" href="/logout">Log out</a>
       </div>
     </div>
   </header>
 
+  <nav class="tab-bar">
+    <div class="tab-bar-inner">
+      <button class="tab-btn active" id="page-tab-orders" onclick="switchPage('orders', this)">📦 Orders</button>
+      {% if is_head_of_sales %}
+      <button class="tab-btn" id="page-tab-team" onclick="switchPage('team', this)">👥 Team</button>
+      {% endif %}
+    </div>
+  </nav>
+
   <main class="main">
-    <section class="step">
-      <div class="dash-title-row">
-        <div>
-          <div class="step-label" style="margin-bottom:2px">Orders Dashboard</div>
-          <div class="dash-subtitle">{{ full_name }} · {{ "Head of Sales" if is_head_of_sales else "Sales Team Member" }}</div>
+    <div id="page-orders">
+      <section class="step">
+        <div class="dash-title-row">
+          <div>
+            <div class="step-label" style="margin-bottom:2px">Orders Dashboard</div>
+            <div class="dash-subtitle">{{ full_name }} · {{ "Head of Sales" if is_head_of_sales else "Sales Team Member" }}</div>
+          </div>
+          <div id="dashStats" class="dash-stats"></div>
         </div>
-        <div id="dashStats" class="dash-stats"></div>
-      </div>
 
-      <div class="tab-bar-flat" id="groupTabs">
-        <button class="tab-btn-flat active" onclick="setGrouping('none', this)">All Orders</button>
-        <button class="tab-btn-flat" onclick="setGrouping('month', this)">Month on Month</button>
-        <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
-        <button class="tab-btn-flat" onclick="setGrouping('city', this)">By City</button>
-      </div>
+        <div class="tab-bar-flat" id="groupTabs">
+          <button class="tab-btn-flat active" onclick="setGrouping('none', this)">All Orders</button>
+          <button class="tab-btn-flat" onclick="setGrouping('month', this)">Month on Month</button>
+          <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
+          <button class="tab-btn-flat" onclick="setGrouping('city', this)">By City</button>
+          {% if is_head_of_sales %}
+          <button class="tab-btn-flat" onclick="setGrouping('salesperson', this)">By Salesperson</button>
+          {% endif %}
+        </div>
 
-      <div id="ordersBox" class="mt16"></div>
-    </section>
+        <div id="ordersBox" class="mt16"></div>
+      </section>
+    </div>
 
     {% if is_head_of_sales %}
-    <section class="step">
-      <div class="step-label">Sales Team</div>
-      <div id="teamList" class="option-list"></div>
-      <button class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
-    </section>
+    <div id="page-team" class="hidden">
+      <section class="step">
+        <div class="step-label">Sales Team</div>
+        <div id="teamList" class="option-list"></div>
+        <button class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
+      </section>
+    </div>
     {% endif %}
   </main>
 </div>
@@ -53,6 +69,14 @@
 const IS_HEAD = {{ "true" if is_head_of_sales else "false" }};
 let allOrders = [];
 let grouping = "none";
+
+function switchPage(page, btn) {
+  document.querySelectorAll(".tab-bar .tab-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("page-orders").classList.toggle("hidden", page !== "orders");
+  const teamPage = document.getElementById("page-team");
+  if (teamPage) teamPage.classList.toggle("hidden", page !== "team");
+}
 
 const STATUS_LABELS = {
   draft: "Order Pending", pending_approval: "In Progress", approved: "In Progress",
@@ -122,6 +146,7 @@ function groupKey(o) {
   if (grouping === "month") return new Date(o.created_at).toLocaleString("en-IN", {month: "long", year: "numeric"});
   if (grouping === "client") return o.client_name;
   if (grouping === "city") return o.city;
+  if (grouping === "salesperson") return o.salesperson_name;
   return null;
 }
 
