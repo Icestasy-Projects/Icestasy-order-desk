@@ -148,6 +148,33 @@ def addr_label(addr: dict) -> str:
     return ", ".join(parts) if parts else f"Address #{addr.get('id','?')}"
 
 
+def list_collateral() -> list:
+    sb = _sb()
+    return (
+        sb.schema("sales").from_("order_collateral")
+        .select("*").order("created_at", desc=True).execute().data
+    )
+
+
+def create_collateral(data: dict) -> dict:
+    sb = _sb()
+    title = (data.get("title") or "").strip()
+    file_url = (data.get("file_url") or "").strip()
+    if not title:
+        raise ValueError("Title is required")
+    if not file_url:
+        raise ValueError("File URL is required")
+    row = {
+        "title": title,
+        "description": (data.get("description") or "").strip() or None,
+        "category": (data.get("category") or "general").strip() or "general",
+        "file_url": file_url,
+        "created_by": 1,
+    }
+    res = sb.schema("sales").from_("order_collateral").insert(row).execute()
+    return res.data[0]
+
+
 def get_sku_price(sku_id: int, pack_format_id: int) -> float:
     try:
         sb = _sb()

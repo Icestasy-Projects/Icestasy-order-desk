@@ -56,6 +56,25 @@ body {
 .btn-ghost:hover { background: #FFE3C4; }
 .btn-ghost:active { transform: scale(.96); }
 
+.header-right { display: flex; align-items: center; gap: 12px; }
+.user-email { font-size: 12.5px; color: var(--slate-500); font-weight: 600; display: none; }
+
+/* Tab bar */
+.tab-bar {
+  background: var(--white); border-bottom: 1px solid var(--slate-100);
+  position: sticky; top: 60px; z-index: 40;
+}
+.tab-bar-inner {
+  max-width: 720px; margin: 0 auto; display: flex; gap: 4px; padding: 0 16px;
+}
+.tab-btn {
+  background: none; border: none; padding: 14px 18px; font-size: 14px; font-weight: 700;
+  color: var(--slate-500); cursor: pointer; border-bottom: 2.5px solid transparent;
+  transition: color .15s, border-color .15s; min-height: 44px;
+}
+.tab-btn:hover { color: var(--slate-900); }
+.tab-btn.active { color: var(--brand-dk); border-color: var(--brand); }
+
 /* Main */
 .main {
   max-width: 720px; margin: 0 auto; padding: 20px 16px 100px;
@@ -233,4 +252,28 @@ body {
 /* Larger screens: comfier card padding */
 @media (min-width: 640px) {
   .step { padding: 28px 32px; }
+  .user-email { display: inline; }
+}
+
+/* Login page */
+.login-body {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: var(--bg);
+}
+.login-card {
+  width: 100%; max-width: 380px; background: var(--white); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); padding: 32px 28px; text-align: center;
+}
+.login-badge {
+  width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px;
+  background: var(--brand-soft); display: flex; align-items: center; justify-content: center;
+  font-size: 28px;
+}
+.login-title { font-size: 21px; font-weight: 800; letter-spacing: -.3px; margin-bottom: 4px; }
+.login-sub { font-size: 13.5px; color: var(--slate-500); margin-bottom: 20px; }
+.login-error { margin-bottom: 14px; text-align: left; }
+.login-form { text-align: left; display: flex; flex-direction: column; }
+.login-label {
+  display: block; font-size: 12.5px; font-weight: 700; color: var(--slate-700);
+  margin-bottom: 6px;
 }
