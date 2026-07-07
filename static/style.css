@@ -260,10 +260,13 @@ body {
 
 .dash-group { margin-top: 18px; }
 .dash-group-header {
-  display: flex; justify-content: space-between; align-items: baseline;
-  font-weight: 800; font-size: 13.5px; padding-bottom: 8px;
-  border-bottom: 1.5px dashed var(--slate-300); margin-bottom: 8px;
+  width: 100%; display: flex; justify-content: space-between; align-items: baseline;
+  font-weight: 800; font-size: 13.5px; padding: 4px 0 8px;
+  border: none; border-bottom: 1.5px dashed var(--slate-300); margin-bottom: 8px;
+  background: none; font-family: inherit; color: var(--slate-900); cursor: pointer;
+  text-align: left; min-height: 36px; transition: color .15s;
 }
+.dash-group-header:hover { color: var(--brand-dk); }
 
 .dash-order-row {
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;

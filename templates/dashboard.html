@@ -69,6 +69,7 @@
 const IS_HEAD = {{ "true" if is_head_of_sales else "false" }};
 let allOrders = [];
 let grouping = "none";
+let expandedGroup = null;
 
 function switchPage(page, btn) {
   document.querySelectorAll(".tab-bar .tab-btn").forEach(b => b.classList.remove("active"));
@@ -102,14 +103,13 @@ async function loadOrders() {
     return;
   }
   allOrders = data.orders || [];
-  renderStats();
   renderOrders();
 }
 
-function renderStats() {
-  const total = allOrders.length;
-  const totalValue = allOrders.reduce((s, o) => s + o.total_amount, 0);
-  const paid = allOrders.filter(o => o.payment_status === "received").length;
+function renderStats(orders) {
+  const total = orders.length;
+  const totalValue = orders.reduce((s, o) => s + o.total_amount, 0);
+  const paid = orders.filter(o => o.payment_status === "received").length;
   document.getElementById("dashStats").innerHTML = `
     <div class="dash-stat"><span class="dash-stat-num">${total}</span><span class="dash-stat-label">Orders</span></div>
     <div class="dash-stat"><span class="dash-stat-num">${fmt(totalValue)}</span><span class="dash-stat-label">Total Value</span></div>
@@ -118,6 +118,7 @@ function renderStats() {
 
 function setGrouping(g, btn) {
   grouping = g;
+  expandedGroup = null;
   document.querySelectorAll("#groupTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   renderOrders();
@@ -154,10 +155,12 @@ function renderOrders() {
   const box = document.getElementById("ordersBox");
   if (!allOrders.length) {
     box.innerHTML = `<div class="opt-muted">No orders yet</div>`;
+    renderStats(allOrders);
     return;
   }
   if (grouping === "none") {
     box.innerHTML = allOrders.map(orderRow).join("");
+    renderStats(allOrders);
     return;
   }
   const groups = {};
@@ -167,15 +170,23 @@ function renderOrders() {
   });
   box.innerHTML = Object.entries(groups).map(([name, orders]) => {
     const groupTotal = orders.reduce((s, o) => s + o.total_amount, 0);
+    const isOpen = expandedGroup === name;
+    const safeName = JSON.stringify(name).replace(/'/g, "&#39;");
     return `
       <div class="dash-group">
-        <div class="dash-group-header">
-          <span>${name}</span>
+        <button type="button" class="dash-group-header" onclick='toggleGroup(${safeName})'>
+          <span>${isOpen ? "▾" : "▸"} ${name}</span>
           <span class="opt-sub">${orders.length} orders · ${fmt(groupTotal)}</span>
-        </div>
-        ${orders.map(orderRow).join("")}
+        </button>
+        ${isOpen ? orders.map(orderRow).join("") : ""}
       </div>`;
   }).join("");
+  renderStats(expandedGroup && groups[expandedGroup] ? groups[expandedGroup] : allOrders);
+}
+
+function toggleGroup(name) {
+  expandedGroup = expandedGroup === name ? null : name;
+  renderOrders();
 }
 
 async function markPaid(orderId) {
