@@ -18,21 +18,59 @@ ROLE_LABELS = {
     "salesperson": "Sales Team Member",
     **{role: f"{label} Head" for role, label in REGION_HEAD_ROLES.items()},
 }
-_REGION_CITIES = {
-    "mumbai_head": {"mumbai", "navi mumbai", "thane", "vasai", "vile parle", "andheri"},
-    "pune_head": {"pune"},
-    "bangalore_head": {"bengaluru", "bangalore"},
-    "hyderabad_head": {"hyderabad"},
-    "delhi_head": {"delhi", "new delhi"},
+# Address "city" values are entered at locality/neighbourhood precision (e.g. "Bandra West"),
+# not actual city precision — this rolls localities up to their real city for reporting.
+_PLACE_TO_CITY = {
+    **{p: "Mumbai" for p in [
+        "mumbai", "bandra west", "bandra east", "bandra", "andheri west", "andheri east",
+        "andheri", "juhu", "chembur", "malad west", "malad east", "malad", "lower parel",
+        "dadar west", "dadar east", "dadar", "mulund west", "mulund east", "mulund",
+        "goregaon east", "goregaon west", "goregaon east (oberoi)", "kandivali east",
+        "kandivali west", "kandivali", "ghatkopar west", "ghatkopar east", "vile parle east",
+        "vile parle west", "vile parle", "powai", "fort", "worli", "colaba", "parel",
+        "vikhroli", "santacruz west", "santacruz east", "santacruz", "dahisar east",
+        "dahisar west", "dahisar", "tardeo", "bkc", "khar", "khar west", "kurla",
+        "kurla west", "churchgate", "marol", "matunga east", "matunga", "kalbadevi",
+        "girgaon", "sewri", "mahim", "zaveri bazaar", "mumbai central", "saki naka",
+        "sion", "charni road", "azad nagar", "marine lines", "borivali east",
+        "borivali west", "borivali", "versova", "grant road", "nariman point",
+        "babulnath", "prabhadevi", "mahalaxmi", "bhandup", "oshiwara", "marine drive",
+        "jogeshwari west", "jogeshwari", "vidyavihar", "cuffe parade",
+        "mohammad ali road", "pydhonie", "byculla",
+    ]},
+    **{p: "Thane" for p in [
+        "thane", "thane west", "thane east", "thane west (viviana mall)",
+        "thane west (hiranandani)", "dombivali east", "dombivali",
+    ]},
+    **{p: "Navi Mumbai" for p in [
+        "navi mumbai", "vashi", "kharghar", "kopar khairane", "cbd belapur", "airoli",
+        "seawoods", "ghansoli", "kamothe",
+    ]},
+    **{p: "Vasai-Virar" for p in [
+        "vasai", "virar", "virar west", "nalasopara", "mira road", "bhayandar",
+    ]},
+    **{p: "Bangalore" for p in ["bangalore", "bengaluru"]},
+    **{p: "Delhi" for p in ["delhi", "new delhi"]},
+}
+
+# For regional-head scoping: which region-head role owns each real city.
+_CITY_TO_REGION_ROLE = {
+    "Mumbai": "mumbai_head", "Thane": "mumbai_head",
+    "Navi Mumbai": "mumbai_head", "Vasai-Virar": "mumbai_head",
+    "Pune": "pune_head",
+    "Bangalore": "bangalore_head",
+    "Hyderabad": "hyderabad_head",
+    "Delhi": "delhi_head",
 }
 
 
-def _region_role_for_city(city: str) -> str:
-    c = (city or "").strip().lower()
-    for role, cities in _REGION_CITIES.items():
-        if c in cities:
-            return role
-    return "roi_head"
+def city_for_place(place: str) -> str:
+    p = (place or "").strip().lower()
+    return _PLACE_TO_CITY.get(p, (place or "").strip() or "—")
+
+
+def _region_role_for_city(place: str) -> str:
+    return _CITY_TO_REGION_ROLE.get(city_for_place(place), "roi_head")
 
 INDIA_STATE_CODES = {
     "jammu and kashmir": "01", "himachal pradesh": "02", "punjab": "03",
@@ -319,17 +357,19 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         addr = addrs.get(o.get("shipping_address_id"), {})
         sp = staff.get(o.get("salesperson_id"), {})
         payment = payments.get(o["id"])
+        place = addr.get("city") or "—"
         out.append({
             "id": o["id"], "order_no": o["order_no"], "status": o["status"],
             "total_amount": float(o["total_amount"]), "created_at": o["created_at"],
             "client_name": client.get("business_name", "—"),
-            "city": addr.get("city") or "—",
+            "place": place,
+            "city": city_for_place(place) if place != "—" else "—",
             "salesperson_name": sp.get("full_name", "—"),
             "payment_status": payment["status"] if payment else "not_recorded",
         })
 
     if role in REGION_HEAD_ROLES:
-        out = [o for o in out if _region_role_for_city(o["city"]) == role]
+        out = [o for o in out if _region_role_for_city(o["place"]) == role]
     return out
 
 

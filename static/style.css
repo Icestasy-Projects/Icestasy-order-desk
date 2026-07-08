@@ -245,6 +245,7 @@ body {
 }
 .dash-subtitle { font-size: 12.5px; color: var(--slate-500); }
 .dash-stats { display: flex; gap: 18px; }
+.dash-export-btn { display: inline-block; margin-top: 10px; font-size: 12px; padding: 7px 14px; min-height: 32px; }
 .dash-stat { display: flex; flex-direction: column; align-items: flex-end; }
 .dash-stat-num { font-size: 20px; font-weight: 800; color: var(--brand-dk); }
 .dash-stat-label { font-size: 11px; color: var(--slate-500); text-transform: uppercase; letter-spacing: .04em; }
@@ -267,6 +268,9 @@ body {
   text-align: left; min-height: 36px; transition: color .15s;
 }
 .dash-group-header:hover { color: var(--brand-dk); }
+
+.dash-subgroup { margin: 0 0 10px 16px; padding-left: 10px; border-left: 2px solid var(--slate-100); }
+.dash-subgroup-header { font-size: 12px; font-weight: 700; color: var(--slate-700); }
 
 .dash-order-row {
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
