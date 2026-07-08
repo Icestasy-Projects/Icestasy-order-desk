@@ -103,7 +103,12 @@ def _keyword_extract(text: str):
             qty = int(qty_match.group(1)) if qty_match else 1
             flavour_id = _find_flavour(lower)
             format_id = _find_format(lower)
-            if flavour_id is None and format_id is None:
+            # A leading quantity is a strong signal this is an item line even when no
+            # flavour alias hit directly — e.g. "5 Mango" now genuinely matches 3
+            # different flavours, so it can't resolve via the single-id alias path,
+            # but it's still clearly an item line, not a client name.
+            has_leading_qty = re.match(r"^\d+\b", lower) is not None
+            if flavour_id is None and format_id is None and not has_leading_qty:
                 # Not an item line — treat as a client name if we don't have one yet
                 if client_hint is None and line.strip():
                     client_hint = line.strip()
@@ -145,15 +150,23 @@ def _match_skus_fuzzy(hint: str, format_id):
 
 
 def _get_sibling_skus(flavour_id: int, format_id):
-    """Return all SKUs in the same flavour family (e.g. Belgian Speculoos + Belgian Chocolate)."""
+    """Return all SKUs in the same flavour family (e.g. Belgian Speculoos + Belgian Chocolate).
+
+    Matches on the flavour's *first* word only, not any shared word — with 53 flavours,
+    matching any shared word >3 chars would wrongly group e.g. "Ratnagiri Hapoos (Mango)"
+    with "Mango Mania" and "Mango Basil" just because they all contain "Mango".
+    """
     our_name = FLAVOUR_NAMES.get(flavour_id, "")
-    our_words = {w.lower() for w in our_name.split() if len(w) > 3}
+    our_words = our_name.split()
+    if not our_words or len(our_words[0]) <= 3:
+        return []
+    our_first = our_words[0].lower()
     sibling_ids = {flavour_id}
     for fid, fname in FLAVOUR_NAMES.items():
         if fid == flavour_id:
             continue
-        other_words = {w.lower() for w in fname.split() if len(w) > 3}
-        if our_words & other_words:
+        other_words = fname.split()
+        if other_words and other_words[0].lower() == our_first:
             sibling_ids.add(fid)
     if len(sibling_ids) == 1:
         return []  # no siblings found
@@ -180,7 +193,11 @@ def _enrich(raw_items):
         # over _match_skus(None, ...) which returns every SKU in the format
         if flavour_id is None and flavour_hint:
             candidates = _match_skus_fuzzy(flavour_hint, format_id)
-            if not candidates:
+            if not candidates and format_id is not None:
+                # No fuzzy hit but we do know the format — show every flavour in
+                # that format as options. If format is *also* unknown, there's
+                # nothing to narrow down from — that would return every active
+                # SKU in the catalog, so leave it not-found instead.
                 candidates = _match_skus(flavour_id, format_id)
         else:
             candidates = _match_skus(flavour_id, format_id)
