@@ -16,6 +16,7 @@ from order_engine import (
     register_client, create_address, get_staff_by_email,
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
+    set_user_password, mark_password_changed,
 )
 from reports import build_orders_workbook
 
@@ -27,6 +28,7 @@ if not app.secret_key:
     raise RuntimeError("SECRET_KEY environment variable must be set to a persistent value")
 
 PUBLIC_ENDPOINTS = {"login", "static"}
+PASSWORD_CHANGE_ENDPOINTS = {"login", "static", "change_password", "logout"}
 HEAD_OF_SALES_ROLE = "manager"
 CLIENT_ONBOARDING_ROLES = {"manager", "onboarding"}
 # Manager sees everything; regional heads see their region's orders/team, not just their own.
@@ -51,6 +53,10 @@ def require_login():
         if request.path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
         return redirect(url_for("login"))
+    if session.get("must_change_password") and request.endpoint not in PASSWORD_CHANGE_ENDPOINTS:
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "password_change_required"}), 403
+        return redirect(url_for("change_password"))
 
 
 def head_of_sales_required(view):
@@ -97,6 +103,8 @@ def login():
         session["user_id"] = staff["id"]
         session["role"] = staff["role"]
         session["full_name"] = staff["full_name"]
+        session["auth_user_id"] = result.user.id
+        session["must_change_password"] = staff["must_change_password"]
     except Exception:
         return redirect(url_for("login", error="Invalid email or password"))
     return redirect(url_for("index"))
@@ -108,6 +116,28 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/change-password", methods=["GET", "POST"])
+def change_password():
+    if request.method == "GET":
+        return render_template("change_password.html", error=request.args.get("error"),
+                                forced=session.get("must_change_password", False))
+
+    new_password = request.form.get("password", "")
+    confirm = request.form.get("confirm", "")
+    if len(new_password) < 8:
+        return redirect(url_for("change_password", error="Password must be at least 8 characters"))
+    if new_password != confirm:
+        return redirect(url_for("change_password", error="Passwords do not match"))
+
+    try:
+        set_user_password(session["auth_user_id"], new_password)
+        mark_password_changed(session["user_id"])
+        session["must_change_password"] = False
+    except Exception as e:
+        return redirect(url_for("change_password", error=str(e)))
+    return redirect(url_for("index"))
+
+
 @app.route("/")
 def index():
     role = session.get("role")
@@ -117,7 +147,8 @@ def index():
                             is_head_of_sales=role == HEAD_OF_SALES_ROLE,
                             can_view_team=role in BROAD_VIEW_ROLES,
                             role_labels_json=ROLE_LABELS_JSON,
-                            region_options_json=json.dumps(list(REGION_HEAD_ROLES.values())))
+                            region_options_json=json.dumps(list(REGION_HEAD_ROLES.values())),
+                            region_head_roles_json=json.dumps(REGION_HEAD_ROLES))
 
 
 @app.route("/new-order")

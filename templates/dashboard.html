@@ -14,6 +14,7 @@
       <div class="header-right">
         <a class="btn-ghost" href="/new-order">🧾 New Order</a>
         <span class="user-email">{{ user_email }}</span>
+        <a class="btn-ghost" href="/change-password">🔑 Change Password</a>
         <a class="btn-ghost" href="/logout">Log out</a>
       </div>
     </div>
@@ -78,6 +79,7 @@ const IS_HEAD = {{ "true" if is_head_of_sales else "false" }};
 const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
 const ROLE_LABELS = {{ role_labels_json | safe }};
 const REGION_OPTIONS = {{ region_options_json | safe }};
+const REGION_HEAD_ROLE_TO_REGION = {{ region_head_roles_json | safe }};
 let allOrders = [];
 let grouping = "none";
 let expandedGroup = null;
@@ -158,11 +160,13 @@ function setGrouping(g, btn) {
 function orderRow(o) {
   const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
+  // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
+  const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
   return `
     <div class="dash-order-row">
       <div class="dash-order-main">
         <span class="dash-order-no">${o.order_no}</span>
-        <span class="dash-order-client">${o.client_name}${o.place !== "—" ? " · " + o.place : ""}</span>
+        <span class="dash-order-client">${o.client_name}${showPlace ? " · " + o.place : ""}</span>
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
@@ -290,6 +294,19 @@ function regionOptionsHtml(selected) {
   return opts.join("");
 }
 
+// A regional-head role implies its region — auto-select it and lock the field so it can't drift.
+function syncRegionForRole(roleId, regionId) {
+  const role = document.getElementById(roleId).value;
+  const regionSel = document.getElementById(regionId);
+  const impliedRegion = REGION_HEAD_ROLE_TO_REGION[role];
+  if (impliedRegion) {
+    regionSel.value = impliedRegion;
+    regionSel.disabled = true;
+  } else {
+    regionSel.disabled = false;
+  }
+}
+
 async function loadTeam() {
   if (!CAN_VIEW_TEAM) return;
   const box = document.getElementById("teamList");
@@ -318,14 +335,16 @@ function showAddTeamForm() {
       <input id="tmName" class="search-input" placeholder="Full name *">
       <input id="tmEmail" class="search-input mt8" type="email" placeholder="Email *">
       <input id="tmPhone" class="search-input mt8" placeholder="Phone (optional)">
-      <select id="tmRole" class="search-input mt8">${roleOptionsHtml("salesperson")}</select>
+      <select id="tmRole" class="search-input mt8" onchange="syncRegionForRole('tmRole','tmRegion')">${roleOptionsHtml("salesperson")}</select>
       <select id="tmRegion" class="search-input mt8">${regionOptionsHtml(null)}</select>
+      <div class="opt-muted mt8">They'll log in with the default password <strong>test@123</strong> and must change it on first login.</div>
       <div id="tmError" class="opt-error mt8"></div>
       <div class="btn-group mt8">
-        <button class="btn-primary" onclick="submitTeamMember()">Add &amp; Send Invite</button>
+        <button class="btn-primary" onclick="submitTeamMember()">Add Sales Person</button>
         <button class="btn-ghost" onclick="renderTeam()">Cancel</button>
       </div>
     </div>`);
+  syncRegionForRole("tmRole", "tmRegion");
 }
 
 async function submitTeamMember() {
@@ -359,7 +378,7 @@ function showEditTeamForm(staffId) {
   box.innerHTML = `
     <div class="register-form mt8" id="editTeamForm">
       <div class="opt-name mt8">${t.full_name} · ${t.email}</div>
-      <select id="etRole" class="search-input mt8">${roleOptionsHtml(t.role)}</select>
+      <select id="etRole" class="search-input mt8" onchange="syncRegionForRole('etRole','etRegion')">${roleOptionsHtml(t.role)}</select>
       <select id="etRegion" class="search-input mt8">${regionOptionsHtml(t.region)}</select>
       <select id="etActive" class="search-input mt8">
         <option value="true"${t.is_active ? " selected" : ""}>Active</option>
@@ -371,6 +390,7 @@ function showEditTeamForm(staffId) {
         <button class="btn-ghost" onclick="renderTeam()">Cancel</button>
       </div>
     </div>`;
+  syncRegionForRole("etRole", "etRegion");
 }
 
 async function submitEditTeamMember(staffId) {
