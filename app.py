@@ -1,7 +1,8 @@
 import json
 import os
+from datetime import date
 from functools import wraps
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 
 try:
     from dotenv import load_dotenv
@@ -16,6 +17,7 @@ from order_engine import (
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
 )
+from reports import build_orders_workbook
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
@@ -215,6 +217,17 @@ def api_dashboard_orders():
         return jsonify({"orders": orders})
     except Exception as e:
         return jsonify({"orders": [], "error": str(e)}), 200
+
+
+@app.route("/api/dashboard/export")
+def api_dashboard_export():
+    role = session["role"]
+    orders = list_dashboard_orders(user_id=session["user_id"], role=role)
+    buf = build_orders_workbook(orders, role_label=ROLE_LABELS.get(role, role),
+                                 full_name=session.get("full_name") or "")
+    filename = f"icestasy-orders-{date.today().isoformat()}.xlsx"
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      as_attachment=True, download_name=filename)
 
 
 @app.route("/api/dashboard/orders/<int:order_id>/mark-paid", methods=["POST"])

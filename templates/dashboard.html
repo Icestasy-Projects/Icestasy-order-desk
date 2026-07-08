@@ -36,7 +36,10 @@
             <div class="step-label" style="margin-bottom:2px">Orders Dashboard</div>
             <div class="dash-subtitle">{{ full_name }} · {{ role_label }}</div>
           </div>
-          <div id="dashStats" class="dash-stats"></div>
+          <div>
+            <div id="dashStats" class="dash-stats"></div>
+            <a class="btn-ghost dash-export-btn" href="/api/dashboard/export">⬇ Download Excel Report</a>
+          </div>
         </div>
 
         <div class="tab-bar-flat" id="groupTabs">
@@ -48,6 +51,9 @@
           <button class="tab-btn-flat" onclick="setGrouping('salesperson', this)">By Salesperson</button>
           {% endif %}
         </div>
+
+        <input id="dashSearch" class="search-input mt16" type="text"
+               placeholder="Search by client, city, salesperson, or order no…" oninput="handleSearchInput(this.value)">
 
         <div id="ordersBox" class="mt16"></div>
       </section>
@@ -75,6 +81,25 @@ const REGION_OPTIONS = {{ region_options_json | safe }};
 let allOrders = [];
 let grouping = "none";
 let expandedGroup = null;
+let expandedPlace = null;
+let searchQuery = "";
+
+function handleSearchInput(val) {
+  searchQuery = val.trim().toLowerCase();
+  expandedGroup = null;
+  expandedPlace = null;
+  renderOrders();
+}
+
+function filteredOrders() {
+  if (!searchQuery) return allOrders;
+  return allOrders.filter(o =>
+    (o.order_no || "").toLowerCase().includes(searchQuery) ||
+    (o.client_name || "").toLowerCase().includes(searchQuery) ||
+    (o.city || "").toLowerCase().includes(searchQuery) ||
+    (o.place || "").toLowerCase().includes(searchQuery) ||
+    (o.salesperson_name || "").toLowerCase().includes(searchQuery));
+}
 
 function switchPage(page, btn) {
   document.querySelectorAll(".tab-bar .tab-btn").forEach(b => b.classList.remove("active"));
@@ -124,6 +149,7 @@ function renderStats(orders) {
 function setGrouping(g, btn) {
   grouping = g;
   expandedGroup = null;
+  expandedPlace = null;
   document.querySelectorAll("#groupTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   renderOrders();
@@ -136,7 +162,7 @@ function orderRow(o) {
     <div class="dash-order-row">
       <div class="dash-order-main">
         <span class="dash-order-no">${o.order_no}</span>
-        <span class="dash-order-client">${o.client_name}${o.city !== "—" ? " · " + o.city : ""}</span>
+        <span class="dash-order-client">${o.client_name}${o.place !== "—" ? " · " + o.place : ""}</span>
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
@@ -163,13 +189,19 @@ function renderOrders() {
     renderStats(allOrders);
     return;
   }
+  const source = filteredOrders();
+  if (!source.length) {
+    box.innerHTML = `<div class="opt-muted">No orders match "${searchQuery}"</div>`;
+    renderStats(source);
+    return;
+  }
   if (grouping === "none") {
-    box.innerHTML = allOrders.map(orderRow).join("");
-    renderStats(allOrders);
+    box.innerHTML = source.map(orderRow).join("");
+    renderStats(source);
     return;
   }
   const groups = {};
-  allOrders.forEach(o => {
+  source.forEach(o => {
     const k = groupKey(o);
     (groups[k] = groups[k] || []).push(o);
   });
@@ -177,20 +209,61 @@ function renderOrders() {
     const groupTotal = orders.reduce((s, o) => s + o.total_amount, 0);
     const isOpen = expandedGroup === name;
     const safeName = JSON.stringify(name).replace(/'/g, "&#39;");
+    let body = "";
+    if (isOpen) {
+      body = grouping === "city" ? renderPlaceGroups(orders) : orders.map(orderRow).join("");
+    }
     return `
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleGroup(${safeName})'>
           <span>${isOpen ? "▾" : "▸"} ${name}</span>
           <span class="opt-sub">${orders.length} orders · ${fmt(groupTotal)}</span>
         </button>
-        ${isOpen ? orders.map(orderRow).join("") : ""}
+        ${body}
       </div>`;
   }).join("");
-  renderStats(expandedGroup && groups[expandedGroup] ? groups[expandedGroup] : allOrders);
+
+  let statsSource = source;
+  if (expandedGroup && groups[expandedGroup]) {
+    statsSource = groups[expandedGroup];
+    if (grouping === "city" && expandedPlace) {
+      statsSource = statsSource.filter(o => o.place === expandedPlace);
+    }
+  }
+  renderStats(statsSource);
+}
+
+// Second drill-down level under a City group: by locality ("place"), since
+// address city values are entered at neighbourhood precision (e.g. "Bandra West").
+function renderPlaceGroups(orders) {
+  const places = {};
+  orders.forEach(o => {
+    const k = o.place || "—";
+    (places[k] = places[k] || []).push(o);
+  });
+  return Object.entries(places).map(([place, placeOrders]) => {
+    const placeTotal = placeOrders.reduce((s, o) => s + o.total_amount, 0);
+    const isOpen = expandedPlace === place;
+    const safePlace = JSON.stringify(place).replace(/'/g, "&#39;");
+    return `
+      <div class="dash-subgroup">
+        <button type="button" class="dash-group-header dash-subgroup-header" onclick='togglePlace(${safePlace})'>
+          <span>${isOpen ? "▾" : "▸"} ${place}</span>
+          <span class="opt-sub">${placeOrders.length} orders · ${fmt(placeTotal)}</span>
+        </button>
+        ${isOpen ? placeOrders.map(orderRow).join("") : ""}
+      </div>`;
+  }).join("");
+}
+
+function togglePlace(name) {
+  expandedPlace = expandedPlace === name ? null : name;
+  renderOrders();
 }
 
 function toggleGroup(name) {
   expandedGroup = expandedGroup === name ? null : name;
+  expandedPlace = null;
   renderOrders();
 }
 
