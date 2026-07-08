@@ -55,9 +55,10 @@ _PLACE_TO_CITY = {
 }
 
 # For regional-head scoping: which region-head role owns each real city.
+# Strictly the named city itself - Thane/Navi Mumbai/Vasai-Virar are NOT part of
+# "Mumbai" here even though they're in the metro area; they fall through to ROI.
 _CITY_TO_REGION_ROLE = {
-    "Mumbai": "mumbai_head", "Thane": "mumbai_head",
-    "Navi Mumbai": "mumbai_head", "Vasai-Virar": "mumbai_head",
+    "Mumbai": "mumbai_head",
     "Pune": "pune_head",
     "Bangalore": "bangalore_head",
     "Hyderabad": "hyderabad_head",
