@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from sku_data import MOCK_PRICES
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
+DEFAULT_PASSWORD = "test@123"  # new staff accounts must change this on first login
 
 REGION_HEAD_ROLES = {
     "mumbai_head": "Mumbai",
@@ -103,7 +104,7 @@ def get_staff_by_email(email: str) -> dict | None:
     sb = _sb()
     result = (
         sb.schema("sales").from_("users")
-        .select("id, full_name, role, email, is_active")
+        .select("id, full_name, role, email, is_active, must_change_password")
         .eq("email", email.strip().lower()).limit(1).execute()
     )
     return result.data[0] if result.data else None
@@ -432,16 +433,29 @@ def create_team_member(data: dict) -> dict:
     row = {
         "full_name": full_name, "role": role, "email": email,
         "phone": (data.get("phone") or "").strip() or None,
-        "region": region,
+        "region": region, "must_change_password": True,
     }
     res = sb.schema("sales").from_("users").insert(row).execute()
     staff = res.data[0]
 
     try:
-        sb.auth.admin.invite_user_by_email(email)
+        sb.auth.admin.create_user({
+            "email": email, "password": DEFAULT_PASSWORD, "email_confirm": True,
+            "user_metadata": {"full_name": full_name},
+        })
     except Exception as e:
-        staff["invite_error"] = str(e)
+        staff["auth_error"] = str(e)
     return staff
+
+
+def set_user_password(auth_user_id: str, new_password: str) -> None:
+    sb = _sb()
+    sb.auth.admin.update_user_by_id(auth_user_id, {"password": new_password})
+
+
+def mark_password_changed(staff_id: int) -> None:
+    sb = _sb()
+    sb.schema("sales").from_("users").update({"must_change_password": False}).eq("id", staff_id).execute()
 
 
 def update_team_member(staff_id: int, data: dict) -> dict:
