@@ -11,11 +11,15 @@
   <header class="header">
     <div class="header-inner">
       <span class="brand">🍦 Icestasy Order Desk</span>
-      <div class="header-right">
-        <a class="btn-ghost" href="/new-order">🧾 New Order</a>
-        <span class="user-email">{{ user_email }}</span>
-        <a class="btn-ghost" href="/change-password">🔑 Change Password</a>
-        <a class="btn-ghost" href="/logout">Log out</a>
+      <div class="header-right menu-wrap">
+        <span class="user-email">Hi, {{ (full_name.split(" ")[0] if full_name else user_email) }}</span>
+        <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">☰</button>
+        <div class="menu-dropdown" id="headerMenu">
+          <a class="menu-item" href="/new-order">🧾 New Order</a>
+          <a class="menu-item" href="/api/dashboard/export">⬇ Download Excel Report</a>
+          <a class="menu-item" href="/change-password">🔑 Change Password</a>
+          <a class="menu-item" href="/logout">🚪 Log out</a>
+        </div>
       </div>
     </div>
   </header>
@@ -32,14 +36,56 @@
   <main class="main">
     <div id="page-orders">
       <section class="step">
+        <div class="greeting-title" id="greetingTitle">👋</div>
+        <div class="greeting-sub">What would you like to do today? · {{ role_label }}</div>
+      </section>
+
+      <section>
+        <div class="section-label">Overview</div>
+        <div id="overviewRow" class="overview-row"></div>
+      </section>
+
+      <section>
+        <div class="section-label">Quick Actions</div>
+        <div class="ops-list">
+          <a class="ops-row" href="/new-order">
+            <div class="ops-icon ops-blue">🧾</div>
+            <div>
+              <div class="ops-title">New Order</div>
+              <div class="ops-sub">Parse and create a new sales order</div>
+            </div>
+          </a>
+          {% if can_view_team %}
+          <button type="button" class="ops-row" onclick="switchPage('team', document.getElementById('page-tab-team'))">
+            <div class="ops-icon ops-purple">👥</div>
+            <div>
+              <div class="ops-title">Sales Team</div>
+              <div class="ops-sub">View and manage your team</div>
+            </div>
+          </button>
+          {% endif %}
+          <a class="ops-row" href="/api/dashboard/export">
+            <div class="ops-icon ops-yellow">⬇</div>
+            <div>
+              <div class="ops-title">Download Excel Report</div>
+              <div class="ops-sub">Export current orders to a spreadsheet</div>
+            </div>
+          </a>
+          <a class="ops-row" href="/change-password">
+            <div class="ops-icon ops-pink">🔑</div>
+            <div>
+              <div class="ops-title">Change Password</div>
+              <div class="ops-sub">Update your account password</div>
+            </div>
+          </a>
+        </div>
+      </section>
+
+      <section class="step">
         <div class="dash-title-row">
           <div>
-            <div class="step-label" style="margin-bottom:2px">Orders Dashboard</div>
+            <div class="step-label" style="margin-bottom:2px">Orders</div>
             <div class="dash-subtitle">{{ full_name }} · {{ role_label }}</div>
-          </div>
-          <div>
-            <div id="dashStats" class="dash-stats"></div>
-            <a class="btn-ghost dash-export-btn" href="/api/dashboard/export">⬇ Download Excel Report</a>
           </div>
         </div>
 
@@ -111,6 +157,22 @@ function switchPage(page, btn) {
   if (teamPage) teamPage.classList.toggle("hidden", page !== "team");
 }
 
+// ── Header menu + greeting ─────────────────────────────────────────────────
+function toggleMenu() {
+  document.getElementById("headerMenu").classList.toggle("open");
+}
+document.addEventListener("click", (e) => {
+  const wrap = document.querySelector(".menu-wrap");
+  if (wrap && !wrap.contains(e.target)) document.getElementById("headerMenu").classList.remove("open");
+});
+
+(function setGreeting() {
+  const hour = new Date().getHours();
+  const part = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+  const name = {{ (full_name.split(" ")[0] if full_name else user_email) | tojson }};
+  document.getElementById("greetingTitle").textContent = `Good ${part}, ${name}! 👋`;
+})();
+
 const STATUS_LABELS = {
   draft: "Order Pending", pending_approval: "In Progress", approved: "In Progress",
   in_production: "In Progress", dispatched: "In Progress", delivered: "Completed",
@@ -142,10 +204,22 @@ function renderStats(orders) {
   const total = orders.length;
   const totalValue = orders.reduce((s, o) => s + o.total_amount, 0);
   const paid = orders.filter(o => o.payment_status === "received").length;
-  document.getElementById("dashStats").innerHTML = `
-    <div class="dash-stat"><span class="dash-stat-num">${total}</span><span class="dash-stat-label">Orders</span></div>
-    <div class="dash-stat"><span class="dash-stat-num">${fmt(totalValue)}</span><span class="dash-stat-label">Total Value</span></div>
-    <div class="dash-stat"><span class="dash-stat-num">${paid}</span><span class="dash-stat-label">Paid</span></div>`;
+  document.getElementById("overviewRow").innerHTML = `
+    <div class="overview-card">
+      <div class="overview-icon">📦</div>
+      <div class="overview-label">Orders</div>
+      <div class="overview-value">${total}</div>
+    </div>
+    <div class="overview-card">
+      <div class="overview-icon">💰</div>
+      <div class="overview-label">Total Value</div>
+      <div class="overview-value">${fmt(totalValue)}</div>
+    </div>
+    <div class="overview-card">
+      <div class="overview-icon">✅</div>
+      <div class="overview-label">Paid</div>
+      <div class="overview-value">${paid}</div>
+    </div>`;
 }
 
 function setGrouping(g, btn) {
