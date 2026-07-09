@@ -11,17 +11,18 @@ import os
 # picking one.
 FLAVOUR_ALIASES = {
     "hapoos": 1, "alphonso": 1, "ratnagiri": 1,
-    "amrood": 2, "peru": 2,
+    "amrood": 2, "peru": 2, "gova": 2,  # common typo/mishearing of "guava"
     "kathal": 3, "jackfruit": 3, "palapazham": 3,
     "karikku": 4, "nariyal": 4, "tender coconut": 4,
     "modak": 5, "ukadiche": 5,
-    "kaaphi": 6, "kaapi": 6, "chikkamagaluru": 6,
+    "kaaphi": 6, "kaapi": 6, "chikkamagaluru": 6, "filter kaafi": 6, "filter coffee": 6,
     "mysore paak": 7, "mysore pak": 7,
-    "speculoos": 8, "belgian speculoos": 8,
-    "belgian chocolate": 9,
+    "speculoos": 8, "belgian speculoos": 8, "biscoff": 8, "lotus": 8, "lotus biscoff": 8,
+    "belgium speculoos": 8,  # common typo of "Belgian"
+    "belgian chocolate": 9, "belgium chocolate": 9,  # common typo of "Belgian"
     "meetha paan": 10, "banarasi": 10,
     "kaju katli": 13, "kaju": 13,
-    "gulqand": 16,
+    "gulqand": 16, "guluqud": 16,  # common typo/mishearing
     "kuro goma": 17, "black sesame": 17,
     "kaffir lime": 19,
     "matcha": 20, "japanese matcha": 20,
@@ -32,7 +33,7 @@ FLAVOUR_ALIASES = {
     "puranpoli": 26,
     "hara pista": 27,
     "yorkshire butterscotch": 28,
-    "sheer qhurma": 30, "sheer khurma": 30, "qhurma": 30,
+    "sheer qhurma": 30, "sheer khurma": 30, "qhurma": 30, "sheer korma": 30, "korma": 30,
     "aale paak": 31,
     "caramelized popcorn": 32,
     "banana caramel": 33,
@@ -58,6 +59,7 @@ FLAVOUR_ALIASES = {
 
 FORMAT_ALIASES = {
     "4l": 1, "4 l": 1, "bulk": 1, "tub": 1, "four litre": 1,
+    "ltr": 1, "litre": 1, "liter": 1, "box": 1, "boxes": 1,
     "12sq": 2, "12 sq": 2, "square": 2, "12 square": 2,
     "sample": 3, "samples": 3, "50ml": 3, "50 ml": 3,
     "extras": 4, "extra": 4,
