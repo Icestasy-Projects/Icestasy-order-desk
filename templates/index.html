@@ -11,14 +11,24 @@
   <header class="header">
     <div class="header-inner">
       <span class="brand">🍦 Icestasy Order Desk</span>
-      <div class="header-right">
-        <a class="btn-ghost" href="/">📊 Dashboard</a>
+      <div class="header-right menu-wrap">
         <span class="user-email">{{ user_email }}</span>
-        <a class="btn-ghost" href="/change-password">🔑 Change Password</a>
-        <a class="btn-ghost" href="/logout">Log out</a>
+        <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">☰</button>
+        <div class="menu-dropdown" id="headerMenu">
+          <a class="menu-item" href="/">📊 Dashboard</a>
+          <a class="menu-item" href="/change-password">🔑 Change Password</a>
+          <a class="menu-item" href="/logout">🚪 Log out</a>
+        </div>
       </div>
     </div>
   </header>
+  <script>
+    function toggleMenu() { document.getElementById("headerMenu").classList.toggle("open"); }
+    document.addEventListener("click", (e) => {
+      const wrap = document.querySelector(".menu-wrap");
+      if (wrap && !wrap.contains(e.target)) document.getElementById("headerMenu").classList.remove("open");
+    });
+  </script>
 
   <main class="main">
 
