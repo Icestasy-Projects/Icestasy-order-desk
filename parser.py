@@ -137,16 +137,20 @@ def _match_skus(flavour_id, format_id):
 def _match_skus_fuzzy(hint: str, format_id):
     h = hint.lower()
     words = [w for w in h.split() if len(w) > 2]
-    # Forward: hint words appear in flavour name
+    # Forward: hint words appear in flavour name (substring, for typo/partial-word tolerance)
     results = [s for s in ACTIVE_SKUS
                if (format_id is None or s["pack_format_id"] == format_id)
                and any(w in s["flavour_name"].lower() for w in words)]
     if results:
         return results
-    # Reverse: flavour name words appear in hint
+    # Reverse: flavour name words appear as whole words in the hint. Must be a
+    # whole-word match here (not "in h" substring-of-the-whole-string) - e.g.
+    # "and" from "Dates and Almonds" is a substring of "random", which would
+    # otherwise false-match any hint containing that word fragment.
+    hint_words = set(words)
     return [s for s in ACTIVE_SKUS
             if (format_id is None or s["pack_format_id"] == format_id)
-            and any(w.lower() in h for w in s["flavour_name"].split() if len(w) > 2)]
+            and any(w.lower() in hint_words for w in s["flavour_name"].split() if len(w) > 2)]
 
 
 def _get_sibling_skus(flavour_id: int, format_id):
