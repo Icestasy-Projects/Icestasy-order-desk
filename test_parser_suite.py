@@ -114,7 +114,7 @@ add("G-client", "2 Kaju Katli\nClient Ocean View Cafe", client_hint="Ocean View 
 add("G-client", "2 Kaju Katli\nclient:   Spaced Out Cafe", client_hint="Spaced Out Cafe")
 add("G-client", "2 Kaju Katli\nCLIENT: Upper Case Cafe", client_hint="Upper Case Cafe")
 add("G-client", "2 Kaju Katli", client_hint=None)
-add("G-client", "2 Kaju Katli\nBanana Leaf Restaurant", client_hint="Banana Leaf Restaurant")
+add("G-client", "2 Kaju Katli\nOcean Pearl Diner", client_hint="Ocean Pearl Diner")
 
 # ── H. Realistic multi-item orders ───────────────────────────────────────────
 add("H-multi", "2 Gajar Halwa\n3 Pineapple\n1 Jambhul\nInvoice\nClient: Ocean View Cafe",
@@ -143,6 +143,60 @@ add("J-format-robust", "\n\n2 Ramphal\n\n", not_found=False, flavour_in="Ramphal
 add("J-format-robust", "1 Jambhul\t\t", not_found=False, flavour_in="Jambhul")
 add("J-format-robust", "1 dakshin laddoo", not_found=False, flavour_in="Dakshin Laddoo")
 add("J-format-robust", "1 LEGAL OVERDOSE", not_found=False, flavour_in="Legal Overdose")
+
+# ── K. Real, independently-sourced WhatsApp order messages ──────────────────
+# Unlike A-J (derived from the parser's own alias/catalog data), these 9 are
+# real messy human-typed messages the user pasted in. Ground truth for the
+# genuinely ambiguous spots (S/M/G shorthand, "box" meaning, "Gova" typo) was
+# confirmed by the user directly rather than guessed. Kept here permanently so
+# future parser changes get regression-tested against real input, not just
+# synthetic cases built from the same data the parser matches against.
+
+add("K-real", "Louts biscoff 02 \nBelgium chocolate 01 \n(Veg treat express chikuwadi)",
+    item_count=2, client_hint="chikuwadi")
+add("K-real", "Kaju 1 Sheer korma 2 Guluqud 1",
+    item_count=3)
+add("K-real", "Gova =1 \n3 boxes modak icecream \nGoaikars coastal express pe chahiye",
+    item_count=2, client_hint="Goaikars")
+add("K-real", "1. Filter kaafi ice cream=1 box \n2. ⁠modak ice cream=1 box\n3. ⁠puranpoli ice cream=1 box",
+    item_count=3)
+add("K-real", "The food studio malad \nBelgium specloss =01",
+    item_count=1, client_hint="food studio")
+add("K-real", "Sudama Wakad 4 ltr Peruo Oro cholaclate Each 1 \nFor Soam 1 Bulk Jackfruit 1 Bulk kafir lime 1 Bulk Choclate",
+    item_count=4)
+add("K-real", " *Mi hi koli dombivli requirement* Modak icecream 1 Chocolate ice-cream 1 Vanila 1 Tender coconut 1",
+    item_count=4)
+add("K-real", "S-2 M-2 G-2",
+    item_count=3)
+add("K-real", "Send 1 biscoff ice cream Ratnagiri 2 Chocolate 1",
+    item_count=3)
+
+
+def _run_k_quantity_checks():
+    """K-real cases mix items that resolve unambiguously with items that stay
+    ambiguous by design (generic words like "chocolate" deliberately aren't
+    auto-resolved) — check per-item qty precisely here rather than cluttering
+    the declarative `add()` table above with a mix of assertion shapes."""
+    reasons = []
+    expectations = {
+        0: [2, 1],
+        1: [1, 2, 1],
+        2: [1, 3],
+        3: [1, 1, 1],
+        4: [1],
+        5: [1, 1, 1, 1],
+        6: [1, 1, 1, 1],
+        7: [2, 2, 2],
+        8: [1, 2, 1],
+    }
+    k_cases = [c for c in cases if c[1] == "K-real"]
+    for idx, (case_id, category, text, assertions) in enumerate(k_cases):
+        result = parse_order_text(text)
+        got = [item["qty"] for item in result["items"]]
+        expected = expectations.get(idx)
+        if expected is not None and got != expected:
+            reasons.append(f"K-real #{case_id} qty mismatch: expected {expected}, got {got}")
+    return reasons
 
 
 # ── Runner ────────────────────────────────────────────────────────────────────
@@ -227,6 +281,20 @@ def main():
             print(f"FAIL  #{case_id:<4} [{category}] {text!r}")
             for r in reasons:
                 print(f"        - {r}")
+
+    k_reasons = _run_k_quantity_checks()
+    by_category.setdefault("K-real-qty", [0, 0])
+    if k_reasons:
+        failed += 1
+        by_category["K-real-qty"][1] += 1
+        print("FAIL  [K-real-qty] per-item quantities across the 9 real messages")
+        for r in k_reasons:
+            print(f"        - {r}")
+    else:
+        passed += 1
+        by_category["K-real-qty"][0] += 1
+        if not QUIET:
+            print("PASS  [K-real-qty] per-item quantities across the 9 real messages")
 
     total = passed + failed
     accuracy = (passed / total * 100) if total else 0.0

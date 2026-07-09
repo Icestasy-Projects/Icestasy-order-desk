@@ -1,9 +1,35 @@
 import os
 import re
 import json
+import difflib
 from sku_data import FLAVOUR_ALIASES, FORMAT_ALIASES, ACTIVE_SKUS, MOCK_PRICES, FLAVOUR_NAMES, FORMAT_NAMES
 
 PAYMENT_KEYWORDS = {"advance", "invoice", "credit"}
+
+# Word -> set(flavour_id) index used for typo-tolerant fuzzy matching (below).
+# Only words >3 chars are indexed, same threshold used elsewhere for "meaningful" words.
+_FLAVOUR_WORD_INDEX = {}
+for _fid, _fname in FLAVOUR_NAMES.items():
+    for _w in re.findall(r"[a-z]+", _fname.lower()):
+        if len(_w) > 3:
+            _FLAVOUR_WORD_INDEX.setdefault(_w, set()).add(_fid)
+
+# 0.8 is empirically tuned: high enough that "matches" (ratio 0.769 vs "matcha")
+# doesn't false-positive, low enough to catch real typos like "choclate" (0.941
+# vs "chocolate"), "kafir" (0.909 vs "kaffir"), "vanila" (0.923 vs "vanilla"),
+# "specloss" (0.824 vs "speculoos"). Typos further off than that (e.g. "guluqud"
+# vs "gulqand" at 0.714) are handled via explicit aliases instead.
+_FUZZY_CUTOFF = 0.8
+
+
+def _fuzzy_flavour_ids(word: str) -> set:
+    if len(word) <= 3:
+        return set()
+    close = difflib.get_close_matches(word, _FLAVOUR_WORD_INDEX.keys(), n=3, cutoff=_FUZZY_CUTOFF)
+    ids = set()
+    for w in close:
+        ids |= _FLAVOUR_WORD_INDEX[w]
+    return ids
 
 # ── Groq LLM extraction ──────────────────────────────────────────────────────
 
@@ -67,6 +93,22 @@ def _groq_extract(text: str):
 
 # ── Keyword fallback ─────────────────────────────────────────────────────────
 
+_ZERO_WIDTH_RE = re.compile(r"[​‌‍﻿]")
+_LIST_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]|[•\-\*])\s*")
+_QTY_LITRE_RE = re.compile(r"\b(\d+)\s*(?:ltr|litre|liter|l)\b", re.IGNORECASE)
+_STOP_WORDS = {"and", "or", "the", "of", "each", "for", "pls", "please", "send", "required", "requirement"}
+
+
+def _clean_text(text: str) -> str:
+    text = _ZERO_WIDTH_RE.sub("", text)
+    return text.replace("*", "")  # WhatsApp bold markers
+
+
+def _strip_list_marker(line: str) -> str:
+    """Strip a leading list number/bullet (e.g. "2. ") so it can't be misread as qty."""
+    return _LIST_MARKER_RE.sub("", line).strip()
+
+
 def _find_flavour(text: str):
     for alias in sorted(FLAVOUR_ALIASES, key=len, reverse=True):
         if alias in text:
@@ -81,44 +123,151 @@ def _find_format(text: str):
     return None
 
 
+def _has_flavour_signal(text: str) -> bool:
+    """Cheap check: does this text plausibly name a real flavour? Used only to
+    decide which side of a quantity number is the item name when a line packs
+    multiple items together (either "Name qty" or "qty Name", sometimes mixed
+    within the same line)."""
+    t = text.lower().strip()
+    if not t:
+        return False
+    if _find_flavour(t) is not None:
+        return True
+    words = [w for w in re.findall(r"[a-z]+", t) if len(w) > 2 and w not in _STOP_WORDS]
+    if not words:
+        return False
+    for fname in FLAVOUR_NAMES.values():
+        fname_lower = fname.lower()
+        fwords = {w for w in re.findall(r"[a-z]+", fname_lower) if len(w) > 2}
+        if any(w in fname_lower for w in words) or (set(words) & fwords):
+            return True
+    # Tier 3: typo-tolerant fuzzy match (catches e.g. "Choclate", "Vanila", "kafir")
+    if any(_fuzzy_flavour_ids(w) for w in words):
+        return True
+    return False
+
+
+def _segment_line_items(line: str):
+    """Split a line into (qty, item_text, extra_text) tuples, handling multiple
+    items on one line with the quantity either before or after the item name
+    (or mixed within the same line) — e.g. "Kaju 1 Sheer korma 2 Guluqud 1" or
+    "1 Bulk Jackfruit 1 Bulk kafir lime". extra_text is the *other* side of the
+    number, kept around only to sniff for a format word ("box"/"bulk"/...)
+    that landed next to the item instead of inside its own claimed text.
+    """
+    # "S-2" -> "S 2": a hyphen between a letter and a digit is a separator here,
+    # not part of a word — but leave letter-hyphen-letter alone (e.g. "add-on").
+    line = re.sub(r"(?<=[A-Za-z])-(?=\d)", " ", line)
+    tokens = re.split(r"(\d+)", line)
+    segments = []
+    claimed = set()
+    i = 1
+    while i < len(tokens):
+        qty = int(tokens[i])
+        preceding_idx, following_idx = i - 1, i + 1
+        preceding_text = tokens[preceding_idx].strip() if preceding_idx not in claimed else ""
+        following_text = tokens[following_idx].strip() if following_idx < len(tokens) else ""
+        if preceding_text and _has_flavour_signal(preceding_text):
+            segments.append((qty, preceding_text, following_text))
+            claimed.add(preceding_idx)
+        elif following_text and _has_flavour_signal(following_text):
+            # This chunk (all text between two digits) can itself contain two
+            # separate item names when a "Name qty" item is immediately followed
+            # by a "Name qty" item with no digit of its own in between them, e.g.
+            # "1 biscoff ice cream Ratnagiri 2" — "Ratnagiri" belongs to the *next*
+            # digit, not this one. Try splitting off a trailing flavour-bearing
+            # span and leave it unclaimed for the next digit's preceding-text pickup.
+            words_chunk = following_text.split()
+            split_done = False
+            for split_point in range(len(words_chunk) - 1, 0, -1):
+                head = " ".join(words_chunk[:split_point])
+                tail = " ".join(words_chunk[split_point:])
+                # Require a *strict* alias/name hit on both sides here (not the
+                # looser word-overlap/fuzzy tiers _has_flavour_signal also allows) —
+                # otherwise two words of the *same* flavour name (e.g. "Caramelized"
+                # + "Popcorn") each weakly "signal" on their own and get wrongly
+                # split into two items, silently dropping the tail (no next digit
+                # to claim it).
+                if _find_flavour(head.lower()) is not None and _find_flavour(tail.lower()) is not None:
+                    segments.append((qty, head, preceding_text))
+                    tokens[following_idx] = tail  # left for the next digit to claim
+                    split_done = True
+                    break
+            if not split_done:
+                segments.append((qty, following_text, preceding_text))
+                claimed.add(following_idx)
+        elif preceding_text and len(re.sub(r"[^a-zA-Z]", "", preceding_text)) <= 2:
+            # Bare 1-2 letter shorthand code (e.g. "S-2") — no flavour signal
+            # possible from the letter alone, but still worth a best-effort
+            # match by initial letter later, rather than silently dropping it.
+            segments.append((qty, preceding_text, following_text))
+            claimed.add(preceding_idx)
+        i += 2
+    return segments
+
+
 def _keyword_extract(text: str):
+    text = _clean_text(text)
     lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
     items = []
     payment = None
     client_hint = None
 
-    for line in lines:
+    for raw_line in lines:
+        line = _strip_list_marker(raw_line)
         lower = line.lower()
 
         if lower.startswith("client:") or lower.startswith("client "):
             client_hint = re.sub(r"^client[:\s]+", "", line, flags=re.IGNORECASE).strip()
             continue
 
+        matched_payment = False
         for pm in PAYMENT_KEYWORDS:
             if pm in lower.split():
                 payment = pm
+                matched_payment = True
                 break
-        else:
-            qty_match = re.search(r"\b(\d+)\b", lower)
-            qty = int(qty_match.group(1)) if qty_match else 1
-            flavour_id = _find_flavour(lower)
-            format_id = _find_format(lower)
-            # A leading quantity is a strong signal this is an item line even when no
-            # flavour alias hit directly — e.g. "5 Mango" now genuinely matches 3
-            # different flavours, so it can't resolve via the single-id alias path,
-            # but it's still clearly an item line, not a client name.
-            has_leading_qty = re.match(r"^\d+\b", lower) is not None
-            if flavour_id is None and format_id is None and not has_leading_qty:
-                # Not an item line — treat as a client name if we don't have one yet
+        if matched_payment:
+            continue
+
+        # "4 ltr"/"4 litre" describes the pack format, not an item quantity —
+        # pull it out before segmenting so it doesn't get treated as an item's
+        # qty (e.g. "4 ltr Peruo ... Each 1" is qty=1, format=4L Bulk, not qty=4).
+        format_id_line = None
+        litre_match = _QTY_LITRE_RE.search(line)
+        if litre_match:
+            format_id_line = 1
+            line = _QTY_LITRE_RE.sub(" ", line, count=1)
+
+        format_id_line = format_id_line or _find_format(lower)
+        segments = _segment_line_items(line)
+
+        if not segments and _has_flavour_signal(line):
+            # No digit anywhere, but the line still names a real flavour
+            # (e.g. plain "Kaju Katli") — one item, qty defaults to 1.
+            segments = [(1, line, "")]
+
+        if not segments:
+            leading_digit = re.search(r"\d+", line)
+            if leading_digit:
+                # Has a quantity but nothing on the line looks like a real
+                # flavour — still an item line (just one _enrich() will
+                # correctly report as not-found), not a client name.
+                segments = [(int(leading_digit.group()), line, "")]
+            else:
                 if client_hint is None and line.strip():
                     client_hint = line.strip()
                 continue
-            # Extract hint words for fuzzy matching when flavour not found
+
+        for qty, item_text, extra_text in segments:
+            item_lower = item_text.lower()
+            flavour_id = _find_flavour(item_lower)
+            format_id = _find_format(item_lower) or _find_format(extra_text.lower()) or format_id_line
             flavour_hint = None
             if flavour_id is None:
-                stop = set(FORMAT_ALIASES.keys()) | {"and", "or", "the", "of"}
-                hint_words = [w for w in lower.split() if not w.isdigit() and w not in stop]
-                flavour_hint = " ".join(hint_words) if hint_words else None
+                stop = set(FORMAT_ALIASES.keys()) | _STOP_WORDS
+                hint_words = [w for w in re.findall(r"[a-z]+", item_lower) if w not in stop]
+                flavour_hint = " ".join(hint_words) if hint_words else item_lower
             items.append({"qty": qty, "flavour_id": flavour_id, "format_id": format_id, "flavour_hint": flavour_hint})
 
     return {"items": items, "payment": payment, "client_hint": client_hint}
@@ -135,7 +284,7 @@ def _match_skus(flavour_id, format_id):
 
 
 def _match_skus_fuzzy(hint: str, format_id):
-    h = hint.lower()
+    h = hint.lower().strip()
     words = [w for w in h.split() if len(w) > 2]
     # Forward: hint words appear in flavour name (substring, for typo/partial-word tolerance)
     results = [s for s in ACTIVE_SKUS
@@ -148,9 +297,30 @@ def _match_skus_fuzzy(hint: str, format_id):
     # "and" from "Dates and Almonds" is a substring of "random", which would
     # otherwise false-match any hint containing that word fragment.
     hint_words = set(words)
-    return [s for s in ACTIVE_SKUS
-            if (format_id is None or s["pack_format_id"] == format_id)
-            and any(w.lower() in hint_words for w in s["flavour_name"].split() if len(w) > 2)]
+    results = [s for s in ACTIVE_SKUS
+               if (format_id is None or s["pack_format_id"] == format_id)
+               and any(w.lower() in hint_words for w in s["flavour_name"].split() if len(w) > 2)]
+    if results:
+        return results
+    # Bare single-letter shorthand code (e.g. "S-2 M-2 G-2") — no reliable way
+    # to know what it means, so match by the flavour name's first letter and
+    # surface every candidate rather than silently guessing one.
+    letters_only = re.sub(r"[^a-z]", "", h)
+    if len(letters_only) == 1:
+        return [s for s in ACTIVE_SKUS
+                if (format_id is None or s["pack_format_id"] == format_id)
+                and s["flavour_name"].lower().startswith(letters_only)]
+    # Typo-tolerant fuzzy tier (e.g. "Choclate" -> Chocolate, "kafir" -> Kaffir)
+    fuzzy_ids = set()
+    for w in words:
+        fuzzy_ids |= _fuzzy_flavour_ids(w)
+    if fuzzy_ids:
+        results = [s for s in ACTIVE_SKUS
+                   if s["flavour_id"] in fuzzy_ids
+                   and (format_id is None or s["pack_format_id"] == format_id)]
+        if results:
+            return results
+    return []
 
 
 def _get_sibling_skus(flavour_id: int, format_id):
