@@ -89,6 +89,8 @@ def broad_view_required(view):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
+        if session.get("user_id"):
+            return redirect(url_for("change_password" if session.get("must_change_password") else "index"))
         return render_template("login.html", error=request.args.get("error"))
 
     email = request.form.get("email", "").strip()
@@ -108,6 +110,17 @@ def login():
     except Exception:
         return redirect(url_for("login", error="Invalid email or password"))
     return redirect(url_for("index"))
+
+
+@app.after_request
+def add_no_cache_headers(response):
+    # Prevent the browser's back/forward cache from showing a stale login or
+    # authenticated page after a login/logout state change — always re-check
+    # with the server instead of rendering a cached snapshot.
+    if not request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.route("/logout")

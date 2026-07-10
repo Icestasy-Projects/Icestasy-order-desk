@@ -20,13 +20,13 @@ FLAVOUR_ALIASES = {
     "speculoos": 8, "belgian speculoos": 8, "biscoff": 8, "lotus": 8, "lotus biscoff": 8,
     "belgium speculoos": 8,  # common typo of "Belgian"
     "belgian chocolate": 9, "belgium chocolate": 9,  # common typo of "Belgian"
+    "cookie dusk": 9,  # flavour #18 (old "Cookie Dusk") was merged into Belgian Chocolate
     "meetha paan": 10, "banarasi": 10,
     "kaju katli": 13, "kaju": 13,
     "gulqand": 16, "guluqud": 16,  # common typo/mishearing
     "kuro goma": 17, "black sesame": 17,
     "kaffir lime": 19,
     "matcha": 20, "japanese matcha": 20,
-    "packaging unit": 22, "packaging": 22,
     "kesar thandai": 23, "thandai": 23,
     "hass avocado": 24,
     "gulab jamun": 25,
@@ -55,6 +55,9 @@ FLAVOUR_ALIASES = {
     "jambhul": 51,
     "dakshin laddoo": 52,
     "legal overdose": 53,
+    "reshmi paan": 54,
+    "kyoka kuro goma": 55,  # longer/more specific than "kuro goma" (17) — must sort before it
+    "shahi sevaiya": 56,
 }
 
 FORMAT_ALIASES = {
@@ -70,14 +73,14 @@ FORMAT_ALIASES = {
 # Mirrors the real sales.skus / sales.flavours / sales.pack_formats data exactly,
 # so behaviour is identical whether Supabase is reachable or not.
 _FLAVOURS = {
-    1: "Ratnagiri Hapoos (Mango)", 2: "Amrood (Guava/Peru)", 3: "Palapazham (Jackfruit)",
+    1: "Ratnagiri Hapoos (Mango)", 2: "Amrood (Guava/Peru)", 3: "Palaapazham (Jackfruit)",
     4: "Karikku (Tender Coconut)", 5: "Ukadiche Modak", 6: "Chikkamagaluru Kaaphi",
     7: "Mysore Paak", 8: "Belgian Speculoos", 9: "Belgian Chocolate",
     10: "Banarasi Meetha Paan", 11: "Salted Caramel", 12: "Vanilla Vantage (FD)",
     13: "Kaju Katli", 14: "Sunkissed Twilight", 15: "French Vanilla",
-    16: "Gulqand", 17: "Kuro Goma", 18: "Cookie Dusk",
+    16: "Gulqand", 17: "Kuro Goma",
     19: "Kaffir Lime Coconut", 20: "Japanese Matcha", 21: "Strawberry Cream",
-    22: "Packaging Unit", 23: "Kesar Thandai", 24: "Hass Avocado",
+    23: "Kesar Thandai", 24: "Hass Avocado",
     25: "Gulab Jamun", 26: "Puranpoli", 27: "Hara Pista",
     28: "Yorkshire Butterscotch", 29: "Chocolate Choice (FD)", 30: "Sheer Qhurma",
     31: "Aale Paak", 32: "Caramelized Popcorn", 33: "Banana Caramel",
@@ -88,6 +91,9 @@ _FLAVOURS = {
     46: "Signature Chocolate (Cacaoir)", 47: "Mango Mania (FD)", 48: "Pineapple",
     49: "Mango Basil", 50: "Apple Pie", 51: "Jambhul",
     52: "Dakshin Laddoo", 53: "Legal Overdose",
+    54: "Reshmi Paan", 55: "Kyoka Kuro Goma", 56: "Shahi Sevaiya",
+    # 18 (Cookie Dusk) and 22 (Packaging Unit) deactivated in production —
+    # omitted here so the offline mock matches the live "active only" catalog.
 }
 _FORMATS = {
     1: ("4L Bulk", False), 2: ("12 Square", False), 3: ("50 ml Samples", True),
@@ -112,11 +118,9 @@ _SKU_ROWS = [
     ("FRE-4L-15", 15, 1),
     ("GUL-4L-16", 16, 1), ("GU3-12SQ-16", 16, 2),
     ("KUR-4L-17", 17, 1), ("KU2-12SQ-17", 17, 2),
-    ("COO-4L-18", 18, 1), ("CO2-12SQ-18", 18, 2),
     ("KAF-4L-19", 19, 1),
     ("JAP-4L-20", 20, 1), ("JA2-12SQ-20", 20, 2),
     ("STR-4L-21", 21, 1),
-    ("PAC-EXTRA-22", 22, 4),
     ("KES-4L-23", 23, 1),
     ("HAS-4L-24", 24, 1),
     ("GU2-4L-25", 25, 1),
@@ -148,6 +152,9 @@ _SKU_ROWS = [
     ("JAM-4L-51", 51, 1),
     ("DAK-4L-52", 52, 1),
     ("LEG-4L-53", 53, 1),
+    ("RES-4L-54", 54, 1), ("RE2-500ML-54", 54, 6),
+    ("KYO-4L-55", 55, 1), ("KY2-12SQ-55", 55, 2),
+    ("SHA-4L-56", 56, 1),
 ]
 
 MOCK_SKUS = [
