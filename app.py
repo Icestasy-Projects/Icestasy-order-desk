@@ -18,6 +18,8 @@ from order_engine import (
     update_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
     set_user_password, mark_password_changed,
     approve_order, reject_order, list_clients,
+    list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
+    set_sku_price, list_pack_formats,
 )
 from reports import build_orders_workbook
 
@@ -342,6 +344,64 @@ def api_update_team_member(staff_id):
         return jsonify({"ok": True, "member": member})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/sku-stock")
+@admin_required
+def api_sku_stock():
+    try:
+        return jsonify({"stock": list_sku_stock()})
+    except Exception as e:
+        return jsonify({"stock": [], "error": str(e)}), 200
+
+
+@app.route("/api/admin/flavours")
+@admin_required
+def api_flavours():
+    try:
+        return jsonify({"flavours": list_flavours_admin(), "pack_formats": list_pack_formats()})
+    except Exception as e:
+        return jsonify({"flavours": [], "pack_formats": [], "error": str(e)}), 200
+
+
+@app.route("/api/admin/flavours", methods=["POST"])
+@admin_required
+def api_create_flavour():
+    body = request.get_json(force=True)
+    try:
+        flavour = create_flavour(body.get("name"), body.get("pack_format_ids") or [], created_by=session["user_id"])
+        return jsonify({"ok": True, "flavour": flavour})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/flavours/<int:flavour_id>", methods=["PATCH"])
+@admin_required
+def api_update_flavour(flavour_id):
+    body = request.get_json(force=True)
+    try:
+        flavour = update_flavour(flavour_id, body)
+        return jsonify({"ok": True, "flavour": flavour})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/skus/<int:sku_id>/price", methods=["POST"])
+@admin_required
+def api_set_sku_price(sku_id):
+    body = request.get_json(force=True)
+    try:
+        price = float(body.get("price"))
+        row = set_sku_price(sku_id, price, set_by=session["user_id"])
+        return jsonify({"ok": True, "price": row})
+    except (ValueError, TypeError) as e:
+        return jsonify({"ok": False, "error": str(e) or "Invalid price"}), 409
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
