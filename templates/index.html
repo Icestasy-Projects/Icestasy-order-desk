@@ -22,11 +22,18 @@
       </div>
     </div>
   </header>
+  <div class="menu-backdrop" id="menuBackdrop" onclick="toggleMenu()"></div>
   <script>
-    function toggleMenu() { document.getElementById("headerMenu").classList.toggle("open"); }
+    function toggleMenu() {
+      document.getElementById("headerMenu").classList.toggle("open");
+      document.getElementById("menuBackdrop").classList.toggle("open");
+    }
     document.addEventListener("click", (e) => {
       const wrap = document.querySelector(".menu-wrap");
-      if (wrap && !wrap.contains(e.target)) document.getElementById("headerMenu").classList.remove("open");
+      if (wrap && !wrap.contains(e.target)) {
+        document.getElementById("headerMenu").classList.remove("open");
+        document.getElementById("menuBackdrop").classList.remove("open");
+      }
     });
   </script>
 
