@@ -27,6 +27,7 @@
   <nav class="tab-bar">
     <div class="tab-bar-inner">
       <button class="tab-btn active" id="page-tab-orders" onclick="switchPage('orders', this)">📦 Orders</button>
+      <button class="tab-btn" id="page-tab-clients" onclick="switchPage('clients', this)">🧑‍🤝‍🧑 Clients</button>
       {% if can_view_team %}
       <button class="tab-btn" id="page-tab-team" onclick="switchPage('team', this)">👥 Team</button>
       {% endif %}
@@ -55,6 +56,13 @@
               <div class="ops-sub">Parse and create a new sales order</div>
             </div>
           </a>
+          <button type="button" class="ops-row" onclick="switchPage('clients', document.getElementById('page-tab-clients'))">
+            <div class="ops-icon ops-green">🧑‍🤝‍🧑</div>
+            <div>
+              <div class="ops-title">Clients</div>
+              <div class="ops-sub">View the client list</div>
+            </div>
+          </button>
           {% if can_view_team %}
           <button type="button" class="ops-row" onclick="switchPage('team', document.getElementById('page-tab-team'))">
             <div class="ops-icon ops-purple">👥</div>
@@ -106,12 +114,21 @@
       </section>
     </div>
 
+    <div id="page-clients" class="hidden">
+      <section class="step">
+        <div class="step-label">Clients</div>
+        <input id="clientSearch" class="search-input mt16" type="text"
+               placeholder="Search by name, contact, phone, or GSTIN…" oninput="handleClientSearchInput(this.value)">
+        <div id="clientsList" class="option-list mt16"></div>
+      </section>
+    </div>
+
     {% if can_view_team %}
     <div id="page-team" class="hidden">
       <section class="step">
         <div class="step-label">Sales Team</div>
         <div id="teamList" class="option-list"></div>
-        {% if is_head_of_sales %}
+        {% if is_admin %}
         <button class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
         {% endif %}
       </section>
@@ -121,7 +138,7 @@
 </div>
 
 <script>
-const IS_HEAD = {{ "true" if is_head_of_sales else "false" }};
+const IS_ADMIN = {{ "true" if is_admin else "false" }};
 const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
 const ROLE_LABELS = {{ role_labels_json | safe }};
 const REGION_OPTIONS = {{ region_options_json | safe }};
@@ -153,8 +170,10 @@ function switchPage(page, btn) {
   document.querySelectorAll(".tab-bar .tab-btn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   document.getElementById("page-orders").classList.toggle("hidden", page !== "orders");
+  document.getElementById("page-clients").classList.toggle("hidden", page !== "clients");
   const teamPage = document.getElementById("page-team");
   if (teamPage) teamPage.classList.toggle("hidden", page !== "team");
+  if (page === "clients" && !clientsData.length) loadClients();
 }
 
 // ── Header menu + greeting ─────────────────────────────────────────────────
@@ -231,9 +250,14 @@ function setGrouping(g, btn) {
   renderOrders();
 }
 
+const _TERMINAL_STATUSES = new Set(["invoiced", "rejected", "cancelled", "delivered"]);
+
 function orderRow(o) {
   const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
+  const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status))
+    ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">✓ Approve</button>
+       <button class="btn-option btn-sm" onclick="rejectOrder(${o.id})">✕ Reject</button>` : "";
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
   const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
   return `
@@ -248,6 +272,7 @@ function orderRow(o) {
         <span class="badge ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>
         <span class="ci-price">${fmt(o.total_amount)}</span>
         ${payAction}
+        ${approvalActions}
       </div>
     </div>`;
 }
@@ -354,6 +379,71 @@ async function markPaid(orderId) {
   loadOrders();
 }
 
+async function approveOrder(orderId) {
+  const res = await fetch(`/api/dashboard/orders/${orderId}/approve`, {method: "POST"}).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not approve order");
+    return;
+  }
+  loadOrders();
+}
+
+async function rejectOrder(orderId) {
+  if (!confirm("Reject this order?")) return;
+  const res = await fetch(`/api/dashboard/orders/${orderId}/reject`, {method: "POST"}).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not reject order");
+    return;
+  }
+  loadOrders();
+}
+
+// ── Clients ──────────────────────────────────────────────────────────────────
+let clientsData = [];
+let clientSearchQuery = "";
+
+async function loadClients() {
+  const box = document.getElementById("clientsList");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/clients").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    return;
+  }
+  clientsData = data.clients || [];
+  renderClients();
+}
+
+function handleClientSearchInput(val) {
+  clientSearchQuery = val.trim().toLowerCase();
+  renderClients();
+}
+
+function renderClients() {
+  const box = document.getElementById("clientsList");
+  if (!clientsData.length) {
+    box.innerHTML = `<div class="opt-muted">No clients yet</div>`;
+    return;
+  }
+  const q = clientSearchQuery;
+  const filtered = !q ? clientsData : clientsData.filter(c =>
+    (c.business_name || "").toLowerCase().includes(q) ||
+    (c.primary_contact_name || "").toLowerCase().includes(q) ||
+    (c.primary_contact_phone || "").toLowerCase().includes(q) ||
+    (c.gstin || "").toLowerCase().includes(q));
+  if (!filtered.length) {
+    box.innerHTML = `<div class="opt-muted">No clients match "${clientSearchQuery}"</div>`;
+    return;
+  }
+  box.innerHTML = filtered.map(c => `
+    <div class="option-btn" style="cursor:default">
+      <div>
+        <span class="opt-name">${c.business_name}</span>
+        <span class="opt-sub">${c.client_type || ""}${c.primary_contact_name ? " · " + c.primary_contact_name : ""}${c.primary_contact_phone ? " · " + c.primary_contact_phone : ""}</span>
+      </div>
+    </div>`).join("");
+}
+
 // ── Sales Team ───────────────────────────────────────────────────────────────
 let teamData = [];
 
@@ -398,7 +488,7 @@ function renderTeam() {
         <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
         <span class="opt-sub">${ROLE_LABELS[t.role] || t.role}${t.region ? " · " + t.region : ""} · ${t.email}</span>
       </div>
-      ${IS_HEAD ? `<button class="btn-ghost" onclick="showEditTeamForm(${t.id})">Edit</button>` : ""}
+      ${IS_ADMIN ? `<button class="btn-ghost" onclick="showEditTeamForm(${t.id})">Edit</button>` : ""}
     </div>`).join("");
 }
 

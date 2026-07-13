@@ -17,6 +17,7 @@ from order_engine import (
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
     set_user_password, mark_password_changed,
+    approve_order, reject_order, list_clients,
 )
 from reports import build_orders_workbook
 
@@ -29,10 +30,9 @@ if not app.secret_key:
 
 PUBLIC_ENDPOINTS = {"login", "static"}
 PASSWORD_CHANGE_ENDPOINTS = {"login", "static", "change_password", "logout"}
-HEAD_OF_SALES_ROLE = "manager"
-CLIENT_ONBOARDING_ROLES = {"manager", "onboarding"}
-# Manager sees everything; regional heads see their region's orders/team, not just their own.
-BROAD_VIEW_ROLES = {HEAD_OF_SALES_ROLE, *REGION_HEAD_ROLES}
+ADMIN_ROLE = "admin"  # unified role: full access, add clients, approve/reject orders for invoicing
+# Admin sees everything; regional heads see their region's orders/team, not just their own.
+BROAD_VIEW_ROLES = {ADMIN_ROLE, *REGION_HEAD_ROLES}
 ROLE_LABELS_JSON = json.dumps(ROLE_LABELS)
 
 
@@ -59,20 +59,11 @@ def require_login():
         return redirect(url_for("change_password"))
 
 
-def head_of_sales_required(view):
+def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if session.get("role") != HEAD_OF_SALES_ROLE:
-            return jsonify({"error": "forbidden"}), 403
-        return view(*args, **kwargs)
-    return wrapped
-
-
-def client_onboarding_required(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if session.get("role") not in CLIENT_ONBOARDING_ROLES:
-            return jsonify({"ok": False, "error": "Only Head of Sales or Client Onboarding can register new clients. Ask them to add this client first."}), 403
+        if session.get("role") != ADMIN_ROLE:
+            return jsonify({"ok": False, "error": "Admin access required"}), 403
         return view(*args, **kwargs)
     return wrapped
 
@@ -157,7 +148,7 @@ def index():
     return render_template("dashboard.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=role,
                             role_label=ROLE_LABELS.get(role, role),
-                            is_head_of_sales=role == HEAD_OF_SALES_ROLE,
+                            is_admin=role == ADMIN_ROLE,
                             can_view_team=role in BROAD_VIEW_ROLES,
                             role_labels_json=ROLE_LABELS_JSON,
                             region_options_json=json.dumps(list(REGION_HEAD_ROLES.values())),
@@ -169,8 +160,7 @@ def new_order():
     role = session.get("role")
     return render_template("index.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=role,
-                            is_head_of_sales=role == HEAD_OF_SALES_ROLE,
-                            can_onboard_clients=role in CLIENT_ONBOARDING_ROLES)
+                            is_admin=role == ADMIN_ROLE)
 
 
 @app.route("/api/parse", methods=["POST"])
@@ -201,8 +191,16 @@ def api_clients():
         return jsonify({"clients": [], "error": str(e)}), 200
 
 
+@app.route("/api/clients")
+def api_clients_list():
+    try:
+        return jsonify({"clients": list_clients()})
+    except Exception as e:
+        return jsonify({"clients": [], "error": str(e)}), 200
+
+
 @app.route("/api/clients", methods=["POST"])
-@client_onboarding_required
+@admin_required
 def api_register_client():
     body = request.get_json(force=True)
     try:
@@ -286,11 +284,35 @@ def api_mark_paid(order_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/dashboard/orders/<int:order_id>/approve", methods=["POST"])
+@admin_required
+def api_approve_order(order_id):
+    try:
+        order = approve_order(order_id, approved_by=session["user_id"])
+        return jsonify({"ok": True, "order": order})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/dashboard/orders/<int:order_id>/reject", methods=["POST"])
+@admin_required
+def api_reject_order(order_id):
+    try:
+        order = reject_order(order_id, rejected_by=session["user_id"])
+        return jsonify({"ok": True, "order": order})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/team")
 @broad_view_required
 def api_team():
     role = session.get("role")
-    region = REGION_HEAD_ROLES.get(role) if role != HEAD_OF_SALES_ROLE else None
+    region = REGION_HEAD_ROLES.get(role) if role != ADMIN_ROLE else None
     try:
         team = list_team(region=region)
         return jsonify({"team": team})
@@ -299,7 +321,7 @@ def api_team():
 
 
 @app.route("/api/team", methods=["POST"])
-@head_of_sales_required
+@admin_required
 def api_create_team_member():
     body = request.get_json(force=True)
     try:
@@ -312,7 +334,7 @@ def api_create_team_member():
 
 
 @app.route("/api/team/<int:staff_id>", methods=["PATCH"])
-@head_of_sales_required
+@admin_required
 def api_update_team_member(staff_id):
     body = request.get_json(force=True)
     try:
