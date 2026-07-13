@@ -557,6 +557,25 @@ def list_pack_formats() -> list:
     )
 
 
+def _current_prices_by_sku() -> dict:
+    """One batched query for every SKU's currently-effective price, instead of
+    a separate get_sku_price() network round-trip per SKU (was the cause of a
+    ~60s load for the Flavours admin tab with 80+ SKUs — classic N+1)."""
+    sb = _sb()
+    today = date.today().isoformat()
+    rows = (
+        sb.schema("sales").from_("sku_prices").select("sku_id,price,effective_from")
+        .lte("effective_from", today)
+        .or_(f"effective_to.is.null,effective_to.gte.{today}")
+        .order("effective_from", desc=True)
+        .execute().data
+    )
+    out = {}
+    for r in rows:
+        out.setdefault(r["sku_id"], float(r["price"]))  # first (most recent) wins
+    return out
+
+
 def list_flavours_admin() -> list:
     sb = _sb()
     flavours = sb.schema("sales").from_("flavours").select("id,name,status").order("name").execute().data
@@ -565,6 +584,7 @@ def list_flavours_admin() -> list:
         .select("id,sku_code,flavour_id,pack_format_id,status,pack_formats(name)")
         .execute().data
     )
+    prices = _current_prices_by_sku()
     by_flavour = {}
     for s in skus:
         by_flavour.setdefault(s["flavour_id"], []).append({
@@ -572,7 +592,7 @@ def list_flavours_admin() -> list:
             "pack_format_id": s["pack_format_id"],
             "pack_format_name": s["pack_formats"]["name"] if s.get("pack_formats") else "",
             "status": s["status"],
-            "price": get_sku_price(s["id"], s["pack_format_id"]),
+            "price": prices.get(s["id"], MOCK_PRICES.get(s["pack_format_id"], 0.0)),
         })
     return [{
         "id": f["id"], "name": f["name"], "status": f["status"],
