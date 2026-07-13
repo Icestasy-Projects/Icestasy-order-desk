@@ -446,6 +446,8 @@ async function rejectOrder(orderId) {
 let clientsData = [];
 let clientSearchQuery = "";
 let expandedClient = null;
+let expandedClientCity = null;
+let expandedClientPlace = null;
 
 async function loadClients() {
   const box = document.getElementById("clientsList");
@@ -461,11 +463,24 @@ async function loadClients() {
 
 function handleClientSearchInput(val) {
   clientSearchQuery = val.trim().toLowerCase();
+  expandedClientCity = null;
+  expandedClientPlace = null;
   renderClients();
 }
 
 function toggleClient(id) {
   expandedClient = expandedClient === id ? null : id;
+  renderClients();
+}
+
+function toggleClientCity(city) {
+  expandedClientCity = expandedClientCity === city ? null : city;
+  expandedClientPlace = null;
+  renderClients();
+}
+
+function toggleClientPlace(place) {
+  expandedClientPlace = expandedClientPlace === place ? null : place;
   renderClients();
 }
 
@@ -488,6 +503,34 @@ function addressCardHtml(c, a) {
     </div>`;
 }
 
+function clientRowHtml(c) {
+  const isOpen = expandedClient === c.id;
+  let body = "";
+  if (isOpen && IS_ADMIN) {
+    const addrCards = (c.addresses || []).map(a => addressCardHtml(c, a)).join("");
+    body = `
+      <div class="register-form mt8">
+        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${c.gstin || ""}">
+        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${c.fssai_no || ""}">
+        <div id="client-error-${c.id}" class="opt-error mt8"></div>
+        <button class="btn-option btn-sm mt8" onclick="submitClientEdit(${c.id})">Save GST/FSSAI</button>
+      </div>
+      <div class="mt16" style="display:flex;flex-direction:column;gap:10px">
+        ${addrCards || '<div class="opt-muted">No addresses yet</div>'}
+      </div>
+      <button class="btn-option btn-sm mt8" onclick="showAddAddressForm(${c.id})">+ Add address</button>
+      <div id="newaddr-${c.id}"></div>`;
+  }
+  return `
+    <div class="option-btn" style="cursor:${IS_ADMIN ? "pointer" : "default"}" ${IS_ADMIN ? `onclick="toggleClient(${c.id})"` : ""}>
+      <div>
+        <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name}</span>
+        <span class="opt-sub">${c.client_type || ""}${c.primary_contact_name ? " · " + c.primary_contact_name : ""}${c.primary_contact_phone ? " · " + c.primary_contact_phone : ""}${c.place && c.place !== "—" ? " · " + c.place : ""}</span>
+      </div>
+    </div>
+    ${isOpen ? `<div class="mt8">${body}</div>` : ""}`;
+}
+
 function renderClients() {
   const box = document.getElementById("clientsList");
   if (!clientsData.length) {
@@ -500,51 +543,52 @@ function renderClients() {
     (c.primary_contact_name || "").toLowerCase().includes(q) ||
     (c.primary_contact_phone || "").toLowerCase().includes(q) ||
     (c.gstin || "").toLowerCase().includes(q) ||
-    (c.city || "").toLowerCase().includes(q));
+    (c.city || "").toLowerCase().includes(q) ||
+    (c.place || "").toLowerCase().includes(q));
   if (!filtered.length) {
     box.innerHTML = `<div class="opt-muted">No clients match "${clientSearchQuery}"</div>`;
     return;
   }
 
-  const groups = {};
-  filtered.forEach(c => { (groups[c.city || "Unassigned"] = groups[c.city || "Unassigned"] || []).push(c); });
-  const orderedCities = Object.keys(groups).sort((a, b) =>
+  // While searching, auto-expand every group/subgroup that has a match so
+  // results are visible immediately instead of needing manual drill-down.
+  const searching = !!q;
+
+  const cityGroups = {};
+  filtered.forEach(c => { (cityGroups[c.city || "Unassigned"] = cityGroups[c.city || "Unassigned"] || []).push(c); });
+  const orderedCities = Object.keys(cityGroups).sort((a, b) =>
     a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b));
 
-  box.innerHTML = orderedCities.map(city => `
-    <div class="dash-group">
-      <div class="dash-group-header" style="cursor:default">
-        <span>${city}</span>
-        <span class="opt-sub">${groups[city].length} client${groups[city].length === 1 ? "" : "s"}</span>
-      </div>
-      ${groups[city].map(c => {
-        const isOpen = expandedClient === c.id;
-        let body = "";
-        if (isOpen && IS_ADMIN) {
-          const addrCards = (c.addresses || []).map(a => addressCardHtml(c, a)).join("");
-          body = `
-            <div class="register-form mt8">
-              <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${c.gstin || ""}">
-              <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${c.fssai_no || ""}">
-              <div id="client-error-${c.id}" class="opt-error mt8"></div>
-              <button class="btn-option btn-sm mt8" onclick="submitClientEdit(${c.id})">Save GST/FSSAI</button>
-            </div>
-            <div class="mt16" style="display:flex;flex-direction:column;gap:10px">
-              ${addrCards || '<div class="opt-muted">No addresses yet</div>'}
-            </div>
-            <button class="btn-option btn-sm mt8" onclick="showAddAddressForm(${c.id})">+ Add address</button>
-            <div id="newaddr-${c.id}"></div>`;
-        }
+  box.innerHTML = orderedCities.map(city => {
+    const cityClients = cityGroups[city];
+    const cityOpen = searching || expandedClientCity === city;
+    let cityBody = "";
+    if (cityOpen) {
+      const placeGroups = {};
+      cityClients.forEach(c => { (placeGroups[c.place || "—"] = placeGroups[c.place || "—"] || []).push(c); });
+      const orderedPlaces = Object.keys(placeGroups).sort((a, b) => a.localeCompare(b));
+      cityBody = orderedPlaces.map(place => {
+        const placeClients = placeGroups[place];
+        const placeOpen = searching || expandedClientPlace === place;
         return `
-          <div class="option-btn" style="cursor:${IS_ADMIN ? "pointer" : "default"}" ${IS_ADMIN ? `onclick="toggleClient(${c.id})"` : ""}>
-            <div>
-              <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name}</span>
-              <span class="opt-sub">${c.client_type || ""}${c.primary_contact_name ? " · " + c.primary_contact_name : ""}${c.primary_contact_phone ? " · " + c.primary_contact_phone : ""}</span>
-            </div>
-          </div>
-          ${isOpen ? `<div class="mt8">${body}</div>` : ""}`;
-      }).join("")}
-    </div>`).join("");
+          <div class="dash-subgroup">
+            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${JSON.stringify(place)})'>
+              <span>${placeOpen ? "▾" : "▸"} ${place}</span>
+              <span class="opt-sub">${placeClients.length} client${placeClients.length === 1 ? "" : "s"}</span>
+            </button>
+            ${placeOpen ? placeClients.map(clientRowHtml).join("") : ""}
+          </div>`;
+      }).join("");
+    }
+    return `
+      <div class="dash-group">
+        <button type="button" class="dash-group-header" onclick='toggleClientCity(${JSON.stringify(city)})'>
+          <span>${cityOpen ? "▾" : "▸"} ${city}</span>
+          <span class="opt-sub">${cityClients.length} client${cityClients.length === 1 ? "" : "s"}</span>
+        </button>
+        ${cityBody}
+      </div>`;
+  }).join("");
 }
 
 async function submitClientEdit(clientId) {
