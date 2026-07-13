@@ -20,6 +20,7 @@ from order_engine import (
     approve_order, reject_order, list_clients,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status,
+    update_client, update_address,
 )
 from reports import build_orders_workbook
 
@@ -427,6 +428,32 @@ def api_set_sku_status(sku_id):
     try:
         sku = set_sku_status(sku_id, body.get("status"))
         return jsonify({"ok": True, "sku": sku})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/clients/<int:client_id>", methods=["PATCH"])
+@admin_required
+def api_update_client(client_id):
+    body = request.get_json(force=True)
+    try:
+        client = update_client(client_id, body)
+        return jsonify({"ok": True, "client": client})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/addresses/<int:address_id>", methods=["PATCH"])
+@admin_required
+def api_update_address(address_id):
+    body = request.get_json(force=True)
+    try:
+        addr = update_address(address_id, body)
+        return jsonify({"ok": True, "address": addr})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:

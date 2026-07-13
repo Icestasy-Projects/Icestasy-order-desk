@@ -454,11 +454,50 @@ def reject_order(order_id: int, rejected_by: int) -> dict:
 
 def list_clients() -> list:
     sb = _sb()
-    return (
+    clients = (
         sb.schema("sales").from_("clients")
-        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin")
+        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, "
+                "gstin, fssai_no, addresses(id, address_type, line1, line2, city, state, pincode, gstin, is_default)")
         .eq("status", "active").order("business_name").execute().data
     )
+    for c in clients:
+        addrs = c.get("addresses") or []
+        default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
+        c["city"] = city_for_place(default_addr["city"]) if default_addr else "Unassigned"
+    return clients
+
+
+def update_client(client_id: int, data: dict) -> dict:
+    sb = _sb()
+    updates = {}
+    if "gstin" in data:
+        updates["gstin"] = (data.get("gstin") or "").strip() or None
+    if "fssai_no" in data:
+        updates["fssai_no"] = (data.get("fssai_no") or "").strip() or None
+    if not updates:
+        raise ValueError("Nothing to update")
+    res = sb.schema("sales").from_("clients").update(updates).eq("id", client_id).execute()
+    if not res.data:
+        raise ValueError("Client not found")
+    return res.data[0]
+
+
+def update_address(address_id: int, data: dict) -> dict:
+    sb = _sb()
+    updates = {}
+    for key in ("line1", "line2", "city", "state", "pincode", "gstin", "address_type"):
+        if key in data:
+            updates[key] = (data.get(key) or "").strip() or None
+    if updates.get("state"):
+        updates["state_code"] = _state_code_for(updates["state"])
+    if "is_default" in data:
+        updates["is_default"] = bool(data["is_default"])
+    if not updates:
+        raise ValueError("Nothing to update")
+    res = sb.schema("sales").from_("addresses").update(updates).eq("id", address_id).execute()
+    if not res.data:
+        raise ValueError("Address not found")
+    return res.data[0]
 
 
 VALID_STAFF_ROLES = {"salesperson", "admin", *REGION_HEAD_ROLES}
