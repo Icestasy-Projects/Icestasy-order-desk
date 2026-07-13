@@ -1,6 +1,6 @@
 import os
-from datetime import date, datetime, timezone
-from sku_data import MOCK_PRICES
+from datetime import date, datetime, timedelta, timezone
+from sku_data import MOCK_PRICES, ACTIVE_SKUS
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 DEFAULT_PASSWORD = "test@123"  # new staff accounts must change this on first login
@@ -514,4 +514,132 @@ def update_team_member(staff_id: int, data: dict) -> dict:
     res = sb.schema("sales").from_("users").update(updates).eq("id", staff_id).execute()
     if not res.data:
         raise ValueError("Staff member not found")
+    return res.data[0]
+
+
+# ── Admin: SKU stock (sourced from the production schema, no inventory
+#    tracking lives in sales) ────────────────────────────────────────────────
+
+def list_sku_stock() -> list:
+    sb = _sb()
+    fg_rows = (
+        sb.schema("production").from_("v_fg_stock")
+        .select("product_name, unit, qty_on_hand, status")
+        .execute().data
+    )
+    # No FK between schemas — production.v_fg_stock only has free-text
+    # product_name/unit, so match against sales SKUs by (flavour, format) name.
+    stock_by_key = {(r["product_name"].strip().lower(), r["unit"].strip().lower()): r for r in fg_rows}
+    out = []
+    for s in ACTIVE_SKUS:
+        key = (s["flavour_name"].strip().lower(), s["pack_format_name"].strip().lower())
+        fg = stock_by_key.get(key)
+        out.append({
+            "sku_code": s["sku_code"], "flavour_name": s["flavour_name"],
+            "pack_format_name": s["pack_format_name"],
+            "qty_on_hand": float(fg["qty_on_hand"]) if fg else None,
+            "stock_status": fg["status"] if fg else "not_tracked",
+        })
+    out.sort(key=lambda r: (r["flavour_name"], r["pack_format_name"]))
+    return out
+
+
+# ── Admin: flavour + SKU pricing management ─────────────────────────────────
+
+_SKU_CODE_FORMAT_TAGS = {1: "4L", 2: "12SQ", 3: "Samp", 4: "Extra", 5: "B2BAD", 6: "500ML"}
+
+
+def list_pack_formats() -> list:
+    sb = _sb()
+    return (
+        sb.schema("sales").from_("pack_formats").select("id,name")
+        .eq("status", "active").order("id").execute().data
+    )
+
+
+def list_flavours_admin() -> list:
+    sb = _sb()
+    flavours = sb.schema("sales").from_("flavours").select("id,name,status").order("name").execute().data
+    skus = (
+        sb.schema("sales").from_("skus")
+        .select("id,sku_code,flavour_id,pack_format_id,status,pack_formats(name)")
+        .execute().data
+    )
+    by_flavour = {}
+    for s in skus:
+        by_flavour.setdefault(s["flavour_id"], []).append({
+            "id": s["id"], "sku_code": s["sku_code"],
+            "pack_format_id": s["pack_format_id"],
+            "pack_format_name": s["pack_formats"]["name"] if s.get("pack_formats") else "",
+            "status": s["status"],
+            "price": get_sku_price(s["id"], s["pack_format_id"]),
+        })
+    return [{
+        "id": f["id"], "name": f["name"], "status": f["status"],
+        "skus": by_flavour.get(f["id"], []),
+    } for f in flavours]
+
+
+def create_flavour(name: str, pack_format_ids: list, created_by: int) -> dict:
+    sb = _sb()
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Flavour name is required")
+    if not pack_format_ids:
+        raise ValueError("Select at least one pack format")
+
+    existing = sb.schema("sales").from_("flavours").select("id").ilike("name", name).execute()
+    if existing.data:
+        raise ValueError(f"A flavour already exists with this name: {name}")
+
+    fres = sb.schema("sales").from_("flavours").insert({"name": name}).execute()
+    flavour_id = fres.data[0]["id"]
+
+    prefix = "".join(ch for ch in name.upper() if ch.isalpha())[:3] or "SKU"
+    sku_rows = [{
+        "flavour_id": flavour_id, "pack_format_id": pfid,
+        "sku_code": f"{prefix}-{_SKU_CODE_FORMAT_TAGS.get(pfid, str(pfid))}-{flavour_id}",
+    } for pfid in pack_format_ids]
+    sb.schema("sales").from_("skus").insert(sku_rows).execute()
+
+    return {"id": flavour_id, "name": name}
+
+
+def update_flavour(flavour_id: int, data: dict) -> dict:
+    sb = _sb()
+    updates = {}
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise ValueError("Flavour name is required")
+        updates["name"] = name
+    if "status" in data:
+        if data["status"] not in ("active", "inactive", "discontinued"):
+            raise ValueError("Invalid status")
+        updates["status"] = data["status"]
+    if not updates:
+        raise ValueError("Nothing to update")
+
+    res = sb.schema("sales").from_("flavours").update(updates).eq("id", flavour_id).execute()
+    if not res.data:
+        raise ValueError("Flavour not found")
+    return res.data[0]
+
+
+def set_sku_price(sku_id: int, price: float, set_by: int) -> dict:
+    if price < 0:
+        raise ValueError("Price must be non-negative")
+    sb = _sb()
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    # Close out whatever price row is currently open for this SKU, then open
+    # a new one from today — so it takes effect immediately for new orders,
+    # without erasing price history.
+    sb.schema("sales").from_("sku_prices").update({"effective_to": yesterday}) \
+        .eq("sku_id", sku_id).is_("effective_to", "null").execute()
+    row = {
+        "sku_id": sku_id, "price": price, "currency": "INR",
+        "effective_from": today, "created_by": set_by,
+    }
+    res = sb.schema("sales").from_("sku_prices").insert(row).execute()
     return res.data[0]

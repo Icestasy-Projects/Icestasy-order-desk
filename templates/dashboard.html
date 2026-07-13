@@ -31,6 +31,10 @@
       {% if can_view_team %}
       <button class="tab-btn" id="page-tab-team" onclick="switchPage('team', this)">👥 Team</button>
       {% endif %}
+      {% if is_admin %}
+      <button class="tab-btn" id="page-tab-stock" onclick="switchPage('stock', this)">📊 Stock</button>
+      <button class="tab-btn" id="page-tab-flavours" onclick="switchPage('flavours', this)">🍨 Flavours</button>
+      {% endif %}
     </div>
   </nav>
 
@@ -134,6 +138,26 @@
       </section>
     </div>
     {% endif %}
+
+    {% if is_admin %}
+    <div id="page-stock" class="hidden">
+      <section class="step">
+        <div class="step-label">SKU Stock</div>
+        <div class="opt-muted mt8" style="margin-bottom:12px">Live finished-goods stock from the production system.</div>
+        <input id="stockSearch" class="search-input" type="text"
+               placeholder="Search by flavour or format…" oninput="handleStockSearchInput(this.value)">
+        <div id="stockList" class="mt16"></div>
+      </section>
+    </div>
+
+    <div id="page-flavours" class="hidden">
+      <section class="step">
+        <div class="step-label">Flavour Management</div>
+        <div id="flavoursList" class="mt16"></div>
+        <button class="btn-option btn-sm mt8" onclick="showAddFlavourForm()">+ Add flavour</button>
+      </section>
+    </div>
+    {% endif %}
   </main>
 </div>
 
@@ -173,7 +197,13 @@ function switchPage(page, btn) {
   document.getElementById("page-clients").classList.toggle("hidden", page !== "clients");
   const teamPage = document.getElementById("page-team");
   if (teamPage) teamPage.classList.toggle("hidden", page !== "team");
+  const stockPage = document.getElementById("page-stock");
+  if (stockPage) stockPage.classList.toggle("hidden", page !== "stock");
+  const flavoursPage = document.getElementById("page-flavours");
+  if (flavoursPage) flavoursPage.classList.toggle("hidden", page !== "flavours");
   if (page === "clients" && !clientsData.length) loadClients();
+  if (page === "stock" && !stockData.length) loadStock();
+  if (page === "flavours" && !flavoursData.length) loadFlavours();
 }
 
 // ── Header menu + greeting ─────────────────────────────────────────────────
@@ -598,6 +628,193 @@ async function submitEditTeamMember(staffId) {
     return;
   }
   loadTeam();
+}
+
+// ── SKU Stock (admin) ────────────────────────────────────────────────────────
+let stockData = [];
+let stockSearchQuery = "";
+
+const STOCK_STATUS_LABELS = { ok: "OK", low: "Low", critical: "Critical", not_tracked: "Not tracked" };
+const STOCK_STATUS_CLASS = { ok: "badge-green", low: "badge-amber", critical: "badge-red", not_tracked: "badge-gray" };
+
+async function loadStock() {
+  const box = document.getElementById("stockList");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/admin/sku-stock").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    return;
+  }
+  stockData = data.stock || [];
+  renderStock();
+}
+
+function handleStockSearchInput(val) {
+  stockSearchQuery = val.trim().toLowerCase();
+  renderStock();
+}
+
+function renderStock() {
+  const box = document.getElementById("stockList");
+  if (!stockData.length) {
+    box.innerHTML = `<div class="opt-muted">No SKUs found</div>`;
+    return;
+  }
+  const q = stockSearchQuery;
+  const filtered = !q ? stockData : stockData.filter(s =>
+    s.flavour_name.toLowerCase().includes(q) || s.pack_format_name.toLowerCase().includes(q));
+  if (!filtered.length) {
+    box.innerHTML = `<div class="opt-muted">No SKUs match "${stockSearchQuery}"</div>`;
+    return;
+  }
+  box.innerHTML = filtered.map(s => `
+    <div class="dash-order-row">
+      <div class="dash-order-main">
+        <span class="dash-order-no">${s.flavour_name}</span>
+        <span class="dash-order-client">${s.pack_format_name} · ${s.sku_code}</span>
+      </div>
+      <div class="dash-order-side">
+        <span class="badge ${STOCK_STATUS_CLASS[s.stock_status] || "badge-gray"}">${STOCK_STATUS_LABELS[s.stock_status] || s.stock_status}</span>
+        <span class="ci-price">${s.qty_on_hand === null ? "—" : s.qty_on_hand}</span>
+      </div>
+    </div>`).join("");
+}
+
+// ── Flavour management (admin) ───────────────────────────────────────────────
+let flavoursData = [];
+let packFormatsData = [];
+let expandedFlavour = null;
+
+async function loadFlavours() {
+  const box = document.getElementById("flavoursList");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/admin/flavours").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    return;
+  }
+  flavoursData = data.flavours || [];
+  packFormatsData = data.pack_formats || [];
+  renderFlavours();
+}
+
+function toggleFlavour(id) {
+  expandedFlavour = expandedFlavour === id ? null : id;
+  renderFlavours();
+}
+
+function renderFlavours() {
+  const box = document.getElementById("flavoursList");
+  if (!flavoursData.length) {
+    box.innerHTML = `<div class="opt-muted">No flavours found</div>`;
+    return;
+  }
+  box.innerHTML = flavoursData.map(f => {
+    const isOpen = expandedFlavour === f.id;
+    let body = "";
+    if (isOpen) {
+      const skuRows = f.skus.map(s => `
+        <div class="cart-item-card">
+          <div class="ci-info">
+            <span class="ci-name">${s.pack_format_name}</span>
+            <span class="ci-fmt">${s.sku_code} · ${s.status}</span>
+          </div>
+          <div class="ci-right">
+            <input type="number" min="0" step="0.01" class="search-input" style="width:110px"
+                   id="price-${s.id}" value="${s.price}">
+            <button class="btn-option btn-sm" onclick="submitSkuPrice(${s.id})">Save price</button>
+          </div>
+        </div>`).join("");
+      body = `
+        <div class="register-form mt8">
+          <input id="fname-${f.id}" class="search-input" value="${f.name}">
+          <select id="fstatus-${f.id}" class="search-input mt8">
+            <option value="active"${f.status === "active" ? " selected" : ""}>Active</option>
+            <option value="inactive"${f.status === "inactive" ? " selected" : ""}>Inactive</option>
+            <option value="discontinued"${f.status === "discontinued" ? " selected" : ""}>Discontinued</option>
+          </select>
+          <div id="ferror-${f.id}" class="opt-error mt8"></div>
+          <button class="btn-option btn-sm mt8" onclick="submitFlavourEdit(${f.id})">Save flavour</button>
+        </div>
+        <div class="mt16">${skuRows || '<div class="opt-muted">No SKUs yet</div>'}</div>`;
+    }
+    return `
+      <div class="dash-group">
+        <button type="button" class="dash-group-header" onclick="toggleFlavour(${f.id})">
+          <span>${isOpen ? "▾" : "▸"} ${f.name}</span>
+          <span class="opt-sub">${f.status} · ${f.skus.length} SKU${f.skus.length === 1 ? "" : "s"}</span>
+        </button>
+        ${body}
+      </div>`;
+  }).join("");
+}
+
+async function submitFlavourEdit(flavourId) {
+  const errBox = document.getElementById(`ferror-${flavourId}`);
+  const payload = {
+    name: document.getElementById(`fname-${flavourId}`).value.trim(),
+    status: document.getElementById(`fstatus-${flavourId}`).value,
+  };
+  const res = await fetch(`/api/admin/flavours/${flavourId}`, {
+    method: "PATCH", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not update flavour";
+    return;
+  }
+  loadFlavours();
+}
+
+async function submitSkuPrice(skuId) {
+  const price = document.getElementById(`price-${skuId}`).value;
+  const res = await fetch(`/api/admin/skus/${skuId}/price`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({price: parseFloat(price)}),
+  }).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not update price");
+    return;
+  }
+  loadFlavours();
+}
+
+function showAddFlavourForm() {
+  const box = document.getElementById("flavoursList");
+  const formatCheckboxes = packFormatsData.map(pf => `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 0">
+      <input type="checkbox" value="${pf.id}" class="af-format-cb"> ${pf.name}
+    </label>`).join("");
+  box.insertAdjacentHTML("afterbegin", `
+    <div class="register-form mt8" id="addFlavourForm">
+      <input id="afName" class="search-input" placeholder="Flavour name *">
+      <div class="opt-muted mt8">Pack formats *</div>
+      ${formatCheckboxes}
+      <div id="afError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="submitAddFlavour()">Add Flavour</button>
+        <button class="btn-ghost" onclick="renderFlavours()">Cancel</button>
+      </div>
+    </div>`);
+}
+
+async function submitAddFlavour() {
+  const errBox = document.getElementById("afError");
+  const name = document.getElementById("afName").value.trim();
+  const pack_format_ids = Array.from(document.querySelectorAll(".af-format-cb:checked")).map(cb => parseInt(cb.value));
+  if (!name || !pack_format_ids.length) {
+    errBox.textContent = "Name and at least one pack format are required";
+    return;
+  }
+  const res = await fetch("/api/admin/flavours", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name, pack_format_ids}),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not add flavour";
+    return;
+  }
+  loadFlavours();
 }
 
 loadOrders();
