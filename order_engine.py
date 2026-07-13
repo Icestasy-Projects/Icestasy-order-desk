@@ -14,8 +14,7 @@ REGION_HEAD_ROLES = {
     "roi_head": "Rest of India",
 }
 ROLE_LABELS = {
-    "manager": "Head of Sales",
-    "onboarding": "Client Onboarding",
+    "admin": "Admin",
     "salesperson": "Sales Team Member",
     **{role: f"{label} Head" for role, label in REGION_HEAD_ROLES.items()},
 }
@@ -325,7 +324,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, shipping_address_id")
         .order("created_at", desc=True)
     )
-    if role != "manager" and role not in REGION_HEAD_ROLES:
+    if role != "admin" and role not in REGION_HEAD_ROLES:
         q = q.eq("created_by_user_id", user_id)
     orders = q.execute().data
     if not orders:
@@ -390,7 +389,45 @@ def mark_payment_received(order_id: int, received_by: int) -> dict:
     return res.data[0]
 
 
-VALID_STAFF_ROLES = {"salesperson", "manager", "onboarding", *REGION_HEAD_ROLES}
+_TERMINAL_ORDER_STATUSES = {"invoiced", "rejected", "cancelled", "delivered"}
+
+
+def approve_order(order_id: int, approved_by: int) -> dict:
+    sb = _sb()
+    order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
+    if not order.data:
+        raise ValueError("Order not found")
+    if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
+        raise ValueError(f"Order is already {order.data[0]['status']}")
+    row = {
+        "status": "invoiced", "approved_by": approved_by,
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    res = sb.schema("sales").from_("orders").update(row).eq("id", order_id).execute()
+    return res.data[0]
+
+
+def reject_order(order_id: int, rejected_by: int) -> dict:
+    sb = _sb()
+    order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
+    if not order.data:
+        raise ValueError("Order not found")
+    if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
+        raise ValueError(f"Order is already {order.data[0]['status']}")
+    res = sb.schema("sales").from_("orders").update({"status": "rejected"}).eq("id", order_id).execute()
+    return res.data[0]
+
+
+def list_clients() -> list:
+    sb = _sb()
+    return (
+        sb.schema("sales").from_("clients")
+        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin")
+        .eq("status", "active").order("business_name").execute().data
+    )
+
+
+VALID_STAFF_ROLES = {"salesperson", "admin", *REGION_HEAD_ROLES}
 VALID_REGIONS = set(REGION_HEAD_ROLES.values())
 
 

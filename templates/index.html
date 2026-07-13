@@ -72,11 +72,11 @@
         <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
                oninput="debounceSearch(this.value)">
       </div>
-      {% if can_onboard_clients %}
+      {% if is_admin %}
       <button class="btn-option btn-sm mt8" id="registerToggleBtn"
               onclick="showRegisterForm(document.getElementById('clientSearch').value)">+ Register new client</button>
       {% else %}
-      <div class="opt-muted mt8">New client? Ask your Head of Sales or Client Onboarding to register them first.</div>
+      <div class="opt-muted mt8">New client? Ask your Admin to register them first.</div>
       {% endif %}
       <div id="clientResults" class="option-list mt8"></div>
     </section>
