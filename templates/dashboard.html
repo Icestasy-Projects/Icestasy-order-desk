@@ -480,15 +480,40 @@ async function loadTeam() {
   renderTeam();
 }
 
-function renderTeam() {
-  const box = document.getElementById("teamList");
-  box.innerHTML = teamData.map(t => `
+function teamMemberRow(t) {
+  return `
     <div class="option-btn" style="cursor:default">
       <div>
         <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
         <span class="opt-sub">${ROLE_LABELS[t.role] || t.role}${t.region ? " · " + t.region : ""} · ${t.email}</span>
       </div>
       ${IS_ADMIN ? `<button class="btn-ghost" onclick="showEditTeamForm(${t.id})">Edit</button>` : ""}
+    </div>`;
+}
+
+function renderTeam() {
+  const box = document.getElementById("teamList");
+  if (!teamData.length) {
+    box.innerHTML = `<div class="opt-muted">No team members yet</div>`;
+    return;
+  }
+  const groups = {};
+  teamData.forEach(t => {
+    const k = t.region || "Unassigned";
+    (groups[k] = groups[k] || []).push(t);
+  });
+  // Order: REGION_OPTIONS order first (matches city-head regions), then
+  // anything else (e.g. Admin, salespeople with no region) under "Unassigned" last.
+  const orderedKeys = [...REGION_OPTIONS.filter(r => groups[r]),
+                        ...Object.keys(groups).filter(k => !REGION_OPTIONS.includes(k) && k !== "Unassigned"),
+                        ...(groups["Unassigned"] ? ["Unassigned"] : [])];
+  box.innerHTML = orderedKeys.map(region => `
+    <div class="dash-group">
+      <div class="dash-group-header" style="cursor:default">
+        <span>${region}</span>
+        <span class="opt-sub">${groups[region].length} member${groups[region].length === 1 ? "" : "s"}</span>
+      </div>
+      ${groups[region].map(teamMemberRow).join("")}
     </div>`).join("");
 }
 
