@@ -723,8 +723,20 @@ function renderFlavours() {
             <input type="number" min="0" step="0.01" class="search-input" style="width:110px"
                    id="price-${s.id}" value="${s.price}">
             <button class="btn-option btn-sm" onclick="submitSkuPrice(${s.id})">Save price</button>
+            ${s.status === "active"
+              ? `<button class="btn-option btn-sm" onclick="removeSku(${s.id})">Remove</button>`
+              : `<button class="btn-option btn-sm" onclick="reactivateSku(${s.id})">Reactivate</button>`}
           </div>
         </div>`).join("");
+      const usedFormatIds = new Set(f.skus.map(s => s.pack_format_id));
+      const availableFormats = packFormatsData.filter(pf => !usedFormatIds.has(pf.id));
+      const addSkuRow = availableFormats.length ? `
+        <div class="btn-group mt8">
+          <select id="newskufmt-${f.id}" class="search-input" style="max-width:220px">
+            ${availableFormats.map(pf => `<option value="${pf.id}">${pf.name}</option>`).join("")}
+          </select>
+          <button class="btn-option btn-sm" onclick="submitAddSku(${f.id})">+ Add SKU</button>
+        </div>` : "";
       body = `
         <div class="register-form mt8">
           <input id="fname-${f.id}" class="search-input" value="${f.name}">
@@ -736,7 +748,8 @@ function renderFlavours() {
           <div id="ferror-${f.id}" class="opt-error mt8"></div>
           <button class="btn-option btn-sm mt8" onclick="submitFlavourEdit(${f.id})">Save flavour</button>
         </div>
-        <div class="mt16">${skuRows || '<div class="opt-muted">No SKUs yet</div>'}</div>`;
+        <div class="mt16">${skuRows || '<div class="opt-muted">No SKUs yet</div>'}</div>
+        ${addSkuRow}`;
     }
     return `
       <div class="dash-group">
@@ -777,6 +790,40 @@ async function submitSkuPrice(skuId) {
     return;
   }
   loadFlavours();
+}
+
+async function submitAddSku(flavourId) {
+  const pack_format_id = parseInt(document.getElementById(`newskufmt-${flavourId}`).value);
+  const res = await fetch(`/api/admin/flavours/${flavourId}/skus`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({pack_format_id}),
+  }).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not add SKU");
+    return;
+  }
+  loadFlavours();
+}
+
+async function setSkuStatus(skuId, status) {
+  const res = await fetch(`/api/admin/skus/${skuId}/status`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({status}),
+  }).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not update SKU");
+    return;
+  }
+  loadFlavours();
+}
+
+function removeSku(skuId) {
+  if (!confirm("Remove this SKU? It will stop appearing as orderable, but past orders are kept.")) return;
+  setSkuStatus(skuId, "inactive");
+}
+
+function reactivateSku(skuId) {
+  setSkuStatus(skuId, "active");
 }
 
 function showAddFlavourForm() {
