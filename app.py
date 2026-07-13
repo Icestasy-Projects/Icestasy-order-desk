@@ -20,8 +20,9 @@ from order_engine import (
     approve_order, reject_order, list_clients,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status,
-    update_client, update_address,
+    update_client, update_address, set_sku_hsn_gst,
 )
+from invoicing import build_invoice_pdf
 from reports import build_orders_workbook
 
 app = Flask(__name__)
@@ -458,6 +459,32 @@ def api_update_address(address_id):
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/skus/<int:sku_id>/hsn-gst", methods=["POST"])
+@admin_required
+def api_set_sku_hsn_gst(sku_id):
+    body = request.get_json(force=True)
+    try:
+        gst_rate = float(body.get("gst_rate"))
+        sku = set_sku_hsn_gst(sku_id, body.get("hsn_code"), gst_rate)
+        return jsonify({"ok": True, "sku": sku})
+    except (ValueError, TypeError) as e:
+        return jsonify({"ok": False, "error": str(e) or "Invalid HSN/GST"}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/dashboard/orders/<int:order_id>/invoice")
+@broad_view_required
+def api_order_invoice(order_id):
+    try:
+        buf, filename = build_invoice_pdf(order_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return send_file(buf, mimetype="application/pdf", as_attachment=True, download_name=filename)
 
 
 if __name__ == "__main__":

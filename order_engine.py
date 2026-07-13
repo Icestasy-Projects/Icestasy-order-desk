@@ -654,7 +654,7 @@ def list_flavours_admin() -> list:
     flavours = sb.schema("sales").from_("flavours").select("id,name,status").order("name").execute().data
     skus = (
         sb.schema("sales").from_("skus")
-        .select("id,sku_code,flavour_id,pack_format_id,status,pack_formats(name)")
+        .select("id,sku_code,flavour_id,pack_format_id,status,hsn_code,gst_rate,pack_formats(name)")
         .execute().data
     )
     prices = _current_prices_by_sku()
@@ -666,6 +666,8 @@ def list_flavours_admin() -> list:
             "pack_format_name": s["pack_formats"]["name"] if s.get("pack_formats") else "",
             "status": s["status"],
             "price": prices.get(s["id"], MOCK_PRICES.get(s["pack_format_id"], 0.0)),
+            "hsn_code": s.get("hsn_code") or "",
+            "gst_rate": float(s["gst_rate"]) if s.get("gst_rate") is not None else 5.0,
         })
     return [{
         "id": f["id"], "name": f["name"], "status": f["status"],
@@ -694,12 +696,15 @@ def create_flavour(name: str, pack_format_ids: list, created_by: int) -> dict:
     return {"id": flavour_id, "name": name}
 
 
+_DEFAULT_HSN_CODE = "21050000"  # Ice cream and other edible ice
+
+
 def _new_sku_row(flavour_id: int, flavour_name: str, pack_format_id: int) -> dict:
     prefix = "".join(ch for ch in flavour_name.upper() if ch.isalpha())[:3] or "SKU"
     tag = _SKU_CODE_FORMAT_TAGS.get(pack_format_id, str(pack_format_id))
     return {
         "flavour_id": flavour_id, "pack_format_id": pack_format_id,
-        "sku_code": f"{prefix}-{tag}-{flavour_id}",
+        "sku_code": f"{prefix}-{tag}-{flavour_id}", "hsn_code": _DEFAULT_HSN_CODE,
     }
 
 
@@ -766,6 +771,22 @@ def set_sku_status(sku_id: int, status: str) -> dict:
         raise ValueError("Invalid status")
     sb = _sb()
     res = sb.schema("sales").from_("skus").update({"status": status}).eq("id", sku_id).execute()
+    if not res.data:
+        raise ValueError("SKU not found")
+    return res.data[0]
+
+
+def set_sku_hsn_gst(sku_id: int, hsn_code: str, gst_rate: float) -> dict:
+    hsn_code = (hsn_code or "").strip()
+    if not hsn_code:
+        raise ValueError("HSN/SAC code is required")
+    if gst_rate < 0 or gst_rate > 100:
+        raise ValueError("GST rate must be between 0 and 100")
+    sb = _sb()
+    res = (
+        sb.schema("sales").from_("skus")
+        .update({"hsn_code": hsn_code, "gst_rate": gst_rate}).eq("id", sku_id).execute()
+    )
     if not res.data:
         raise ValueError("SKU not found")
     return res.data[0]
