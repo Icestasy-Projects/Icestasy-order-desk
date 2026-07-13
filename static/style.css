@@ -221,6 +221,10 @@ body {
 }
 .summary-table td { padding: 10px 8px 10px 0; border-bottom: 1px solid var(--slate-100); }
 .summary-table td.num { text-align: right; }
+.flavour-row { cursor: pointer; transition: background .1s; }
+.flavour-row:hover { background: var(--slate-100); }
+.flavour-row td:first-child { font-weight: 700; white-space: nowrap; }
+.flavour-detail { padding: 12px 0 20px !important; border-bottom: 1.5px dashed var(--slate-300) !important; }
 .summary-total {
   text-align: right; font-size: 15px; color: var(--slate-700);
   padding-top: 14px; margin-bottom: 4px;

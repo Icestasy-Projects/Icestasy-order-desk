@@ -73,6 +73,24 @@ def city_for_place(place: str) -> str:
 def _region_role_for_city(place: str) -> str:
     return _CITY_TO_REGION_ROLE.get(city_for_place(place), "roi_head")
 
+
+# Order number city code — reuses the same city scoping as regional-head
+# visibility, so an order's code matches whichever region head sees it.
+_REGION_ROLE_TO_ORDER_CODE = {
+    "mumbai_head": "MU", "pune_head": "PU", "bangalore_head": "BA",
+    "hyderabad_head": "HY", "delhi_head": "DL", "roi_head": "ROI",
+}
+
+
+def _order_city_code(place: str) -> str:
+    return _REGION_ROLE_TO_ORDER_CODE[_region_role_for_city(place)]
+
+
+def _financial_year(d: date) -> str:
+    """Indian FY runs April-March, e.g. May 2026 and Jan 2027 are both FY 26-27."""
+    start_year = d.year if d.month >= 4 else d.year - 1
+    return f"{str(start_year)[-2:]}-{str(start_year + 1)[-2:]}"
+
 INDIA_STATE_CODES = {
     "jammu and kashmir": "01", "himachal pradesh": "02", "punjab": "03",
     "chandigarh": "04", "uttarakhand": "05", "haryana": "06", "delhi": "07",
@@ -244,17 +262,27 @@ def get_sku_price(sku_id: int, pack_format_id: int) -> float:
     return MOCK_PRICES.get(pack_format_id, 0.0)
 
 
-def _next_order_no(sb) -> str:
-    year = date.today().year
-    result = sb.schema("sales").from_("orders").select("order_no").order("id", desc=True).limit(1).execute()
-    if result.data:
-        last = result.data[0]["order_no"]
+def _next_order_no(sb, city_code: str) -> str:
+    """{CITY}{MM}/{FY}/{SEQ:04d}, e.g. MU05/26-27/1843 — sequence is scoped
+    per city per financial year (Indian FY, April-March), so it resets when
+    a new FY starts and each city counts independently."""
+    today = date.today()
+    fy = _financial_year(today)
+    mm = f"{today.month:02d}"
+    # City code is fixed length but LIKE needs to skip over the 2-digit month
+    # regardless of code length ("MU__/26-27/%" or "ROI__/26-27/%").
+    pattern = f"{city_code}__/{fy}/%"
+    result = (
+        sb.schema("sales").from_("orders").select("order_no")
+        .like("order_no", pattern).execute()
+    )
+    max_seq = 0
+    for row in result.data:
         try:
-            num = int(last.split("-")[2]) + 1
+            max_seq = max(max_seq, int(row["order_no"].rsplit("/", 1)[1]))
         except (IndexError, ValueError):
-            num = 1
-        return f"ORD-{year}-{num:06d}"
-    return f"ORD-{year}-000001"
+            continue
+    return f"{city_code}{mm}/{fy}/{max_seq + 1:04d}"
 
 
 def add_order_collateral(sb, order_id: int, collateral: list) -> list:
@@ -274,7 +302,13 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     subtotal = sum(l["quantity"] * l["unit_price"] for l in lines)
     discount = sum(l.get("line_discount", 0.0) * l["quantity"] for l in lines)
     total = subtotal - discount
-    order_no = _next_order_no(sb)
+
+    city_code = "ROI"
+    if shipping_address_id:
+        addr = sb.schema("sales").from_("addresses").select("city").eq("id", shipping_address_id).limit(1).execute()
+        if addr.data and addr.data[0].get("city"):
+            city_code = _order_city_code(addr.data[0]["city"])
+    order_no = _next_order_no(sb, city_code)
     order_row = {
         "order_no": order_no, "client_id": client_id,
         "channel": "whatsapp", "order_type": "commercial",
