@@ -3,3 +3,5 @@ supabase
 python-dotenv
 requests
 openpyxl
+reportlab
+qrcode[pil]
