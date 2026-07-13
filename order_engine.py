@@ -595,14 +595,19 @@ def create_flavour(name: str, pack_format_ids: list, created_by: int) -> dict:
     fres = sb.schema("sales").from_("flavours").insert({"name": name}).execute()
     flavour_id = fres.data[0]["id"]
 
-    prefix = "".join(ch for ch in name.upper() if ch.isalpha())[:3] or "SKU"
-    sku_rows = [{
-        "flavour_id": flavour_id, "pack_format_id": pfid,
-        "sku_code": f"{prefix}-{_SKU_CODE_FORMAT_TAGS.get(pfid, str(pfid))}-{flavour_id}",
-    } for pfid in pack_format_ids]
+    sku_rows = [_new_sku_row(flavour_id, name, pfid) for pfid in pack_format_ids]
     sb.schema("sales").from_("skus").insert(sku_rows).execute()
 
     return {"id": flavour_id, "name": name}
+
+
+def _new_sku_row(flavour_id: int, flavour_name: str, pack_format_id: int) -> dict:
+    prefix = "".join(ch for ch in flavour_name.upper() if ch.isalpha())[:3] or "SKU"
+    tag = _SKU_CODE_FORMAT_TAGS.get(pack_format_id, str(pack_format_id))
+    return {
+        "flavour_id": flavour_id, "pack_format_id": pack_format_id,
+        "sku_code": f"{prefix}-{tag}-{flavour_id}",
+    }
 
 
 def update_flavour(flavour_id: int, data: dict) -> dict:
@@ -642,4 +647,32 @@ def set_sku_price(sku_id: int, price: float, set_by: int) -> dict:
         "effective_from": today, "created_by": set_by,
     }
     res = sb.schema("sales").from_("sku_prices").insert(row).execute()
+    return res.data[0]
+
+
+def add_sku_to_flavour(flavour_id: int, pack_format_id: int) -> dict:
+    sb = _sb()
+    flavour = sb.schema("sales").from_("flavours").select("id,name").eq("id", flavour_id).limit(1).execute()
+    if not flavour.data:
+        raise ValueError("Flavour not found")
+
+    existing = (
+        sb.schema("sales").from_("skus").select("id,status")
+        .eq("flavour_id", flavour_id).eq("pack_format_id", pack_format_id).execute()
+    )
+    if existing.data:
+        raise ValueError("This flavour already has a SKU for that pack format — reactivate it instead of adding a new one")
+
+    row = _new_sku_row(flavour_id, flavour.data[0]["name"], pack_format_id)
+    res = sb.schema("sales").from_("skus").insert(row).execute()
+    return res.data[0]
+
+
+def set_sku_status(sku_id: int, status: str) -> dict:
+    if status not in ("active", "inactive", "discontinued"):
+        raise ValueError("Invalid status")
+    sb = _sb()
+    res = sb.schema("sales").from_("skus").update({"status": status}).eq("id", sku_id).execute()
+    if not res.data:
+        raise ValueError("SKU not found")
     return res.data[0]

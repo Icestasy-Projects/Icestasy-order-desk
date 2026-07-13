@@ -19,7 +19,7 @@ from order_engine import (
     set_user_password, mark_password_changed,
     approve_order, reject_order, list_clients,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
-    set_sku_price, list_pack_formats,
+    set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status,
 )
 from reports import build_orders_workbook
 
@@ -402,6 +402,33 @@ def api_set_sku_price(sku_id):
         return jsonify({"ok": True, "price": row})
     except (ValueError, TypeError) as e:
         return jsonify({"ok": False, "error": str(e) or "Invalid price"}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/flavours/<int:flavour_id>/skus", methods=["POST"])
+@admin_required
+def api_add_sku(flavour_id):
+    body = request.get_json(force=True)
+    try:
+        pack_format_id = int(body.get("pack_format_id"))
+        sku = add_sku_to_flavour(flavour_id, pack_format_id)
+        return jsonify({"ok": True, "sku": sku})
+    except (ValueError, TypeError) as e:
+        return jsonify({"ok": False, "error": str(e) or "Invalid pack format"}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/skus/<int:sku_id>/status", methods=["POST"])
+@admin_required
+def api_set_sku_status(sku_id):
+    body = request.get_json(force=True)
+    try:
+        sku = set_sku_status(sku_id, body.get("status"))
+        return jsonify({"ok": True, "sku": sku})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
