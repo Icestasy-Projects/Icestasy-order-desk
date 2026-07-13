@@ -67,11 +67,14 @@ body {
 }
 .tab-bar-inner {
   max-width: 720px; margin: 0 auto; display: flex; gap: 4px; padding: 0 16px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
 }
+.tab-bar-inner::-webkit-scrollbar { display: none; }
 .tab-btn {
   background: none; border: none; padding: 14px 18px; font-size: 14px; font-weight: 700;
   color: var(--slate-500); cursor: pointer; border-bottom: 2.5px solid transparent;
   transition: color .15s, border-color .15s; min-height: 44px;
+  white-space: nowrap; flex-shrink: 0;
 }
 .tab-btn:hover { color: var(--slate-900); }
 .tab-btn.active { color: var(--brand-dk); border-color: var(--brand); }
@@ -301,10 +304,12 @@ body {
   .header-right { width: 100%; }
   .btn-ghost { padding: 8px 14px; font-size: 12px; }
   .tab-bar { position: static; }
+  .tab-bar-inner { padding: 0 12px; }
+  .tab-btn { padding: 12px 12px; font-size: 13px; }
   .main { padding: 16px 12px 100px; gap: 14px; }
   .step { padding: 18px 16px; border-radius: 18px; }
   .cart-item-card { padding: 14px; }
-  .ci-right { width: 100%; justify-content: space-between; }
+  .ci-right { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
   .btn-group { gap: 8px; }
   .summary-table { font-size: 12px; }
   .dash-title-row { flex-direction: column; align-items: flex-start; }
