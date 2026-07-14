@@ -16,7 +16,7 @@
         <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">☰</button>
         <div class="menu-dropdown" id="headerMenu">
           <a class="menu-item" href="/new-order">🧾 New Order</a>
-          <a class="menu-item" href="/api/dashboard/export">⬇ Download Excel Report</a>
+          <button type="button" class="menu-item" onclick="toggleMenu(); openReportModal();">⬇ Download Excel Report</button>
           <a class="menu-item" href="/change-password">🔑 Change Password</a>
           <a class="menu-item" href="/logout">🚪 Log out</a>
         </div>
@@ -51,6 +51,13 @@
         <div id="overviewRow" class="overview-row"></div>
       </section>
 
+      {% if is_admin %}
+      <section>
+        <div class="section-label">Sales Breakdown</div>
+        <div id="breakdownRow" class="breakdown-row"></div>
+      </section>
+      {% endif %}
+
       <section>
         <div class="section-label">Quick Actions</div>
         <div class="ops-list">
@@ -77,20 +84,13 @@
             </div>
           </button>
           {% endif %}
-          <a class="ops-row" href="/api/dashboard/export">
+          <button type="button" class="ops-row" onclick="openReportModal()">
             <div class="ops-icon ops-yellow">⬇</div>
             <div>
               <div class="ops-title">Download Excel Report</div>
               <div class="ops-sub">Export current orders to a spreadsheet</div>
             </div>
-          </a>
-          <a class="ops-row" href="/change-password">
-            <div class="ops-icon ops-pink">🔑</div>
-            <div>
-              <div class="ops-title">Change Password</div>
-              <div class="ops-sub">Update your account password</div>
-            </div>
-          </a>
+          </button>
         </div>
       </section>
 
@@ -167,6 +167,25 @@
   </main>
 </div>
 
+<div class="modal-backdrop" id="reportModalBackdrop" onclick="closeReportModal()"></div>
+<div class="modal-box" id="reportModal">
+  <div class="modal-title">Download Excel Report</div>
+  <label class="login-label">Report type</label>
+  <select id="reportType" class="search-input mt8">
+    <option value="all">All Orders</option>
+    <option value="month">Month on Month</option>
+    <option value="city">City-wise</option>
+    <option value="client">Client-wise</option>
+    {% if can_view_team %}<option value="salesperson">Salesperson-wise</option>{% endif %}
+  </select>
+  <label class="login-label mt16">From</label>
+  <input type="date" id="reportFrom" class="search-input mt8">
+  <label class="login-label mt16">To</label>
+  <input type="date" id="reportTo" class="search-input mt8">
+  <button type="button" class="btn-primary" onclick="downloadReport()">⬇ Download</button>
+  <button type="button" class="btn-ghost mt8" style="width:100%" onclick="closeReportModal()">Cancel</button>
+</div>
+
 <script>
 const IS_ADMIN = {{ "true" if is_admin else "false" }};
 const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
@@ -225,6 +244,29 @@ document.addEventListener("click", (e) => {
   }
 });
 
+// ── Report export modal ────────────────────────────────────────────────────
+function openReportModal() {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 13); // default: last 14 days, inclusive
+  document.getElementById("reportFrom").value = from.toISOString().slice(0, 10);
+  document.getElementById("reportTo").value = to.toISOString().slice(0, 10);
+  document.getElementById("reportModalBackdrop").classList.add("open");
+  document.getElementById("reportModal").classList.add("open");
+}
+function closeReportModal() {
+  document.getElementById("reportModalBackdrop").classList.remove("open");
+  document.getElementById("reportModal").classList.remove("open");
+}
+function downloadReport() {
+  const type = document.getElementById("reportType").value;
+  const from = document.getElementById("reportFrom").value;
+  const to = document.getElementById("reportTo").value;
+  const params = new URLSearchParams({type, from, to});
+  window.location = `/api/dashboard/export?${params.toString()}`;
+  closeReportModal();
+}
+
 (function setGreeting() {
   const hour = new Date().getHours();
   const part = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
@@ -263,6 +305,7 @@ function renderStats(orders) {
   const total = orders.length;
   const totalValue = orders.reduce((s, o) => s + o.total_amount, 0);
   const paid = orders.filter(o => o.payment_status === "received").length;
+  const due = orders.filter(o => o.payment_status === "pending" || o.payment_status === "not_recorded").length;
   document.getElementById("overviewRow").innerHTML = `
     <div class="overview-card">
       <div class="overview-icon">📦</div>
@@ -278,6 +321,50 @@ function renderStats(orders) {
       <div class="overview-icon">✅</div>
       <div class="overview-label">Paid</div>
       <div class="overview-value">${paid}</div>
+    </div>
+    <div class="overview-card">
+      <div class="overview-icon">⏳</div>
+      <div class="overview-label">Payment Due</div>
+      <div class="overview-value" style="color:var(--red)">${due}</div>
+    </div>`;
+  if (IS_ADMIN) renderBreakdown(orders);
+}
+
+// Pure-CSS horizontal bar breakdowns for the admin overview — no charting library needed.
+function barRows(orders, keyFn, limit) {
+  const totals = {};
+  orders.forEach(o => {
+    const k = keyFn(o) || "—";
+    const entry = totals[k] || (totals[k] = {count: 0, value: 0});
+    entry.count += 1;
+    entry.value += o.total_amount;
+  });
+  let entries = Object.entries(totals).sort((a, b) => b[1].value - a[1].value);
+  if (limit) entries = entries.slice(0, limit);
+  const maxValue = Math.max(1, ...entries.map(([, v]) => v.value));
+  if (!entries.length) return `<div class="opt-muted">No data</div>`;
+  return entries.map(([name, v]) => `
+    <div class="bar-row">
+      <div class="bar-row-label">
+        <span>${name}</span>
+        <span class="opt-sub">${v.count} · ${fmt(v.value)}</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v.value / maxValue * 100).toFixed(1)}%"></div></div>
+    </div>`).join("");
+}
+
+function renderBreakdown(orders) {
+  const box = document.getElementById("breakdownRow");
+  if (!box) return;
+  if (!orders.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `
+    <div class="breakdown-card">
+      <div class="breakdown-title">By Status</div>
+      ${barRows(orders, o => STATUS_LABELS[o.status] || o.status)}
+    </div>
+    <div class="breakdown-card">
+      <div class="breakdown-title">Top Cities</div>
+      ${barRows(orders, reportCity, 5)}
     </div>`;
 }
 
@@ -320,10 +407,14 @@ function orderRow(o) {
     </div>`;
 }
 
+// Mumbai Metropolitan Region: these are separate real cities but reported as one "Mumbai" group.
+const MMR_CITIES = new Set(["Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"]);
+function reportCity(o) { return MMR_CITIES.has(o.city) ? "Mumbai" : o.city; }
+
 function groupKey(o) {
   if (grouping === "month") return new Date(o.created_at).toLocaleString("en-IN", {month: "long", year: "numeric"});
   if (grouping === "client") return o.client_name;
-  if (grouping === "city") return o.city;
+  if (grouping === "city") return reportCity(o);
   if (grouping === "salesperson") return o.salesperson_name;
   return null;
 }
