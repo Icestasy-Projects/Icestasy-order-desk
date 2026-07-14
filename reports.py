@@ -1,5 +1,5 @@
 import io
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -59,6 +59,13 @@ GROUP_KEY_FUNCS = {
     "client": lambda o: o.get("client_name") or "—",
     "salesperson": lambda o: o.get("salesperson_name") or "—",
 }
+
+
+def _last_12_months_range() -> tuple:
+    today = date.today()
+    month_index = today.year * 12 + (today.month - 1) - 11
+    start = date(month_index // 12, month_index % 12 + 1, 1)
+    return start.isoformat(), today.isoformat()
 
 
 def _in_range(created_at: str, date_from: str, date_to: str) -> bool:
@@ -179,6 +186,8 @@ def build_orders_workbook(orders: list, role_label: str, full_name: str,
                            report_type: str = "all", date_from: str = None, date_to: str = None) -> io.BytesIO:
     if report_type not in REPORT_TYPE_LABELS:
         report_type = "all"
+    if report_type == "month" and not date_from and not date_to:
+        date_from, date_to = _last_12_months_range()
     if date_from or date_to:
         orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
 
