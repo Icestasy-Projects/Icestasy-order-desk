@@ -269,9 +269,13 @@ def api_dashboard_orders():
 def api_dashboard_export():
     role = session["role"]
     orders = list_dashboard_orders(user_id=session["user_id"], role=role)
+    report_type = request.args.get("type", "all")
+    date_from = request.args.get("from") or None
+    date_to = request.args.get("to") or None
     buf = build_orders_workbook(orders, role_label=ROLE_LABELS.get(role, role),
-                                 full_name=session.get("full_name") or "")
-    filename = f"icestasy-orders-{date.today().isoformat()}.xlsx"
+                                 full_name=session.get("full_name") or "",
+                                 report_type=report_type, date_from=date_from, date_to=date_to)
+    filename = f"icestasy-orders-{report_type}-{date.today().isoformat()}.xlsx"
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                       as_attachment=True, download_name=filename)
 
