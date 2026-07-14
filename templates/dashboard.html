@@ -421,7 +421,8 @@ function orderRow(o) {
 
 // Mumbai Metropolitan Region: these are separate real cities but reported as one "Mumbai" group.
 const MMR_CITIES = new Set(["Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"]);
-function reportCity(o) { return MMR_CITIES.has(o.city) ? "Mumbai" : o.city; }
+function mmrCity(city) { return MMR_CITIES.has(city) ? "Mumbai" : city; }
+function reportCity(o) { return mmrCity(o.city); }
 
 function groupKey(o) {
   if (grouping === "month") return new Date(o.created_at).toLocaleString("en-IN", {month: "long", year: "numeric"});
@@ -658,7 +659,10 @@ function renderClients() {
   const searching = !!q;
 
   const cityGroups = {};
-  filtered.forEach(c => { (cityGroups[c.city || "Unassigned"] = cityGroups[c.city || "Unassigned"] || []).push(c); });
+  filtered.forEach(c => {
+    const city = c.city ? mmrCity(c.city) : "Unassigned";
+    (cityGroups[city] = cityGroups[city] || []).push(c);
+  });
   const orderedCities = Object.keys(cityGroups).sort((a, b) =>
     a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b));
 
