@@ -265,24 +265,21 @@ def get_sku_price(sku_id: int, pack_format_id: int) -> float:
 def _next_order_no(sb, city_code: str) -> str:
     """{CITY}{MM}/{FY}/{SEQ:04d}, e.g. MU05/26-27/1843 — sequence is scoped
     per city per financial year (Indian FY, April-March), so it resets when
-    a new FY starts and each city counts independently."""
+    a new FY starts and each city counts independently.
+
+    The sequence itself lives in sales.order_sequences and is incremented via
+    the sales.next_order_seq() RPC, which does an atomic INSERT ... ON
+    CONFLICT DO UPDATE. This used to be a client-side SELECT-then-max over
+    sales.orders, which silently truncated at PostgREST's 1000-row default
+    page size for any city/FY with more orders than that — computing a stale
+    max and colliding with real order numbers — and was racy under
+    concurrent order creation regardless of row count.
+    """
     today = date.today()
     fy = _financial_year(today)
     mm = f"{today.month:02d}"
-    # City code is fixed length but LIKE needs to skip over the 2-digit month
-    # regardless of code length ("MU__/26-27/%" or "ROI__/26-27/%").
-    pattern = f"{city_code}__/{fy}/%"
-    result = (
-        sb.schema("sales").from_("orders").select("order_no")
-        .like("order_no", pattern).execute()
-    )
-    max_seq = 0
-    for row in result.data:
-        try:
-            max_seq = max(max_seq, int(row["order_no"].rsplit("/", 1)[1]))
-        except (IndexError, ValueError):
-            continue
-    return f"{city_code}{mm}/{fy}/{max_seq + 1:04d}"
+    seq = sb.schema("sales").rpc("next_order_seq", {"p_city_code": city_code, "p_fy": fy}).execute().data
+    return f"{city_code}{mm}/{fy}/{seq:04d}"
 
 
 def add_order_collateral(sb, order_id: int, collateral: list) -> list:
