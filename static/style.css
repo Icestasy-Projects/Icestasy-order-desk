@@ -135,7 +135,7 @@ body {
   padding: 12px 18px; border: 1.5px solid var(--slate-300); border-radius: 22px;
   background: var(--white); font-size: 13.5px; font-weight: 700;
   color: var(--slate-700); cursor: pointer; transition: all .15s;
-  min-height: 44px;
+  min-height: 44px; text-decoration: none; display: inline-flex; align-items: center;
 }
 .btn-option:hover, .btn-option.active {
   border-color: var(--brand); color: var(--brand-dk); background: var(--brand-soft);
@@ -353,7 +353,12 @@ body {
     flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap;
   }
   .dash-order-main { flex: 1 1 280px; }
-  .dash-order-side { width: auto; }
+  .dash-order-side { width: auto; justify-content: flex-end; }
+  /* Fixed-width badge/price columns so rows line up instead of drifting
+     left/right based on how long each row's status text happens to be. */
+  .badge-status { min-width: 100px; text-align: center; }
+  .badge-pay { min-width: 150px; text-align: center; }
+  .dash-order-side .ci-price { min-width: 100px; }
 }
 
 /* Greeting header */

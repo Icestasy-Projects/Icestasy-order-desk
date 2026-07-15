@@ -134,7 +134,7 @@
         <div class="step-label">Sales Team</div>
         <div id="teamList" class="option-list"></div>
         {% if is_admin %}
-        <button class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
+        <button id="addTeamBtn" class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
         {% endif %}
       </section>
     </div>
@@ -409,8 +409,8 @@ function orderRow(o) {
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
-        <span class="badge ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
-        <span class="badge ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>
+        <span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
+        <span class="badge badge-pay ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>
         <span class="ci-price">${fmt(o.total_amount)}</span>
         ${payAction}
         ${approvalActions}
@@ -821,6 +821,8 @@ function teamMemberRow(t) {
 
 function renderTeam() {
   const box = document.getElementById("teamList");
+  const addBtn = document.getElementById("addTeamBtn");
+  if (addBtn) addBtn.classList.remove("hidden");
   if (!teamData.length) {
     box.innerHTML = `<div class="opt-muted">No team members yet</div>`;
     return;
@@ -846,6 +848,8 @@ function renderTeam() {
 }
 
 function showAddTeamForm() {
+  if (document.getElementById("teamForm")) return;
+  document.getElementById("addTeamBtn").classList.add("hidden");
   const box = document.getElementById("teamList");
   box.insertAdjacentHTML("beforeend", `
     <div class="register-form mt8" id="teamForm">
