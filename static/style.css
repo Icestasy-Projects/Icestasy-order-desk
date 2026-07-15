@@ -47,7 +47,8 @@ body {
   flex-wrap: wrap; gap: 8px 12px;
 }
 .brand { color: var(--slate-900); font-weight: 800; font-size: 18px; letter-spacing: -.3px;
-         display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+         display: flex; align-items: center; gap: 8px; white-space: nowrap;
+         background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; }
 .btn-ghost {
   background: var(--brand-soft); border: none; color: var(--brand-dk);
   padding: 9px 18px; border-radius: 20px; cursor: pointer; font-size: 13px;
@@ -341,6 +342,18 @@ body {
 @media (min-width: 640px) {
   .step { padding: 28px 32px; }
   .user-email { display: inline; }
+}
+
+/* Laptop/desktop: use the extra width instead of floating a narrow mobile
+   column in the middle of the screen. */
+@media (min-width: 900px) {
+  .header-inner, .tab-bar-inner, .main { max-width: 1080px; }
+  .ops-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .dash-order-row {
+    flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  }
+  .dash-order-main { flex: 1 1 280px; }
+  .dash-order-side { width: auto; }
 }
 
 /* Greeting header */
