@@ -96,7 +96,16 @@ def _groq_extract(text: str):
 _ZERO_WIDTH_RE = re.compile(r"[​‌‍﻿]")
 _LIST_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]|[•\-\*])\s*")
 _QTY_LITRE_RE = re.compile(r"\b(\d+)\s*(?:ltr|litre|liter|l)\b", re.IGNORECASE)
-_STOP_WORDS = {"and", "or", "the", "of", "each", "for", "pls", "please", "send", "required", "requirement"}
+_STOP_WORDS = {"and", "or", "the", "of", "each", "for", "pls", "please", "send", "required", "requirement",
+               # Generic order-message filler that happens to collide with real flavour
+               # names as short substrings (e.g. "ice" inside "Chocolate CHOICE (FD)",
+               # "cream" inside "Strawberry CREAM") — never meaningful as a search hint.
+               "ice", "cream"}
+
+# Recognised brand/product-line labels that show up in real messages but are
+# neither a flavour nor a client name — e.g. "4 ltr Happy Cloud-" names the
+# (FD) freeze-dried range, not a business. Confirmed by the user directly.
+_NON_CLIENT_LABELS = {"happy cloud"}
 
 
 def _clean_text(text: str) -> str:
@@ -255,6 +264,9 @@ def _keyword_extract(text: str):
                 # correctly report as not-found), not a client name.
                 segments = [(int(leading_digit.group()), line, "")]
             else:
+                residual = line.strip().rstrip("-").strip()
+                if residual.lower() in _NON_CLIENT_LABELS:
+                    continue
                 if client_hint is None and line.strip():
                     client_hint = line.strip()
                 continue
