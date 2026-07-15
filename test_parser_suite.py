@@ -170,6 +170,8 @@ add("K-real", "S-2 M-2 G-2",
     item_count=3)
 add("K-real", "Send 1 biscoff ice cream Ratnagiri 2 Chocolate 1",
     item_count=3)
+add("K-real", "4 ltr Happy Cloud-\n* Vanilla ice cream - 01 bulk\n* Strawberry - 01 bulk",
+    item_count=2, client_hint=None)
 
 
 def _run_k_quantity_checks():
@@ -188,6 +190,7 @@ def _run_k_quantity_checks():
         6: [1, 1, 1, 1],
         7: [2, 2, 2],
         8: [1, 2, 1],
+        9: [1, 1],
     }
     k_cases = [c for c in cases if c[1] == "K-real"]
     for idx, (case_id, category, text, assertions) in enumerate(k_cases):
