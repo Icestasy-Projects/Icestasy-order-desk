@@ -53,6 +53,18 @@
 
       {% if is_admin %}
       <section>
+        <div class="section-label">Revenue Trends</div>
+        <div class="trend-card">
+          <div class="tab-bar-flat" id="trendTabs">
+            <button class="tab-btn-flat active" onclick="setTrendPeriod('month', this)">Month on Month</button>
+            <button class="tab-btn-flat" onclick="setTrendPeriod('quarter', this)">Quarter on Quarter</button>
+            <button class="tab-btn-flat" onclick="setTrendPeriod('year', this)">Year on Year</button>
+          </div>
+          <div id="trendChart" class="trend-chart"></div>
+        </div>
+      </section>
+
+      <section>
         <div class="section-label">Sales Breakdown</div>
         <div id="breakdownRow" class="breakdown-row"></div>
       </section>
@@ -339,7 +351,7 @@ function renderStats(orders) {
       <div class="overview-label">Payment Due</div>
       <div class="overview-value" style="color:var(--red)">${due}</div>
     </div>`;
-  if (IS_ADMIN) renderBreakdown(orders);
+  if (IS_ADMIN) { renderBreakdown(orders); renderTrend(orders); }
 }
 
 // Pure-CSS horizontal bar breakdowns for the admin overview — no charting library needed.
@@ -378,6 +390,74 @@ function renderBreakdown(orders) {
       <div class="breakdown-title">Top Cities</div>
       ${barRows(orders, reportCity, 5)}
     </div>`;
+}
+
+// ── Revenue trends (Month on Month / Quarter on Quarter / Year on Year) ────
+let trendPeriod = "month";
+const TREND_LIMITS = { month: 12, quarter: 8, year: 5 };
+
+function setTrendPeriod(period, btn) {
+  trendPeriod = period;
+  document.querySelectorAll("#trendTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderTrend(allOrders);
+}
+
+function _trendBucket(createdAt, period) {
+  const d = new Date(createdAt);
+  if (isNaN(d)) return null;
+  if (period === "month") {
+    return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+              label: d.toLocaleString("en-IN", { month: "short", year: "2-digit" }) };
+  }
+  if (period === "quarter") {
+    const q = Math.floor(d.getMonth() / 3) + 1;
+    return { key: `${d.getFullYear()}-Q${q}`, label: `Q${q} '${String(d.getFullYear()).slice(2)}` };
+  }
+  return { key: `${d.getFullYear()}`, label: `${d.getFullYear()}` };
+}
+
+function renderTrend(orders) {
+  const box = document.getElementById("trendChart");
+  if (!box) return;
+  const buckets = {};
+  orders.forEach(o => {
+    const b = _trendBucket(o.created_at, trendPeriod);
+    if (!b) return;
+    const entry = buckets[b.key] || (buckets[b.key] = { label: b.label, value: 0, count: 0 });
+    entry.value += o.total_amount;
+    entry.count += 1;
+  });
+  const keys = Object.keys(buckets).sort().slice(-TREND_LIMITS[trendPeriod]);
+  if (!keys.length) { box.innerHTML = `<div class="opt-muted">No revenue data yet</div>`; return; }
+
+  const maxValue = Math.max(1, ...keys.map(k => buckets[k].value));
+  const lastValue = buckets[keys[keys.length - 1]].value;
+  const prevValue = keys.length > 1 ? buckets[keys[keys.length - 2]].value : null;
+  let changeBadge = "";
+  if (prevValue) {
+    const pct = (lastValue - prevValue) / prevValue * 100;
+    const up = pct >= 0;
+    changeBadge = `<span class="trend-change ${up ? "trend-up" : "trend-down"}">${up ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% vs previous ${trendPeriod}</span>`;
+  }
+
+  const cols = keys.map(k => {
+    const v = buckets[k];
+    const h = Math.max(4, Math.round(v.value / maxValue * 100));
+    return `
+      <div class="trend-col">
+        <div class="trend-col-value">${v.value ? fmt(v.value) : ""}</div>
+        <div class="trend-col-bar-wrap"><div class="trend-col-bar" style="height:${h}%" title="${v.count} orders · ${fmt(v.value)}"></div></div>
+        <div class="trend-col-label">${v.label}</div>
+      </div>`;
+  }).join("");
+
+  box.innerHTML = `
+    <div class="trend-summary">
+      <span class="trend-latest">${fmt(lastValue)}</span>
+      ${changeBadge}
+    </div>
+    <div class="trend-columns">${cols}</div>`;
 }
 
 function setGrouping(g, btn) {
