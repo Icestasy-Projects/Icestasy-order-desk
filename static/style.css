@@ -440,7 +440,7 @@ body {
 .menu-dropdown.open { display: flex; opacity: 1; transform: translateY(0); }
 .menu-backdrop {
   position: fixed; inset: 0; background: rgba(33,32,29,.28);
-  z-index: 55; display: none;
+  z-index: 45; display: none;
 }
 .menu-backdrop.open { display: block; }
 .menu-item {
