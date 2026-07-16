@@ -108,7 +108,7 @@ def _addr_block(addr: dict | None) -> str:
         return ""
     parts = [p for p in [addr.get("line1"), addr.get("line2")] if p]
     line1 = ", ".join(parts)
-    city_state = ", ".join(p for p in [addr.get("city"), addr.get("state"), addr.get("pincode")] if p)
+    city_state = ", ".join(p for p in [addr.get("locality") or addr.get("city"), addr.get("state"), addr.get("pincode")] if p)
     return "<br/>".join(p for p in [line1, city_state] if p)
 
 
@@ -248,7 +248,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
         f"Invoice No<br/><b>{order['order_no']}</b><br/>Dated<br/>"
         f"<b>{datetime.fromisoformat(order['created_at']).strftime('%d-%b-%y')}</b><br/>"
         f"Godown<br/><b>{COMPANY['godown']}</b><br/>Destination<br/>"
-        f"<b>{(shipping_addr or {}).get('city', '') or '—'}</b>", styles["small"])
+        f"<b>{(shipping_addr or {}).get('locality') or (shipping_addr or {}).get('city') or '—'}</b>", styles["small"])
     story.append(Table([[consignee, buyer, meta]], colWidths=[76 * mm, 76 * mm, 38 * mm],
                         style=TableStyle([("BOX", (0, 0), (-1, -1), 0.75, colors.black),
                                            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.grey),
