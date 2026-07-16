@@ -135,8 +135,8 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
     if not order_res.data:
         raise ValueError("Order not found")
     order = order_res.data[0]
-    if order["status"] != "invoiced":
-        raise ValueError("Order must be approved/invoiced before an invoice can be generated")
+    if order["status"] not in ("invoiced", "delivered"):
+        raise ValueError("Order must be invoiced or completed before an invoice can be generated")
 
     client = (
         sb.schema("sales").from_("clients")

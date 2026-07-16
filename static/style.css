@@ -18,6 +18,11 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+/* Lucide-style inline SVG icons — sized to sit inline with text by default;
+   context-specific sizes are set where the icon stands alone (nav, chips, cards). */
+.icon { width: 17px; height: 17px; flex-shrink: 0; vertical-align: -3px; stroke: currentColor; }
+.icon-lg { width: 22px; height: 22px; vertical-align: -6px; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -77,6 +82,7 @@ body {
   color: var(--slate-500); cursor: pointer; border-bottom: 2.5px solid transparent;
   transition: color .15s, border-color .15s; min-height: 44px;
   white-space: nowrap; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .tab-btn:hover { color: var(--slate-900); }
 .tab-btn.active { color: var(--brand-dk); border-color: var(--brand); }
@@ -111,7 +117,7 @@ body {
 
 /* Primary button */
 .btn-primary {
-  margin-top: 16px; width: 100%; display: inline-flex; align-items: center; justify-content: center;
+  margin-top: 16px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 14px 24px; background: var(--brand); color: #fff; border: none; border-radius: 26px;
   font-weight: 700; font-size: 15px; cursor: pointer; transition: background .15s, transform .1s;
   min-height: 48px; box-shadow: 0 4px 14px rgba(255,138,61,.35);
@@ -136,7 +142,7 @@ body {
   padding: 12px 18px; border: 1.5px solid var(--slate-300); border-radius: 22px;
   background: var(--white); font-size: 13.5px; font-weight: 700;
   color: var(--slate-700); cursor: pointer; transition: all .15s;
-  min-height: 44px; text-decoration: none; display: inline-flex; align-items: center;
+  min-height: 44px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
 }
 .btn-option:hover, .btn-option.active {
   border-color: var(--brand); color: var(--brand-dk); background: var(--brand-soft);
@@ -245,7 +251,8 @@ body {
 
 /* Done */
 .done-box { text-align: center; padding: 16px 0; }
-.done-icon  { font-size: 56px; margin-bottom: 14px; }
+.done-icon  { margin-bottom: 14px; }
+.done-icon .icon { width: 56px; height: 56px; vertical-align: baseline; }
 .done-title { font-size: 23px; font-weight: 800; margin-bottom: 4px; }
 .done-no    { font-size: 14.5px; color: var(--brand-dk); font-weight: 700; margin-bottom: 4px; }
 .done-meta  { font-size: 13px; color: var(--slate-500); margin-bottom: 22px; }
@@ -501,8 +508,9 @@ body {
 .login-badge {
   width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px;
   background: var(--brand-soft); display: flex; align-items: center; justify-content: center;
-  font-size: 28px;
+  color: var(--brand-dk);
 }
+.login-badge .icon { width: 28px; height: 28px; }
 .login-title { font-size: 21px; font-weight: 800; letter-spacing: -.3px; margin-bottom: 4px; }
 .login-sub { font-size: 13.5px; color: var(--slate-500); margin-bottom: 20px; }
 .login-error { margin-bottom: 14px; text-align: left; }

@@ -5,6 +5,23 @@ from sku_data import MOCK_PRICES, ACTIVE_SKUS
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 DEFAULT_PASSWORD = "test@123"  # new staff accounts must change this on first login
 
+_PAGE_SIZE = 1000  # PostgREST's default max rows per request — must page past it explicitly.
+
+
+def _fetch_all_pages(build_query) -> list:
+    """build_query(start, end) must return a fresh, unexecuted query with .range(start, end)
+    applied — PostgREST silently caps unbounded selects at _PAGE_SIZE rows, so anything that
+    can plausibly exceed that (orders, order_lines) has to be paged through explicitly."""
+    rows = []
+    start = 0
+    while True:
+        batch = build_query(start, start + _PAGE_SIZE - 1).execute().data
+        rows.extend(batch)
+        if len(batch) < _PAGE_SIZE:
+            break
+        start += _PAGE_SIZE
+    return rows
+
 REGION_HEAD_ROLES = {
     "mumbai_head": "Mumbai",
     "pune_head": "Pune",
@@ -356,14 +373,18 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
 
 def list_dashboard_orders(user_id: int, role: str) -> list:
     sb = _sb()
-    q = (
-        sb.schema("sales").from_("orders")
-        .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, shipping_address_id")
-        .order("created_at", desc=True)
-    )
-    if role != "admin" and role not in REGION_HEAD_ROLES:
-        q = q.eq("created_by_user_id", user_id)
-    orders = q.execute().data
+
+    def build_query(start, end):
+        q = (
+            sb.schema("sales").from_("orders")
+            .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, shipping_address_id")
+            .order("created_at", desc=True)
+        )
+        if role != "admin" and role not in REGION_HEAD_ROLES:
+            q = q.eq("created_by_user_id", user_id)
+        return q.range(start, end)
+
+    orders = _fetch_all_pages(build_query)
     if not orders:
         return []
 
@@ -498,13 +519,17 @@ def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
 
 def flavour_sales_lines(user_id: int, role: str) -> list:
     sb = _sb()
-    orders_q = (
-        sb.schema("sales").from_("orders")
-        .select("id, created_at, shipping_address_id, created_by_user_id, salesperson_id")
-    )
-    if role != "admin" and role not in REGION_HEAD_ROLES:
-        orders_q = orders_q.eq("created_by_user_id", user_id)
-    orders = orders_q.execute().data
+
+    def build_orders_query(start, end):
+        q = (
+            sb.schema("sales").from_("orders")
+            .select("id, created_at, shipping_address_id, created_by_user_id, salesperson_id")
+        )
+        if role != "admin" and role not in REGION_HEAD_ROLES:
+            q = q.eq("created_by_user_id", user_id)
+        return q.range(start, end)
+
+    orders = _fetch_all_pages(build_orders_query)
     if not orders:
         return []
 
@@ -527,12 +552,15 @@ def flavour_sales_lines(user_id: int, role: str) -> list:
     CHUNK = 200
     for i in range(0, len(order_ids), CHUNK):
         chunk_ids = order_ids[i:i + CHUNK]
-        rows = (
-            sb.schema("sales").from_("order_lines")
-            .select("order_id, quantity, line_total, skus(sku_code, flavours(name))")
-            .eq("status", "active").in_("order_id", chunk_ids).execute().data
-        )
-        lines.extend(rows)
+
+        def build_lines_query(start, end, chunk_ids=chunk_ids):
+            return (
+                sb.schema("sales").from_("order_lines")
+                .select("order_id, quantity, line_total, skus(sku_code, flavours(name))")
+                .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+            )
+
+        lines.extend(_fetch_all_pages(build_lines_query))
 
     out = []
     for l in lines:
@@ -908,16 +936,3 @@ def set_sku_status(sku_id: int, status: str) -> dict:
     return res.data[0]
 
 
-def set_sku_gst_rate(sku_id: int, gst_rate: float) -> dict:
-    # HSN is no longer per-SKU editable — every ice cream SKU shares the same
-    # code (_DEFAULT_HSN_CODE), so this only ever needs to touch gst_rate.
-    if gst_rate < 0 or gst_rate > 100:
-        raise ValueError("GST rate must be between 0 and 100")
-    sb = _sb()
-    res = (
-        sb.schema("sales").from_("skus")
-        .update({"hsn_code": _DEFAULT_HSN_CODE, "gst_rate": gst_rate}).eq("id", sku_id).execute()
-    )
-    if not res.data:
-        raise ValueError("SKU not found")
-    return res.data[0]

@@ -10,14 +10,28 @@
 <div class="app">
   <header class="header">
     <div class="header-inner">
-      <a class="brand" href="/">🍦 Icestasy Order Desk</a>
+      <a class="brand" href="/">
+        <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 11 4.08 10.35a1 1 0 0 0 1.84 0L17 11"/><path d="M17 7A5 5 0 0 0 7 7"/><path d="M17 7a2 2 0 0 1 0 4H7a2 2 0 0 1 0-4"/></svg>
+        Icestasy Order Desk
+      </a>
       <div class="header-right menu-wrap">
         <span class="user-email">{{ user_email }}</span>
-        <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">☰</button>
+        <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
+        </button>
         <div class="menu-dropdown" id="headerMenu">
-          <a class="menu-item" href="/">📊 Dashboard</a>
-          <a class="menu-item" href="/change-password">🔑 Change Password</a>
-          <a class="menu-item" href="/logout">🚪 Log out</a>
+          <a class="menu-item" href="/">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            Dashboard
+          </a>
+          <a class="menu-item" href="/change-password">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+            Change Password
+          </a>
+          <a class="menu-item" href="/logout">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>
+            Log out
+          </a>
         </div>
       </div>
     </div>
@@ -44,8 +58,11 @@
       <div class="step-label">Paste order message</div>
       <textarea id="orderText" class="paste-box" rows="6"
         placeholder="2 Bulk Belgian&#10;3 Square Mango&#10;Advance&#10;Client: Trevor"></textarea>
-      <button class="btn-primary" onclick="parseOrder()">Parse Order →</button>
-      <button class="btn-ghost mt16" style="width:100%" onclick="startCollateralOnly()">📦 Marketing Collateral Only (no product order)</button>
+      <button class="btn-primary" onclick="parseOrder()">Parse Order <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+      <button class="btn-ghost mt16" style="width:100%" onclick="startCollateralOnly()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>
+        Marketing Collateral Only (no product order)
+      </button>
     </section>
 
     <!-- STEP 1: Cart review + SKU disambiguation -->
@@ -59,7 +76,7 @@
       <div class="step-label">Marketing Collateral <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate-500)">(optional)</span></div>
       <div id="collateralList"></div>
       <button class="btn-option btn-sm mt8" onclick="showCollateralForm()">+ Add collateral</button>
-      <button class="btn-primary mt16" onclick="proceedFromCollateral()">Continue →</button>
+      <button class="btn-primary mt16" onclick="proceedFromCollateral()">Continue <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
     </section>
 
     <!-- STEP 2: Payment -->
@@ -94,7 +111,10 @@
     <section class="step hidden" id="step-confirm">
       <div class="step-label">Order Summary</div>
       <div id="summaryBox" class="summary-box"></div>
-      <button class="btn-primary btn-green" onclick="placeOrder()">✓ Confirm &amp; Place Order</button>
+      <button class="btn-primary btn-green" onclick="placeOrder()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        Confirm &amp; Place Order
+      </button>
       <button class="btn-ghost mt8" onclick="resetAll()">Cancel</button>
     </section>
 
@@ -107,6 +127,19 @@
 </div>
 
 <script>
+// ── Icons (inline Lucide SVGs — no external dependency) ─────────────────────
+const ICON_PATHS = {
+  package: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  "circle-check-big": '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
+  "arrow-right": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+};
+function icon(name, cls) {
+  return `<svg class="icon${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
+}
+
 // ── State ───────────────────────────────────────────────────────────────────
 let state = {
   items: [],        // [{qty, resolved_sku, unit_price, ambiguous, candidates}]
@@ -161,7 +194,7 @@ function renderCollateralList() {
         <span class="ci-name">${c.type}</span>
         <span class="ci-fmt">Qty: ${c.quantity}${c.notes ? " · " + c.notes : ""}</span>
       </div>
-      <button class="qty-btn" onclick="removeCollateral(${idx})">✕</button>
+      <button class="qty-btn" onclick="removeCollateral(${idx})">${icon("x")}</button>
     </div>`).join("");
 }
 
@@ -254,7 +287,7 @@ async function parseOrder() {
       body: JSON.stringify({text}),
     }).then(r => r.json());
   } finally {
-    btn.disabled = false; btn.textContent = "Parse Order →";
+    btn.disabled = false; btn.innerHTML = `Parse Order ${icon("arrow-right")}`;
   }
 
   if (!res.items || !res.items.length) {
@@ -287,7 +320,7 @@ function renderCart() {
     div.className = "cart-item-card";
 
     if (item.not_found) {
-      div.innerHTML = `<div class="ambig-label" style="color:#c0392b">⚠ No SKU found for item ${idx + 1} (qty: ${item.qty}) — not in active catalogue</div>`;
+      div.innerHTML = `<div class="ambig-label" style="color:#c0392b">${icon("triangle-alert")} No SKU found for item ${idx + 1} (qty: ${item.qty}) — not in active catalogue</div>`;
       allResolved = false;
     } else if (!item.ambiguous && item.resolved_sku) {
       const sku = item.resolved_sku;
@@ -313,7 +346,7 @@ function renderCart() {
           ${c.flavour_name} — ${c.pack_format_name} (${fmt(c.unit_price)})
         </button>`).join("");
       div.innerHTML = `
-        <div class="ambig-label">⚠ Select SKU for item ${idx + 1} (qty: ${item.qty})</div>
+        <div class="ambig-label">${icon("triangle-alert")} Select SKU for item ${idx + 1} (qty: ${item.qty})</div>
         <div class="btn-group vertical">${candidates}</div>`;
     }
 
@@ -378,7 +411,7 @@ async function _searchClients(q) {
   box.innerHTML = `<div class="searching">Searching…</div>`;
   const data = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`).then(r => r.json());
   if (data.error) {
-    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
   const clients = data.clients || [];
@@ -396,7 +429,7 @@ async function _searchClients(q) {
 async function selectClient(client) {
   state.client = client;
   document.getElementById("clientResults").innerHTML =
-    `<div class="selected-pill">✓ ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+    `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientSearch").style.display = "none";
 
   hide("step-client");
@@ -549,7 +582,7 @@ function selectAddress(id, label) {
   state.address_id = id;
   state.address_label = label;
   document.getElementById("addressList").innerHTML =
-    `<div class="selected-pill">✓ ${label} <button class="pill-change" onclick="changeAddress()">change</button></div>`;
+    `<div class="selected-pill">${icon("check")} ${label} <button class="pill-change" onclick="changeAddress()">change</button></div>`;
   document.getElementById("addAddressToggleBtn").style.display = "none";
   hide("step-address");
   showConfirm();
@@ -617,7 +650,7 @@ async function placeOrder() {
     }),
   }).then(r => r.json());
 
-  btn.disabled = false; btn.textContent = "✓ Confirm & Place Order";
+  btn.disabled = false; btn.innerHTML = `${icon("check")} Confirm &amp; Place Order`;
   hide("step-confirm");
 
   if (res.ok) {
@@ -629,7 +662,7 @@ async function placeOrder() {
       `<li>${c.quantity} × ${c.type}${c.notes ? " — " + c.notes : ""}</li>`
     ).join("");
     document.getElementById("doneBox").innerHTML = `
-      <div class="done-icon">✅</div>
+      <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
       <div class="done-title">Order Confirmed</div>
       <div class="done-no">${order.order_no}</div>
       <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
