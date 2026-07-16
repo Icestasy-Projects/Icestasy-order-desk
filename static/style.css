@@ -277,6 +277,7 @@ body {
 .dash-stat-label { font-size: 11px; color: var(--slate-500); text-transform: uppercase; letter-spacing: .04em; }
 
 .tab-bar-flat { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1.5px solid var(--slate-100); padding-bottom: 12px; }
+.insights-sort-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .tab-btn-flat {
   background: var(--slate-100); border: none; padding: 8px 14px; border-radius: 16px;
   font-size: 12.5px; font-weight: 700; color: var(--slate-700); cursor: pointer;

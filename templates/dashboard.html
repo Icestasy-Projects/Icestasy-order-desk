@@ -178,6 +178,7 @@
         </div>
 
         <div id="ordersBox" class="mt16"></div>
+        <div id="ordersPagination" class="mt8"></div>
       </section>
     </div>
 
@@ -301,20 +302,35 @@ let expandedGroup = null;
 let expandedPlace = null;
 let searchQuery = "";
 let paymentFilter = "all";
+let ordersPage = 1;
+const ORDERS_PAGE_SIZE = 30;
+let _searchDebounce = null;
 
+// Typing re-filters/re-renders the whole list — with thousands of orders that's expensive
+// enough to visibly stall the page on every keystroke, so debounce it.
 function handleSearchInput(val) {
-  searchQuery = val.trim().toLowerCase();
-  expandedGroup = null;
-  expandedPlace = null;
-  renderOrders();
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(() => {
+    searchQuery = val.trim().toLowerCase();
+    expandedGroup = null;
+    expandedPlace = null;
+    ordersPage = 1;
+    renderOrders();
+  }, 250);
 }
 
 function setPaymentFilter(f, btn) {
   paymentFilter = f;
   expandedGroup = null;
   expandedPlace = null;
+  ordersPage = 1;
   document.querySelectorAll("#paymentFilterTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
+  renderOrders();
+}
+
+function goToOrdersPage(p) {
+  ordersPage = p;
   renderOrders();
 }
 
@@ -568,6 +584,7 @@ function setGrouping(g, btn) {
   grouping = g;
   expandedGroup = null;
   expandedPlace = null;
+  ordersPage = 1;
   document.querySelectorAll("#groupTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   renderOrders();
@@ -611,7 +628,8 @@ function orderLinesHtml(orderId) {
 }
 
 function orderRow(o) {
-  const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
+  const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending")
+                      && o.status !== "rejected" && o.status !== "cancelled")
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
   const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status))
     ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">${icon("check")} Approve</button>
@@ -668,22 +686,38 @@ function groupKey(o) {
 
 function renderOrders() {
   const box = document.getElementById("ordersBox");
+  const pagBox = document.getElementById("ordersPagination");
   if (!allOrders.length) {
     box.innerHTML = `<div class="opt-muted">No orders yet</div>`;
+    pagBox.innerHTML = "";
     renderStats(allOrders);
     return;
   }
   const source = filteredOrders();
   if (!source.length) {
     box.innerHTML = `<div class="opt-muted">No orders match "${searchQuery}"</div>`;
+    pagBox.innerHTML = "";
     renderStats(source);
     return;
   }
   if (grouping === "none") {
-    box.innerHTML = source.map(orderRow).join("");
+    // Rendering thousands of order rows at once is what was stalling the browser —
+    // page it the same way the Flavours admin list already does.
+    const totalPages = Math.max(1, Math.ceil(source.length / ORDERS_PAGE_SIZE));
+    ordersPage = Math.min(ordersPage, totalPages);
+    const pageStart = (ordersPage - 1) * ORDERS_PAGE_SIZE;
+    const pageItems = source.slice(pageStart, pageStart + ORDERS_PAGE_SIZE);
+    box.innerHTML = pageItems.map(orderRow).join("");
+    pagBox.innerHTML = totalPages > 1 ? `
+      <div class="pagination-row">
+        <button class="btn-option btn-sm" ${ordersPage <= 1 ? "disabled" : ""} onclick="goToOrdersPage(${ordersPage - 1})">‹ Prev</button>
+        <span>Page ${ordersPage} of ${totalPages} · ${source.length} orders</span>
+        <button class="btn-option btn-sm" ${ordersPage >= totalPages ? "disabled" : ""} onclick="goToOrdersPage(${ordersPage + 1})">Next ›</button>
+      </div>` : "";
     renderStats(source);
     return;
   }
+  pagBox.innerHTML = "";
   const groups = {};
   source.forEach(o => {
     const k = groupKey(o);
@@ -1257,6 +1291,33 @@ function toggleInsightsGroup(name) {
   renderInsights();
 }
 
+let insightsGroupSort = {key: "revenue", dir: "desc"};
+let insightsFlavourSort = {key: "qty", dir: "desc"};
+
+function setInsightsGroupSort(key) {
+  insightsGroupSort = insightsGroupSort.key === key
+    ? {key, dir: insightsGroupSort.dir === "desc" ? "asc" : "desc"}
+    : {key, dir: key === "name" ? "asc" : "desc"};
+  renderInsights();
+}
+function setInsightsFlavourSort(key) {
+  insightsFlavourSort = insightsFlavourSort.key === key
+    ? {key, dir: insightsFlavourSort.dir === "desc" ? "asc" : "desc"}
+    : {key, dir: key === "name" ? "asc" : "desc"};
+  renderInsights();
+}
+function sortIndicator(sortState, key) {
+  return sortState.key !== key ? "" : (sortState.dir === "asc" ? " ▲" : " ▼");
+}
+function applySort(items, sortState, getters) {
+  const getter = getters[sortState.key];
+  const sorted = [...items].sort((a, b) => {
+    const va = getter(a), vb = getter(b);
+    return typeof va === "string" ? va.localeCompare(vb) : va - vb;
+  });
+  return sortState.dir === "desc" ? sorted.reverse() : sorted;
+}
+
 function renderInsights() {
   const box = document.getElementById("insightsBox");
   const gapNote = document.getElementById("insightsGapNote");
@@ -1280,11 +1341,23 @@ function renderInsights() {
     (groups[k] = groups[k] || []).push(l);
   });
 
-  const groupTotals = Object.entries(groups).map(([name, lines]) => ({
-    name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
-  })).sort((a, b) => b.revenue - a.revenue);
+  const groupTotals = applySort(
+    Object.entries(groups).map(([name, lines]) => ({
+      name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
+    })),
+    insightsGroupSort,
+    {name: g => g.name.toLowerCase(), qty: g => g.qty, revenue: g => g.revenue}
+  );
 
-  box.innerHTML = groupTotals.map(g => {
+  const sortBar = `
+    <div class="insights-sort-bar">
+      <span class="opt-sub">Sort:</span>
+      <button type="button" class="btn-option btn-sm${insightsGroupSort.key === "name" ? " active" : ""}" onclick="setInsightsGroupSort('name')">Name${sortIndicator(insightsGroupSort, "name")}</button>
+      <button type="button" class="btn-option btn-sm${insightsGroupSort.key === "qty" ? " active" : ""}" onclick="setInsightsGroupSort('qty')">Units${sortIndicator(insightsGroupSort, "qty")}</button>
+      <button type="button" class="btn-option btn-sm${insightsGroupSort.key === "revenue" ? " active" : ""}" onclick="setInsightsGroupSort('revenue')">Revenue${sortIndicator(insightsGroupSort, "revenue")}</button>
+    </div>`;
+
+  box.innerHTML = sortBar + groupTotals.map(g => {
     const isOpen = expandedInsightsGroup === g.name;
     const safeName = JSON.stringify(g.name).replace(/'/g, "&#39;");
     let body = "";
@@ -1295,10 +1368,18 @@ function renderInsights() {
         entry.qty += l.quantity;
         entry.revenue += l.revenue;
       });
-      const ranked = Object.entries(byFlavour).sort((a, b) => b[1].qty - a[1].qty);
+      const ranked = applySort(
+        Object.entries(byFlavour),
+        insightsFlavourSort,
+        {name: ([name]) => name.toLowerCase(), qty: ([, v]) => v.qty, revenue: ([, v]) => v.revenue}
+      );
       body = `
         <table class="summary-table mt8">
-          <thead><tr><th>Flavour</th><th>Qty Sold</th><th class="num">Revenue</th></tr></thead>
+          <thead><tr>
+            <th style="cursor:pointer" onclick="setInsightsFlavourSort('name')">Flavour${sortIndicator(insightsFlavourSort, "name")}</th>
+            <th style="cursor:pointer" onclick="setInsightsFlavourSort('qty')">Qty Sold${sortIndicator(insightsFlavourSort, "qty")}</th>
+            <th class="num" style="cursor:pointer" onclick="setInsightsFlavourSort('revenue')">Revenue${sortIndicator(insightsFlavourSort, "revenue")}</th>
+          </tr></thead>
           <tbody>
             ${ranked.map(([name, v]) => `
               <tr><td>${name}</td><td>${v.qty.toFixed(0)}</td><td class="num">${fmt(v.revenue)}</td></tr>`).join("")}
