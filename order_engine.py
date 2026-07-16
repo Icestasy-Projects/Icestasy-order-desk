@@ -437,9 +437,11 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
 
 def mark_payment_received(order_id: int, received_by: int) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("total_amount").eq("id", order_id).limit(1).execute()
+    order = sb.schema("sales").from_("orders").select("total_amount, status").eq("id", order_id).limit(1).execute()
     if not order.data:
         raise ValueError("Order not found")
+    if order.data[0]["status"] in ("rejected", "cancelled"):
+        raise ValueError(f"Order is {order.data[0]['status']} — nothing to collect payment for")
     row = {
         "order_id": order_id, "payment_type": "full",
         "amount": order.data[0]["total_amount"],

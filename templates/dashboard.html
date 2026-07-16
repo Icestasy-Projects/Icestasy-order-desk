@@ -531,7 +531,8 @@ function orderLinesHtml(orderId) {
 }
 
 function orderRow(o) {
-  const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
+  const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending")
+                      && o.status !== "rejected" && o.status !== "cancelled")
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
   const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status))
     ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">${icon("check")} Approve</button>
