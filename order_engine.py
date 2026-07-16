@@ -66,6 +66,16 @@ _PLACE_TO_CITY = {
     **{p: "Vasai-Virar" for p in [
         "vasai", "virar", "virar west", "nalasopara", "mira road", "bhayandar",
     ]},
+    **{p: "Pune" for p in [
+        "pune", "koregaon park", "kothrud", "baner", "hinjewadi", "viman nagar", "aundh",
+        "camp", "kharadi", "wakad", "pimpri", "chinchwad", "hadapsar", "magarpatta",
+        "shivaji nagar", "deccan", "swargate", "kalyani nagar", "wagholi",
+    ]},
+    **{p: "Hyderabad" for p in [
+        "hyderabad", "banjara hills", "jubilee hills", "gachibowli", "hitech city",
+        "madhapur", "kondapur", "secunderabad", "begumpet", "kukatpally", "ameerpet",
+        "somajiguda", "miyapur", "himayatnagar", "dilsukhnagar",
+    ]},
     **{p: "Bangalore" for p in ["bangalore", "bengaluru"]},
     **{p: "Delhi" for p in ["delhi", "new delhi"]},
 }
@@ -406,10 +416,15 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         sb.schema("sales").from_("users").select("id,full_name").in_("id", sp_ids).execute().data
         if sp_ids else [])}
     payments = {}
-    if order_ids:
+    # Chunked so the `.in_(order_id, ...)` filter's URL doesn't grow unbounded with the
+    # order count — thousands of ids in one query string risks silently exceeding a
+    # proxy/CDN's URL length limit.
+    CHUNK = 600
+    for i in range(0, len(order_ids), CHUNK):
+        chunk_ids = order_ids[i:i + CHUNK]
         for p in (
             sb.schema("sales").from_("payments").select("order_id,status,amount,payment_type,received_at")
-            .in_("order_id", order_ids).order("received_at", desc=True).execute().data
+            .in_("order_id", chunk_ids).order("received_at", desc=True).execute().data
         ):
             payments.setdefault(p["order_id"], p)  # most recent per order (already sorted desc)
 
@@ -562,7 +577,10 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
     order_ids = list(orders_by_id.keys())
 
     lines = []
-    CHUNK = 200
+    # Chunked purely to keep the `.in_(order_id, ...)` filter's URL length sane — 600 ids
+    # keeps most chunks under the 1000-row page size too (avg ~1.5 lines/order), so this
+    # usually costs one Supabase round-trip per chunk instead of 200's three-times-as-many.
+    CHUNK = 600
     for i in range(0, len(order_ids), CHUNK):
         chunk_ids = order_ids[i:i + CHUNK]
 
