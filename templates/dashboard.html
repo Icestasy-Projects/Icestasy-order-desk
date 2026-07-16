@@ -10,15 +10,32 @@
 <div class="app">
   <header class="header">
     <div class="header-inner">
-      <button type="button" class="brand" onclick="switchPage('orders', document.getElementById('page-tab-orders'))">🍦 Icestasy Order Desk</button>
+      <button type="button" class="brand" onclick="switchPage('orders', document.getElementById('page-tab-orders'))">
+        <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 11 4.08 10.35a1 1 0 0 0 1.84 0L17 11"/><path d="M17 7A5 5 0 0 0 7 7"/><path d="M17 7a2 2 0 0 1 0 4H7a2 2 0 0 1 0-4"/></svg>
+        Icestasy Order Desk
+      </button>
       <div class="header-right menu-wrap">
         <span class="user-email">Hi, {{ (full_name.split(" ")[0] if full_name else user_email) }}</span>
-        <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">☰</button>
+        <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
+        </button>
         <div class="menu-dropdown" id="headerMenu">
-          <a class="menu-item" href="/new-order">🧾 New Order</a>
-          <button type="button" class="menu-item" onclick="toggleMenu(); openReportModal();">⬇ Download Excel Report</button>
-          <a class="menu-item" href="/change-password">🔑 Change Password</a>
-          <a class="menu-item" href="/logout">🚪 Log out</a>
+          <a class="menu-item" href="/new-order">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/></svg>
+            New Order
+          </a>
+          <button type="button" class="menu-item" onclick="toggleMenu(); openReportModal();">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+            Download Excel Report
+          </button>
+          <a class="menu-item" href="/change-password">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+            Change Password
+          </a>
+          <a class="menu-item" href="/logout">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>
+            Log out
+          </a>
         </div>
       </div>
     </div>
@@ -27,15 +44,33 @@
 
   <nav class="tab-bar">
     <div class="tab-bar-inner">
-      <button class="tab-btn active" id="page-tab-orders" onclick="switchPage('orders', this)">📦 Orders</button>
-      <button class="tab-btn" id="page-tab-clients" onclick="switchPage('clients', this)">🧑‍🤝‍🧑 Clients</button>
+      <button class="tab-btn active" id="page-tab-orders" onclick="switchPage('orders', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>
+        Orders
+      </button>
+      <button class="tab-btn" id="page-tab-clients" onclick="switchPage('clients', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
+        Clients
+      </button>
       {% if can_view_team %}
-      <button class="tab-btn" id="page-tab-team" onclick="switchPage('team', this)">👥 Team</button>
-      <button class="tab-btn" id="page-tab-insights" onclick="switchPage('insights', this)">📈 Insights</button>
+      <button class="tab-btn" id="page-tab-team" onclick="switchPage('team', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
+        Team
+      </button>
+      <button class="tab-btn" id="page-tab-insights" onclick="switchPage('insights', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
+        Insights
+      </button>
       {% endif %}
       {% if is_admin %}
-      <button class="tab-btn" id="page-tab-stock" onclick="switchPage('stock', this)">📊 Stock</button>
-      <button class="tab-btn" id="page-tab-flavours" onclick="switchPage('flavours', this)">🍨 Flavours</button>
+      <button class="tab-btn" id="page-tab-stock" onclick="switchPage('stock', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+        Stock
+      </button>
+      <button class="tab-btn" id="page-tab-flavours" onclick="switchPage('flavours', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17c5 0 8-2.69 8-6H4c0 3.31 3 6 8 6m-4 4h8m-4-3v3M5.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M12.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M15.5 6.5a3.5 3.5 0 1 0-7 0"/></svg>
+        Flavours
+      </button>
       {% endif %}
     </div>
   </nav>
@@ -43,7 +78,7 @@
   <main class="main">
     <div id="page-orders">
       <section class="step">
-        <div class="greeting-title" id="greetingTitle">👋</div>
+        <div class="greeting-title" id="greetingTitle"></div>
         <div class="greeting-sub">What would you like to do today? · {{ role_label }}</div>
       </section>
 
@@ -63,14 +98,18 @@
         <div class="section-label">Quick Actions</div>
         <div class="ops-list">
           <a class="ops-row" href="/new-order">
-            <div class="ops-icon ops-blue">🧾</div>
+            <div class="ops-icon ops-blue">
+              <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/></svg>
+            </div>
             <div>
               <div class="ops-title">New Order</div>
               <div class="ops-sub">Parse and create a new sales order</div>
             </div>
           </a>
           <button type="button" class="ops-row" onclick="switchPage('clients', document.getElementById('page-tab-clients'))">
-            <div class="ops-icon ops-green">🧑‍🤝‍🧑</div>
+            <div class="ops-icon ops-green">
+              <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
+            </div>
             <div>
               <div class="ops-title">Clients</div>
               <div class="ops-sub">View the client list</div>
@@ -78,7 +117,9 @@
           </button>
           {% if can_view_team %}
           <button type="button" class="ops-row" onclick="switchPage('team', document.getElementById('page-tab-team'))">
-            <div class="ops-icon ops-purple">👥</div>
+            <div class="ops-icon ops-purple">
+              <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
+            </div>
             <div>
               <div class="ops-title">Sales Team</div>
               <div class="ops-sub">View and manage your team</div>
@@ -86,7 +127,9 @@
           </button>
           {% endif %}
           <button type="button" class="ops-row" onclick="openReportModal()">
-            <div class="ops-icon ops-yellow">⬇</div>
+            <div class="ops-icon ops-yellow">
+              <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+            </div>
             <div>
               <div class="ops-title">Download Excel Report</div>
               <div class="ops-sub">Export current orders to a spreadsheet</div>
@@ -209,11 +252,31 @@
     <input type="date" id="reportTo" class="search-input mt8">
   </div>
   <div id="reportMonthNote" class="opt-muted mt16 hidden">Covers the last 12 months.</div>
-  <button type="button" class="btn-primary" onclick="downloadReport()">⬇ Download</button>
+  <button type="button" class="btn-primary" onclick="downloadReport()">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+    Download
+  </button>
   <button type="button" class="btn-ghost mt8" style="width:100%" onclick="closeReportModal()">Cancel</button>
 </div>
 
 <script>
+// ── Icons (inline Lucide SVGs — no external dependency) ─────────────────────
+const ICON_PATHS = {
+  package: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/>',
+  "indian-rupee": '<path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/>',
+  "circle-check-big": '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
+  hourglass: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  "check-check": '<path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/>',
+  receipt: '<path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/>',
+  download: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+  "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+};
+function icon(name, cls) {
+  return `<svg class="icon${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
+}
+
 const IS_ADMIN = {{ "true" if is_admin else "false" }};
 const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
 const ROLE_LABELS = {{ role_labels_json | safe }};
@@ -323,7 +386,7 @@ function downloadReport() {
   const hour = new Date().getHours();
   const part = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
   const name = {{ (full_name.split(" ")[0] if full_name else user_email) | tojson }};
-  document.getElementById("greetingTitle").textContent = `Good ${part}, ${name}! 👋`;
+  document.getElementById("greetingTitle").textContent = `Good ${part}, ${name}!`;
 })();
 
 const STATUS_LABELS = {
@@ -346,7 +409,7 @@ async function loadOrders() {
   box.innerHTML = `<div class="searching">Loading…</div>`;
   const data = await fetch("/api/dashboard/orders").then(r => r.json());
   if (data.error) {
-    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
   allOrders = data.orders || [];
@@ -360,22 +423,22 @@ function renderStats(orders) {
   const due = orders.filter(o => o.payment_status === "pending" || o.payment_status === "not_recorded").length;
   document.getElementById("overviewRow").innerHTML = `
     <div class="overview-card">
-      <div class="overview-icon">📦</div>
+      <div class="overview-icon">${icon("package", "icon-lg")}</div>
       <div class="overview-label">Orders</div>
       <div class="overview-value">${total}</div>
     </div>
     <div class="overview-card">
-      <div class="overview-icon">💰</div>
+      <div class="overview-icon">${icon("indian-rupee", "icon-lg")}</div>
       <div class="overview-label">Total Value</div>
       <div class="overview-value">${fmt(totalValue)}</div>
     </div>
     <div class="overview-card">
-      <div class="overview-icon">✅</div>
+      <div class="overview-icon">${icon("circle-check-big", "icon-lg")}</div>
       <div class="overview-label">Paid</div>
       <div class="overview-value">${paid}</div>
     </div>
     <div class="overview-card">
-      <div class="overview-icon">⏳</div>
+      <div class="overview-icon" style="color:var(--red)">${icon("hourglass", "icon-lg")}</div>
       <div class="overview-label">Payment Due</div>
       <div class="overview-value" style="color:var(--red)">${due}</div>
     </div>`;
@@ -470,13 +533,13 @@ function orderRow(o) {
   const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
   const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status))
-    ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">✓ Approve</button>
-       <button class="btn-option btn-sm" onclick="rejectOrder(${o.id})">✕ Reject</button>` : "";
+    ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">${icon("check")} Approve</button>
+       <button class="btn-option btn-sm" onclick="rejectOrder(${o.id})">${icon("x")} Reject</button>` : "";
   // Available to both the order's own salesperson and admins — the backend re-checks ownership.
   const completeAction = !_COMPLETABLE_BLOCKED_STATUSES.has(o.status)
-    ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">✔ Mark Completed</button>` : "";
+    ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">${icon("check-check")} Mark Completed</button>` : "";
   const invoiceAction = (o.status === "invoiced" || o.status === "delivered")
-    ? `<a class="btn-option btn-sm" href="/api/dashboard/orders/${o.id}/invoice" target="_blank">🧾 Invoice</a>` : "";
+    ? `<a class="btn-option btn-sm" href="/api/dashboard/orders/${o.id}/invoice" target="_blank">${icon("receipt")} Invoice</a>` : "";
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
   const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
   const isOpen = expandedOrderId === o.id;
@@ -648,7 +711,7 @@ async function loadClients() {
   box.innerHTML = `<div class="searching">Loading…</div>`;
   const data = await fetch("/api/clients").then(r => r.json());
   if (data.error) {
-    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
   clientsData = data.clients || [];
@@ -1091,7 +1154,7 @@ async function loadFlavourSales() {
   box.innerHTML = `<div class="searching">Loading…</div>`;
   const data = await fetch("/api/dashboard/flavour-sales").then(r => r.json());
   if (data.error) {
-    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
   flavourSalesLines = data.lines || [];
@@ -1175,7 +1238,7 @@ async function loadStock() {
   box.innerHTML = `<div class="searching">Loading…</div>`;
   const data = await fetch("/api/admin/sku-stock").then(r => r.json());
   if (data.error) {
-    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
   stockData = data.stock || [];
@@ -1226,7 +1289,7 @@ async function loadFlavours() {
   box.innerHTML = `<div class="searching">Loading…</div>`;
   const data = await fetch("/api/admin/flavours").then(r => r.json());
   if (data.error) {
-    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
   flavoursData = data.flavours || [];
