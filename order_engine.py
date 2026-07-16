@@ -425,6 +425,22 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         ):
             payments.setdefault(p["order_id"], p)  # most recent per order (already sorted desc)
 
+    # Historical bulk-imported orders can have zero order_lines rows (see
+    # flavour_sales_summary), which skews revenue reporting. Flag those here — cheap,
+    # id-only fetch — so the dashboard can exclude them from views without a separate call.
+    ids_with_lines = set()
+    for i in range(0, len(order_ids), CHUNK):
+        chunk_ids = order_ids[i:i + CHUNK]
+
+        def build_lines_query(start, end, chunk_ids=chunk_ids):
+            return (
+                sb.schema("sales").from_("order_lines")
+                .select("order_id").eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+            )
+
+        for l in _fetch_all_pages(build_lines_query):
+            ids_with_lines.add(l["order_id"])
+
     out = []
     for o in orders:
         client = clients.get(o.get("client_id"), {})
@@ -440,6 +456,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
             "city": city_for_place(place) if place != "—" else "—",
             "salesperson_name": sp.get("full_name", "—"),
             "payment_status": payment["status"] if payment else "not_recorded",
+            "has_lines": o["id"] in ids_with_lines,
         })
 
     if role in REGION_HEAD_ROLES:

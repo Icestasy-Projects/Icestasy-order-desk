@@ -441,7 +441,10 @@ async function loadOrders() {
     box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
-  allOrders = data.orders || [];
+  // Historical bulk-imported orders with no recorded line items skew every figure on
+  // this page (see Insights gap note). Excluded from all dashboard views for now —
+  // nothing is deleted server-side, this is a display-only filter.
+  allOrders = (data.orders || []).filter(o => o.has_lines !== false);
   renderOrders();
 }
 
@@ -697,7 +700,7 @@ function renderOrders() {
   if (!source.length) {
     box.innerHTML = `<div class="opt-muted">No orders match "${searchQuery}"</div>`;
     pagBox.innerHTML = "";
-    renderStats(source);
+    renderStats(allOrders);
     return;
   }
   if (grouping === "none") {
@@ -714,7 +717,9 @@ function renderOrders() {
         <span>Page ${ordersPage} of ${totalPages} · ${source.length} orders</span>
         <button class="btn-option btn-sm" ${ordersPage >= totalPages ? "disabled" : ""} onclick="goToOrdersPage(${ordersPage + 1})">Next ›</button>
       </div>` : "";
-    renderStats(source);
+    // Overview/Sales Breakdown/Revenue Trends always reflect the full dataset —
+    // search text and the Paid/Unpaid tabs only filter which rows are listed below.
+    renderStats(allOrders);
     return;
   }
   pagBox.innerHTML = "";
@@ -741,9 +746,11 @@ function renderOrders() {
       </div>`;
   }).join("");
 
-  let statsSource = source;
-  if (expandedGroup && groups[expandedGroup]) {
-    statsSource = groups[expandedGroup];
+  // Base is the full dataset (not the search/payment-filtered `source`) so stats stay
+  // stable while typing; drilling into a group is a deliberate click, so that still narrows.
+  let statsSource = allOrders;
+  if (expandedGroup) {
+    statsSource = allOrders.filter(o => groupKey(o) === expandedGroup);
     if (grouping === "city" && expandedPlace) {
       statsSource = statsSource.filter(o => o.place === expandedPlace);
     }
