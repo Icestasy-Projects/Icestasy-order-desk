@@ -78,22 +78,19 @@ def _last_12_months_range() -> tuple:
 
 
 def _in_range(created_at: str, date_from: str, date_to: str) -> bool:
-    try:
-        d = datetime.fromisoformat((created_at or "").replace("Z", "+00:00")).date()
-    except (ValueError, AttributeError):
+    # Compare the "YYYY-MM-DD" prefix directly instead of parsing to a datetime —
+    # created_at comes back from Postgres with varying offset formats (e.g. "+00"
+    # vs "+00:00") depending on the client/runtime, which previously made
+    # datetime.fromisoformat() silently reject rows on some Python versions.
+    # Plain ISO-date-string comparison sorts identically to real dates and sidesteps
+    # that entirely.
+    date_str = (created_at or "")[:10]
+    if not date_str:
         return True
-    if date_from:
-        try:
-            if d < datetime.strptime(date_from, "%Y-%m-%d").date():
-                return False
-        except ValueError:
-            pass
-    if date_to:
-        try:
-            if d > datetime.strptime(date_to, "%Y-%m-%d").date():
-                return False
-        except ValueError:
-            pass
+    if date_from and date_str < date_from:
+        return False
+    if date_to and date_str > date_to:
+        return False
     return True
 
 

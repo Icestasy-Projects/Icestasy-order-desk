@@ -128,6 +128,12 @@
         <input id="dashSearch" class="search-input mt16" type="text"
                placeholder="Search by client, city, salesperson, or order no…" oninput="handleSearchInput(this.value)">
 
+        <div class="tab-bar-flat mt16" id="paymentFilterTabs">
+          <button class="tab-btn-flat active" onclick="setPaymentFilter('all', this)">All Payments</button>
+          <button class="tab-btn-flat" onclick="setPaymentFilter('paid', this)">Paid</button>
+          <button class="tab-btn-flat" onclick="setPaymentFilter('unpaid', this)">Unpaid</button>
+        </div>
+
         <div id="ordersBox" class="mt16"></div>
       </section>
     </div>
@@ -137,6 +143,10 @@
         <div class="step-label">Clients</div>
         <input id="clientSearch" class="search-input mt16" type="text"
                placeholder="Search by name, contact, phone, or GSTIN…" oninput="handleClientSearchInput(this.value)">
+        {% if is_admin %}
+        <button id="addClientBtn" type="button" class="btn-option btn-sm mt8" onclick="showAddClientForm()">+ Add Client</button>
+        <div id="addClientFormBox"></div>
+        {% endif %}
         <div id="clientsList" class="option-list mt16"></div>
       </section>
     </div>
@@ -226,6 +236,7 @@ let grouping = "none";
 let expandedGroup = null;
 let expandedPlace = null;
 let searchQuery = "";
+let paymentFilter = "all";
 
 function handleSearchInput(val) {
   searchQuery = val.trim().toLowerCase();
@@ -234,9 +245,21 @@ function handleSearchInput(val) {
   renderOrders();
 }
 
+function setPaymentFilter(f, btn) {
+  paymentFilter = f;
+  expandedGroup = null;
+  expandedPlace = null;
+  document.querySelectorAll("#paymentFilterTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderOrders();
+}
+
 function filteredOrders() {
-  if (!searchQuery) return allOrders;
-  return allOrders.filter(o =>
+  let base = allOrders;
+  if (paymentFilter === "paid") base = base.filter(o => o.payment_status === "received");
+  if (paymentFilter === "unpaid") base = base.filter(o => o.payment_status !== "received");
+  if (!searchQuery) return base;
+  return base.filter(o =>
     (o.order_no || "").toLowerCase().includes(searchQuery) ||
     (o.client_name || "").toLowerCase().includes(searchQuery) ||
     (o.city || "").toLowerCase().includes(searchQuery) ||
@@ -328,7 +351,7 @@ const STATUS_CLASS = {
 const PAY_LABELS = { received: "Payment Completed", pending: "Payment Pending", failed: "Payment Failed", refunded: "Refunded", not_recorded: "Not Recorded" };
 const PAY_CLASS = { received: "badge-green", pending: "badge-amber", failed: "badge-red", refunded: "badge-red", not_recorded: "badge-gray" };
 
-const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 0});
+const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
 async function loadOrders() {
   const box = document.getElementById("ordersBox");
@@ -487,6 +510,8 @@ function setGrouping(g, btn) {
 }
 
 const _TERMINAL_STATUSES = new Set(["invoiced", "rejected", "cancelled", "delivered"]);
+// Completion is independent of invoicing — an invoiced order can still be marked completed.
+const _COMPLETABLE_BLOCKED_STATUSES = new Set(["delivered", "rejected", "cancelled"]);
 let expandedOrderId = null;
 const orderLinesCache = {};
 
@@ -528,7 +553,7 @@ function orderRow(o) {
     ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">✓ Approve</button>
        <button class="btn-option btn-sm" onclick="rejectOrder(${o.id})">✕ Reject</button>` : "";
   // Available to both the order's own salesperson and admins — the backend re-checks ownership.
-  const completeAction = !_TERMINAL_STATUSES.has(o.status)
+  const completeAction = !_COMPLETABLE_BLOCKED_STATUSES.has(o.status)
     ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">✔ Mark Completed</button>` : "";
   const invoiceAction = o.status === "invoiced"
     ? `<a class="btn-option btn-sm" href="/api/dashboard/orders/${o.id}/invoice" target="_blank">🧾 Invoice</a>` : "";
@@ -710,6 +735,65 @@ async function loadClients() {
   renderClients();
 }
 
+// Admin-only client onboarding — deliberately kept out of the New Order flow
+// so salespeople can't create clients on the fly mid-order.
+function showAddClientForm() {
+  const btn = document.getElementById("addClientBtn");
+  if (btn) btn.classList.add("hidden");
+  document.getElementById("addClientFormBox").innerHTML = `
+    <div class="register-form mt8" id="addClientForm">
+      <input id="acName" class="search-input" placeholder="Business name *">
+      <input id="acPhone" class="search-input mt8" placeholder="Phone number *">
+      <input id="acContact" class="search-input mt8" placeholder="Contact name">
+      <select id="acType" class="search-input mt8">
+        <option value="horeca">HoReCa</option>
+        <option value="retail">Retail</option>
+        <option value="distributor">Distributor</option>
+      </select>
+      <input id="acGstin" class="search-input mt8" placeholder="GSTIN (optional)">
+      <input id="acFssai" class="search-input mt8" placeholder="FSSAI No (optional)">
+      <input id="acEmail" class="search-input mt8" placeholder="Email (optional)">
+      <div id="acError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="submitAddClient()">Add Client</button>
+        <button class="btn-ghost" onclick="cancelAddClientForm()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function cancelAddClientForm() {
+  document.getElementById("addClientFormBox").innerHTML = "";
+  const btn = document.getElementById("addClientBtn");
+  if (btn) btn.classList.remove("hidden");
+}
+
+async function submitAddClient() {
+  const errBox = document.getElementById("acError");
+  const payload = {
+    business_name: document.getElementById("acName").value.trim(),
+    primary_contact_phone: document.getElementById("acPhone").value.trim(),
+    primary_contact_name: document.getElementById("acContact").value.trim(),
+    client_type: document.getElementById("acType").value,
+    gstin: document.getElementById("acGstin").value.trim(),
+    fssai_no: document.getElementById("acFssai").value.trim(),
+    email: document.getElementById("acEmail").value.trim(),
+  };
+  if (!payload.business_name || !payload.primary_contact_phone) {
+    errBox.textContent = "Business name and phone number are required";
+    return;
+  }
+  const res = await fetch("/api/clients", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not add client";
+    return;
+  }
+  cancelAddClientForm();
+  loadClients();
+}
+
 function handleClientSearchInput(val) {
   clientSearchQuery = val.trim().toLowerCase();
   expandedClientCity = null;
@@ -740,7 +824,7 @@ function addressCardHtml(c, a) {
       <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${a.line1 || ""}">
       <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${a.line2 || ""}">
       <div class="btn-group">
-        <input class="search-input" id="addr-city-${a.id}" placeholder="City" value="${a.city || ""}" style="flex:1">
+        <input class="search-input" id="addr-city-${a.id}" placeholder="Locality" value="${a.locality || a.city || ""}" style="flex:1">
         <input class="search-input" id="addr-state-${a.id}" placeholder="State" value="${a.state || ""}" style="flex:1">
       </div>
       <div class="btn-group">
@@ -774,7 +858,7 @@ function clientRowHtml(c) {
     <div class="option-btn" style="cursor:${IS_ADMIN ? "pointer" : "default"}" ${IS_ADMIN ? `onclick="toggleClient(${c.id})"` : ""}>
       <div>
         <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name}</span>
-        <span class="opt-sub">${c.client_type || ""}${c.primary_contact_name ? " · " + c.primary_contact_name : ""}${c.primary_contact_phone ? " · " + c.primary_contact_phone : ""}${c.place && c.place !== "—" ? " · " + c.place : ""}</span>
+        <span class="opt-sub">${c.client_type || ""}${c.primary_contact_name ? " · " + c.primary_contact_name : ""}${c.primary_contact_phone ? " · " + c.primary_contact_phone : ""}${c.place && c.place !== "—" ? " · " + c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
       </div>
     </div>
     ${isOpen ? `<div class="mt8">${body}</div>` : ""}`;
@@ -888,7 +972,7 @@ function showAddAddressForm(clientId) {
       <input id="newaddr-line1-${clientId}" class="search-input" placeholder="Address line 1 *">
       <input id="newaddr-line2-${clientId}" class="search-input mt8" placeholder="Address line 2 (optional)">
       <div class="btn-group mt8">
-        <input id="newaddr-city-${clientId}" class="search-input" placeholder="City *" style="flex:1">
+        <input id="newaddr-city-${clientId}" class="search-input" placeholder="Locality *" style="flex:1">
         <input id="newaddr-state-${clientId}" class="search-input" placeholder="State *" style="flex:1">
       </div>
       <input id="newaddr-pincode-${clientId}" class="search-input mt8" placeholder="Pincode *">
@@ -1282,8 +1366,7 @@ function renderFlavours() {
               : `<button class="btn-option" onclick="reactivateSku(${s.id})">Reactivate</button>`}
           </div>
           <div class="sku-price-row">
-            <span class="sku-fmt-name">HSN / GST%</span>
-            <input type="text" class="search-input" style="width:90px" id="hsn-${s.id}" value="${s.hsn_code || ""}" placeholder="HSN">
+            <span class="sku-fmt-name">GST%</span>
             <input type="number" min="0" max="100" step="0.01" class="search-input" style="width:64px" id="gst-${s.id}" value="${s.gst_rate}">
             <button class="btn-option" onclick="submitSkuHsnGst(${s.id})">Save</button>
           </div>`).join("")}
@@ -1374,14 +1457,14 @@ async function submitSkuPrice(skuId) {
 }
 
 async function submitSkuHsnGst(skuId) {
-  const hsn_code = document.getElementById(`hsn-${skuId}`).value.trim();
+  // HSN is fixed (all ice cream SKUs share one code) — only GST% is editable here.
   const gst_rate = document.getElementById(`gst-${skuId}`).value;
   const res = await fetch(`/api/admin/skus/${skuId}/hsn-gst`, {
     method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({hsn_code, gst_rate: parseFloat(gst_rate)}),
+    body: JSON.stringify({gst_rate: parseFloat(gst_rate)}),
   }).then(r => r.json());
   if (!res.ok) {
-    alert(res.error || "Could not update HSN/GST");
+    alert(res.error || "Could not update GST rate");
     return;
   }
   loadFlavours();

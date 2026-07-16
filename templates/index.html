@@ -10,7 +10,7 @@
 <div class="app">
   <header class="header">
     <div class="header-inner">
-      <span class="brand">🍦 Icestasy Order Desk</span>
+      <a class="brand" href="/">🍦 Icestasy Order Desk</a>
       <div class="header-right menu-wrap">
         <span class="user-email">{{ user_email }}</span>
         <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">☰</button>
@@ -79,12 +79,7 @@
         <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
                oninput="debounceSearch(this.value)">
       </div>
-      {% if is_admin %}
-      <button class="btn-option btn-sm mt8" id="registerToggleBtn"
-              onclick="showRegisterForm(document.getElementById('clientSearch').value)">+ Register new client</button>
-      {% else %}
-      <div class="opt-muted mt8">New client? Ask your Admin to register them first.</div>
-      {% endif %}
+      <div class="opt-muted mt8">New client? Ask your Admin to add them from the Clients tab first.</div>
       <div id="clientResults" class="option-list mt8"></div>
     </section>
 
@@ -126,14 +121,9 @@ let searchTimer = null;
 const COLLATERAL_TYPES = ["Tent Cards","Acrylic Tent Cards","Acrylic Stands","Inserts (for Acrylic)","Posters","Flyers"];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 0});
+const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const show = id => document.getElementById(id).classList.remove("hidden");
 const hide = id => document.getElementById(id).classList.add("hidden");
-// Register-new-client button is only rendered for roles allowed to onboard clients — no-op otherwise.
-const showRegisterToggle = visible => {
-  const btn = document.getElementById("registerToggleBtn");
-  if (btn) btn.style.display = visible ? "" : "none";
-};
 
 function resetAll() {
   state = {items: [], payment: null, client: null, address_id: null, address_label: null,
@@ -144,7 +134,6 @@ function resetAll() {
   document.getElementById("clientSearch").value = "";
   document.getElementById("clientSearch").style.display = "";
   document.getElementById("clientResults").innerHTML = "";
-  showRegisterToggle(true);
   document.getElementById("addressList").innerHTML = "";
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
@@ -394,7 +383,7 @@ async function _searchClients(q) {
   }
   const clients = data.clients || [];
   if (!clients.length) {
-    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name, or register below</div>`;
+    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name, or ask your Admin to add this client from the Clients tab</div>`;
     return;
   }
   box.innerHTML = clients.map(c => `
@@ -404,71 +393,11 @@ async function _searchClients(q) {
     </button>`).join("");
 }
 
-// ── Register new client ────────────────────────────────────────────────────
-function showRegisterForm(prefillName) {
-  const box = document.getElementById("clientResults");
-  showRegisterToggle(false);
-  const name = (prefillName || "").replace(/"/g, "&quot;");
-  box.innerHTML = `
-    <div class="register-form">
-      <input id="regName" class="search-input" placeholder="Business name *" value="${name}">
-      <input id="regPhone" class="search-input mt8" placeholder="Phone number *">
-      <input id="regContact" class="search-input mt8" placeholder="Contact name">
-      <select id="regType" class="search-input mt8">
-        <option value="horeca">HoReCa</option>
-        <option value="retail">Retail</option>
-        <option value="distributor">Distributor</option>
-      </select>
-      <input id="regGstin" class="search-input mt8" placeholder="GSTIN (optional)">
-      <input id="regFssai" class="search-input mt8" placeholder="FSSAI No (optional)">
-      <input id="regEmail" class="search-input mt8" placeholder="Email (optional)">
-      <div id="regError" class="opt-error mt8"></div>
-      <div class="btn-group mt8">
-        <button class="btn-primary" onclick="submitRegister()">Register &amp; Select</button>
-        <button class="btn-ghost" onclick="cancelRegisterForm()">Cancel</button>
-      </div>
-    </div>`;
-}
-
-function cancelRegisterForm() {
-  showRegisterToggle(true);
-  const q = document.getElementById("clientSearch").value;
-  if (q.length >= 2) _searchClients(q);
-  else document.getElementById("clientResults").innerHTML = "";
-}
-
-async function submitRegister() {
-  const errBox = document.getElementById("regError");
-  const payload = {
-    business_name: document.getElementById("regName").value.trim(),
-    primary_contact_phone: document.getElementById("regPhone").value.trim(),
-    primary_contact_name: document.getElementById("regContact").value.trim(),
-    client_type: document.getElementById("regType").value,
-    gstin: document.getElementById("regGstin").value.trim(),
-    fssai_no: document.getElementById("regFssai").value.trim(),
-    email: document.getElementById("regEmail").value.trim(),
-  };
-  if (!payload.business_name || !payload.primary_contact_phone) {
-    errBox.textContent = "Business name and phone number are required";
-    return;
-  }
-  const res = await fetch("/api/clients", {
-    method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify(payload),
-  }).then(r => r.json());
-  if (!res.ok) {
-    errBox.textContent = res.error || "Could not register client";
-    return;
-  }
-  selectClient(res.client);
-}
-
 async function selectClient(client) {
   state.client = client;
   document.getElementById("clientResults").innerHTML =
     `<div class="selected-pill">✓ ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientSearch").style.display = "none";
-  showRegisterToggle(false);
 
   hide("step-client");
   await loadAddresses(client.id);
@@ -610,7 +539,6 @@ async function submitAddress() {
 function changeClient() {
   state.client = null;
   document.getElementById("clientSearch").style.display = "";
-  showRegisterToggle(true);
   document.getElementById("clientResults").innerHTML = "";
   document.getElementById("clientSearch").value = "";
   document.getElementById("clientSearch").focus();

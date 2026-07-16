@@ -202,13 +202,16 @@ def get_client_addresses(client_id: int) -> list:
 def create_address(client_id: int, data: dict) -> dict:
     sb = _sb()
     line1 = (data.get("line1") or "").strip()
-    city = (data.get("city") or "").strip()
+    # "city" is entered at locality precision (e.g. "Bandra West") — the whole
+    # book of business is Mumbai, so `city` itself is now a fixed "Mumbai" and
+    # the actual submitted value is preserved in `locality`.
+    locality = (data.get("city") or "").strip()
     state = (data.get("state") or "").strip()
     pincode = (data.get("pincode") or "").strip()
 
     if not line1:
         raise ValueError("Address line is required")
-    if not city:
+    if not locality:
         raise ValueError("City is required")
     if not state:
         raise ValueError("State is required")
@@ -221,7 +224,8 @@ def create_address(client_id: int, data: dict) -> dict:
         "gstin": (data.get("gstin") or "").strip() or None,
         "line1": line1,
         "line2": (data.get("line2") or "").strip() or None,
-        "city": city,
+        "city": "Mumbai",
+        "locality": locality,
         "state": state,
         "state_code": _state_code_for(state),
         "pincode": pincode,
@@ -239,7 +243,7 @@ def addr_label(addr: dict) -> str:
     for k in ("address_line1", "line1", "street", "line_1"):
         if addr.get(k):
             parts.append(str(addr[k])); break
-    for k in ("city",):
+    for k in ("locality", "city"):
         if addr.get(k):
             parts.append(str(addr[k])); break
     return ", ".join(parts) if parts else f"Address #{addr.get('id','?')}"
@@ -302,9 +306,11 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
 
     city_code = "ROI"
     if shipping_address_id:
-        addr = sb.schema("sales").from_("addresses").select("city").eq("id", shipping_address_id).limit(1).execute()
-        if addr.data and addr.data[0].get("city"):
-            city_code = _order_city_code(addr.data[0]["city"])
+        addr = sb.schema("sales").from_("addresses").select("city,locality").eq("id", shipping_address_id).limit(1).execute()
+        if addr.data:
+            place = addr.data[0].get("locality") or addr.data[0].get("city")
+            if place:
+                city_code = _order_city_code(place)
     order_no = _next_order_no(sb, city_code)
     order_row = {
         "order_no": order_no, "client_id": client_id,
@@ -370,7 +376,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         sb.schema("sales").from_("clients").select("id,business_name").in_("id", client_ids).execute().data
         if client_ids else [])}
     addrs = {a["id"]: a for a in (
-        sb.schema("sales").from_("addresses").select("id,city,state").in_("id", addr_ids).execute().data
+        sb.schema("sales").from_("addresses").select("id,city,locality,state").in_("id", addr_ids).execute().data
         if addr_ids else [])}
     staff = {u["id"]: u for u in (
         sb.schema("sales").from_("users").select("id,full_name").in_("id", sp_ids).execute().data
@@ -389,7 +395,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         addr = addrs.get(o.get("shipping_address_id"), {})
         sp = staff.get(o.get("salesperson_id"), {})
         payment = payments.get(o["id"])
-        place = addr.get("city") or "—"
+        place = addr.get("locality") or addr.get("city") or "—"
         out.append({
             "id": o["id"], "order_no": o["order_no"], "status": o["status"],
             "total_amount": float(o["total_amount"]), "created_at": o["created_at"],
@@ -421,6 +427,7 @@ def mark_payment_received(order_id: int, received_by: int) -> dict:
 
 
 _TERMINAL_ORDER_STATUSES = {"invoiced", "rejected", "cancelled", "delivered"}
+_COMPLETABLE_BLOCKED_STATUSES = {"delivered", "rejected", "cancelled"}
 
 
 def get_order_lines(order_id: int, user_id: int, role: str) -> list:
@@ -435,11 +442,11 @@ def get_order_lines(order_id: int, user_id: int, role: str) -> list:
     o = order.data[0]
     if role in REGION_HEAD_ROLES:
         addr = (
-            sb.schema("sales").from_("addresses").select("city")
+            sb.schema("sales").from_("addresses").select("city,locality")
             .eq("id", o["shipping_address_id"]).limit(1).execute()
             if o.get("shipping_address_id") else None
         )
-        place = addr.data[0]["city"] if addr and addr.data else None
+        place = (addr.data[0].get("locality") or addr.data[0].get("city")) if addr and addr.data else None
         if _region_role_for_city(place) != role:
             raise ValueError("Not authorized to view this order")
     elif role != "admin":
@@ -480,7 +487,10 @@ def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
     if role not in REGION_HEAD_ROLES and role != "admin":
         if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
             raise ValueError("Not authorized to update this order")
-    if o["status"] in _TERMINAL_ORDER_STATUSES:
+    # Completion (delivery) is independent of invoicing — an order can be invoiced
+    # before or after the goods actually go out, so "invoiced" alone shouldn't
+    # block marking it completed. Only these are truly final.
+    if o["status"] in _COMPLETABLE_BLOCKED_STATUSES:
         raise ValueError(f"Order is already {o['status']}")
     res = sb.schema("sales").from_("orders").update({"status": "delivered"}).eq("id", order_id).execute()
     return res.data[0]
@@ -500,12 +510,15 @@ def flavour_sales_lines(user_id: int, role: str) -> list:
 
     addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
     addrs = {a["id"]: a for a in (
-        sb.schema("sales").from_("addresses").select("id,city").in_("id", addr_ids).execute().data
+        sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", addr_ids).execute().data
         if addr_ids else [])}
 
+    def _addr_place(o):
+        addr = addrs.get(o.get("shipping_address_id")) or {}
+        return addr.get("locality") or addr.get("city")
+
     if role in REGION_HEAD_ROLES:
-        orders = [o for o in orders
-                  if _region_role_for_city((addrs.get(o.get("shipping_address_id")) or {}).get("city")) == role]
+        orders = [o for o in orders if _region_role_for_city(_addr_place(o)) == role]
 
     orders_by_id = {o["id"]: o for o in orders}
     order_ids = list(orders_by_id.keys())
@@ -526,8 +539,7 @@ def flavour_sales_lines(user_id: int, role: str) -> list:
         o = orders_by_id.get(l["order_id"])
         if not o:
             continue
-        addr = addrs.get(o.get("shipping_address_id")) or {}
-        place = addr.get("city")
+        place = _addr_place(o)
         sku = l.get("skus") or {}
         out.append({
             "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
@@ -571,13 +583,13 @@ def list_clients() -> list:
     clients = (
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, "
-                "gstin, fssai_no, addresses(id, address_type, line1, line2, city, state, pincode, gstin, is_default)")
+                "gstin, fssai_no, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
         .eq("status", "active").order("business_name").execute().data
     )
     for c in clients:
         addrs = c.get("addresses") or []
         default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
-        place = (default_addr or {}).get("city")
+        place = (default_addr or {}).get("locality") or (default_addr or {}).get("city")
         c["place"] = place or "—"
         c["city"] = city_for_place(place) if place else "Unassigned"
     return clients
@@ -601,9 +613,13 @@ def update_client(client_id: int, data: dict) -> dict:
 def update_address(address_id: int, data: dict) -> dict:
     sb = _sb()
     updates = {}
-    for key in ("line1", "line2", "city", "state", "pincode", "gstin", "address_type"):
+    for key in ("line1", "line2", "state", "pincode", "gstin", "address_type"):
         if key in data:
             updates[key] = (data.get(key) or "").strip() or None
+    # "city" here means locality precision (e.g. "Bandra West") — the real
+    # `city` column stays a fixed "Mumbai", so route edits to `locality` instead.
+    if "city" in data:
+        updates["locality"] = (data.get("city") or "").strip() or None
     if updates.get("state"):
         updates["state_code"] = _state_code_for(updates["state"])
     if "is_default" in data:
@@ -892,16 +908,15 @@ def set_sku_status(sku_id: int, status: str) -> dict:
     return res.data[0]
 
 
-def set_sku_hsn_gst(sku_id: int, hsn_code: str, gst_rate: float) -> dict:
-    hsn_code = (hsn_code or "").strip()
-    if not hsn_code:
-        raise ValueError("HSN/SAC code is required")
+def set_sku_gst_rate(sku_id: int, gst_rate: float) -> dict:
+    # HSN is no longer per-SKU editable — every ice cream SKU shares the same
+    # code (_DEFAULT_HSN_CODE), so this only ever needs to touch gst_rate.
     if gst_rate < 0 or gst_rate > 100:
         raise ValueError("GST rate must be between 0 and 100")
     sb = _sb()
     res = (
         sb.schema("sales").from_("skus")
-        .update({"hsn_code": hsn_code, "gst_rate": gst_rate}).eq("id", sku_id).execute()
+        .update({"hsn_code": _DEFAULT_HSN_CODE, "gst_rate": gst_rate}).eq("id", sku_id).execute()
     )
     if not res.data:
         raise ValueError("SKU not found")
