@@ -939,16 +939,3 @@ def set_sku_status(sku_id: int, status: str) -> dict:
     return res.data[0]
 
 
-def set_sku_gst_rate(sku_id: int, gst_rate: float) -> dict:
-    # HSN is no longer per-SKU editable — every ice cream SKU shares the same
-    # code (_DEFAULT_HSN_CODE), so this only ever needs to touch gst_rate.
-    if gst_rate < 0 or gst_rate > 100:
-        raise ValueError("GST rate must be between 0 and 100")
-    sb = _sb()
-    res = (
-        sb.schema("sales").from_("skus")
-        .update({"hsn_code": _DEFAULT_HSN_CODE, "gst_rate": gst_rate}).eq("id", sku_id).execute()
-    )
-    if not res.data:
-        raise ValueError("SKU not found")
-    return res.data[0]

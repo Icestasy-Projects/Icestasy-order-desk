@@ -475,7 +475,7 @@ function orderRow(o) {
   // Available to both the order's own salesperson and admins — the backend re-checks ownership.
   const completeAction = !_COMPLETABLE_BLOCKED_STATUSES.has(o.status)
     ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">✔ Mark Completed</button>` : "";
-  const invoiceAction = o.status === "invoiced"
+  const invoiceAction = (o.status === "invoiced" || o.status === "delivered")
     ? `<a class="btn-option btn-sm" href="/api/dashboard/orders/${o.id}/invoice" target="_blank">🧾 Invoice</a>` : "";
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
   const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
@@ -1284,11 +1284,6 @@ function renderFlavours() {
             ${s.status === "active"
               ? `<button class="btn-option" onclick="removeSku(${s.id})">Remove</button>`
               : `<button class="btn-option" onclick="reactivateSku(${s.id})">Reactivate</button>`}
-          </div>
-          <div class="sku-price-row">
-            <span class="sku-fmt-name">GST%</span>
-            <input type="number" min="0" max="100" step="0.01" class="search-input" style="width:64px" id="gst-${s.id}" value="${s.gst_rate}">
-            <button class="btn-option" onclick="submitSkuHsnGst(${s.id})">Save</button>
           </div>`).join("")}
       </div>` : `<span class="opt-muted">No SKUs yet</span>`;
 
@@ -1371,20 +1366,6 @@ async function submitSkuPrice(skuId) {
   }).then(r => r.json());
   if (!res.ok) {
     alert(res.error || "Could not update price");
-    return;
-  }
-  loadFlavours();
-}
-
-async function submitSkuHsnGst(skuId) {
-  // HSN is fixed (all ice cream SKUs share one code) — only GST% is editable here.
-  const gst_rate = document.getElementById(`gst-${skuId}`).value;
-  const res = await fetch(`/api/admin/skus/${skuId}/hsn-gst`, {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({gst_rate: parseFloat(gst_rate)}),
-  }).then(r => r.json());
-  if (!res.ok) {
-    alert(res.error || "Could not update GST rate");
     return;
   }
   loadFlavours();
