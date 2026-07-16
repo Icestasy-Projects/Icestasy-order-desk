@@ -212,6 +212,7 @@
           <button class="tab-btn-flat active" onclick="setInsightsGrouping('city', this)">By City</button>
           <button class="tab-btn-flat" onclick="setInsightsGrouping('month', this)">By Month</button>
         </div>
+        <div id="insightsGapNote" class="opt-muted mt8" style="font-size:12px"></div>
         <div id="insightsBox" class="mt16"></div>
       </section>
     </div>
@@ -1228,6 +1229,7 @@ async function submitEditTeamMember(staffId) {
 let flavourSalesLines = [];
 let insightsGrouping = "city";
 let expandedInsightsGroup = null;
+let insightsGap = {count: 0, value: 0};
 
 async function loadFlavourSales() {
   const box = document.getElementById("insightsBox");
@@ -1238,6 +1240,7 @@ async function loadFlavourSales() {
     return;
   }
   flavourSalesLines = data.lines || [];
+  insightsGap = {count: data.orders_without_lines || 0, value: data.value_without_lines || 0};
   renderInsights();
 }
 
@@ -1256,6 +1259,13 @@ function toggleInsightsGroup(name) {
 
 function renderInsights() {
   const box = document.getElementById("insightsBox");
+  const gapNote = document.getElementById("insightsGapNote");
+  gapNote.innerHTML = insightsGap.count
+    ? `Figures are pre-tax product revenue from recorded order line items. ` +
+      `${insightsGap.count} order${insightsGap.count === 1 ? "" : "s"} (${fmt(insightsGap.value)}) ` +
+      `${insightsGap.count === 1 ? "has" : "have"} no line-item detail on file and aren't included here — ` +
+      `that's why this won't match the Overview's Total Value.`
+    : `Figures are pre-tax product revenue from recorded order line items — Overview's Total Value includes GST on top of this.`;
   if (!flavourSalesLines.length) {
     box.innerHTML = `<div class="opt-muted">No sales data yet</div>`;
     return;

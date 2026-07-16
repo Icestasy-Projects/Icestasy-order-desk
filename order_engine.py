@@ -517,13 +517,21 @@ def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
     return res.data[0]
 
 
-def flavour_sales_lines(user_id: int, role: str) -> list:
+def flavour_sales_summary(user_id: int, role: str) -> dict:
+    """Line-item sales data for the Insights view / flavour & SKU reports.
+
+    Returns pre-tax product revenue (order_lines.line_total has no GST in it —
+    tax is only ever applied at the order level, in orders.total_amount), plus
+    a count/value of orders that have no recorded line items at all (common in
+    the historical bulk-imported data) so callers can flag that gap instead of
+    silently under-reporting against the order-level totals shown elsewhere.
+    """
     sb = _sb()
 
     def build_orders_query(start, end):
         q = (
             sb.schema("sales").from_("orders")
-            .select("id, created_at, shipping_address_id, created_by_user_id, salesperson_id")
+            .select("id, created_at, total_amount, shipping_address_id, created_by_user_id, salesperson_id")
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
             q = q.eq("created_by_user_id", user_id)
@@ -531,7 +539,7 @@ def flavour_sales_lines(user_id: int, role: str) -> list:
 
     orders = _fetch_all_pages(build_orders_query)
     if not orders:
-        return []
+        return {"lines": [], "orders_without_lines": 0, "value_without_lines": 0.0}
 
     addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
     addrs = {a["id"]: a for a in (
@@ -563,10 +571,12 @@ def flavour_sales_lines(user_id: int, role: str) -> list:
         lines.extend(_fetch_all_pages(build_lines_query))
 
     out = []
+    ids_with_lines = set()
     for l in lines:
         o = orders_by_id.get(l["order_id"])
         if not o:
             continue
+        ids_with_lines.add(l["order_id"])
         place = _addr_place(o)
         sku = l.get("skus") or {}
         out.append({
@@ -577,7 +587,13 @@ def flavour_sales_lines(user_id: int, role: str) -> list:
             "quantity": float(l["quantity"]),
             "revenue": float(l["line_total"]),
         })
-    return out
+
+    missing = [o for o in orders if o["id"] not in ids_with_lines]
+    return {
+        "lines": out,
+        "orders_without_lines": len(missing),
+        "value_without_lines": sum(o.get("total_amount", 0) or 0 for o in missing),
+    }
 
 
 def approve_order(order_id: int, approved_by: int) -> dict:

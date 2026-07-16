@@ -21,7 +21,7 @@ from order_engine import (
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status,
     update_client, update_address,
-    get_order_lines, mark_order_completed, flavour_sales_lines,
+    get_order_lines, mark_order_completed, flavour_sales_summary,
 )
 from invoicing import build_invoice_pdf
 from reports import build_orders_workbook, build_flavour_sales_workbook
@@ -275,9 +275,11 @@ def api_dashboard_export():
     role_label = ROLE_LABELS.get(role, role)
     full_name = session.get("full_name") or ""
     if report_type in ("flavour", "sku"):
-        lines = flavour_sales_lines(user_id=session["user_id"], role=role)
-        buf = build_flavour_sales_workbook(lines, role_label=role_label, full_name=full_name,
-                                            report_type=report_type, date_from=date_from, date_to=date_to)
+        summary = flavour_sales_summary(user_id=session["user_id"], role=role)
+        buf = build_flavour_sales_workbook(summary["lines"], role_label=role_label, full_name=full_name,
+                                            report_type=report_type, date_from=date_from, date_to=date_to,
+                                            orders_without_lines=summary["orders_without_lines"],
+                                            value_without_lines=summary["value_without_lines"])
     else:
         orders = list_dashboard_orders(user_id=session["user_id"], role=role)
         buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
@@ -313,10 +315,10 @@ def api_complete_order(order_id):
 @broad_view_required
 def api_flavour_sales():
     try:
-        lines = flavour_sales_lines(user_id=session["user_id"], role=session["role"])
-        return jsonify({"lines": lines})
+        summary = flavour_sales_summary(user_id=session["user_id"], role=session["role"])
+        return jsonify(summary)
     except Exception as e:
-        return jsonify({"lines": [], "error": str(e)}), 200
+        return jsonify({"lines": [], "orders_without_lines": 0, "value_without_lines": 0, "error": str(e)}), 200
 
 
 @app.route("/api/dashboard/orders/<int:order_id>/mark-paid", methods=["POST"])
