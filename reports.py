@@ -281,7 +281,8 @@ def _write_flavour_detail_sheet(ws, lines: list, subtitle_text: str):
 
 
 def build_flavour_sales_workbook(lines: list, role_label: str, full_name: str,
-                                  report_type: str = "flavour", date_from: str = None, date_to: str = None) -> io.BytesIO:
+                                  report_type: str = "flavour", date_from: str = None, date_to: str = None,
+                                  orders_without_lines: int = 0, value_without_lines: float = 0.0) -> io.BytesIO:
     if report_type not in ("flavour", "sku"):
         report_type = "flavour"
     if date_from or date_to:
@@ -291,6 +292,9 @@ def build_flavour_sales_workbook(lines: list, role_label: str, full_name: str,
     range_text = f" · {date_from or '…'} to {date_to or '…'}" if (date_from or date_to) else ""
     total_qty = sum(l.get("quantity", 0) or 0 for l in lines)
     subtitle_text = f"{full_name} · {role_label} · Generated {generated} · {total_qty:.0f} units sold{range_text}"
+    if orders_without_lines:
+        subtitle_text += (f" · Pre-tax product revenue; excludes {orders_without_lines} orders "
+                           f"(₹{value_without_lines:,.2f}) with no recorded line items")
 
     wb = Workbook()
     summary_ws = wb.active
