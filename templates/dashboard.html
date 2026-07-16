@@ -1211,15 +1211,8 @@ function toggleInsightsGroup(name) {
   renderInsights();
 }
 
-let insightsGroupSort = {key: "revenue", dir: "desc"};
 let insightsFlavourSort = {key: "qty", dir: "desc"};
 
-function setInsightsGroupSort(key) {
-  insightsGroupSort = insightsGroupSort.key === key
-    ? {key, dir: insightsGroupSort.dir === "desc" ? "asc" : "desc"}
-    : {key, dir: key === "name" ? "asc" : "desc"};
-  renderInsights();
-}
 function setInsightsFlavourSort(key) {
   insightsFlavourSort = insightsFlavourSort.key === key
     ? {key, dir: insightsFlavourSort.dir === "desc" ? "asc" : "desc"}
@@ -1261,23 +1254,11 @@ function renderInsights() {
     (groups[k] = groups[k] || []).push(l);
   });
 
-  const groupTotals = applySort(
-    Object.entries(groups).map(([name, lines]) => ({
-      name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
-    })),
-    insightsGroupSort,
-    {name: g => g.name.toLowerCase(), qty: g => g.qty, revenue: g => g.revenue}
-  );
+  const groupTotals = Object.entries(groups).map(([name, lines]) => ({
+    name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
+  })).sort((a, b) => b.revenue - a.revenue);
 
-  const sortBar = `
-    <div class="insights-sort-bar">
-      <span class="opt-sub">Sort:</span>
-      <button type="button" class="btn-option btn-sm${insightsGroupSort.key === "name" ? " active" : ""}" onclick="setInsightsGroupSort('name')">Name${sortIndicator(insightsGroupSort, "name")}</button>
-      <button type="button" class="btn-option btn-sm${insightsGroupSort.key === "qty" ? " active" : ""}" onclick="setInsightsGroupSort('qty')">Units${sortIndicator(insightsGroupSort, "qty")}</button>
-      <button type="button" class="btn-option btn-sm${insightsGroupSort.key === "revenue" ? " active" : ""}" onclick="setInsightsGroupSort('revenue')">Revenue${sortIndicator(insightsGroupSort, "revenue")}</button>
-    </div>`;
-
-  box.innerHTML = sortBar + groupTotals.map(g => {
+  box.innerHTML = groupTotals.map(g => {
     const isOpen = expandedInsightsGroup === g.name;
     const safeName = JSON.stringify(g.name).replace(/'/g, "&#39;");
     let body = "";
