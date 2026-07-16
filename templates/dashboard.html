@@ -31,6 +31,7 @@
       <button class="tab-btn" id="page-tab-clients" onclick="switchPage('clients', this)">🧑‍🤝‍🧑 Clients</button>
       {% if can_view_team %}
       <button class="tab-btn" id="page-tab-team" onclick="switchPage('team', this)">👥 Team</button>
+      <button class="tab-btn" id="page-tab-insights" onclick="switchPage('insights', this)">📈 Insights</button>
       {% endif %}
       {% if is_admin %}
       <button class="tab-btn" id="page-tab-stock" onclick="switchPage('stock', this)">📊 Stock</button>
@@ -138,6 +139,17 @@
         {% endif %}
       </section>
     </div>
+
+    <div id="page-insights" class="hidden">
+      <section class="step">
+        <div class="step-label">Flavour Sales Insights</div>
+        <div class="tab-bar-flat" id="insightsGroupTabs">
+          <button class="tab-btn-flat active" onclick="setInsightsGrouping('city', this)">By City</button>
+          <button class="tab-btn-flat" onclick="setInsightsGrouping('month', this)">By Month</button>
+        </div>
+        <div id="insightsBox" class="mt16"></div>
+      </section>
+    </div>
     {% endif %}
 
     {% if is_admin %}
@@ -176,7 +188,9 @@
     <option value="month">Month on Month</option>
     <option value="city">City-wise</option>
     <option value="client">Client-wise</option>
-    {% if can_view_team %}<option value="salesperson">Salesperson-wise</option>{% endif %}
+    {% if can_view_team %}<option value="salesperson">Salesperson-wise</option>
+    <option value="flavour">Flavour-wise</option>
+    <option value="sku">SKU-wise (units sold)</option>{% endif %}
   </select>
   <div id="reportDateRange">
     <label class="login-label mt16">From</label>
@@ -229,9 +243,12 @@ function switchPage(page, btn) {
   if (stockPage) stockPage.classList.toggle("hidden", page !== "stock");
   const flavoursPage = document.getElementById("page-flavours");
   if (flavoursPage) flavoursPage.classList.toggle("hidden", page !== "flavours");
+  const insightsPage = document.getElementById("page-insights");
+  if (insightsPage) insightsPage.classList.toggle("hidden", page !== "insights");
   if (page === "clients" && !clientsData.length) loadClients();
   if (page === "stock" && !stockData.length) loadStock();
   if (page === "flavours" && !flavoursData.length) loadFlavours();
+  if (page === "insights" && !flavourSalesLines.length) loadFlavourSales();
 }
 
 // ── Header menu + greeting ─────────────────────────────────────────────────
@@ -390,6 +407,39 @@ function setGrouping(g, btn) {
 }
 
 const _TERMINAL_STATUSES = new Set(["invoiced", "rejected", "cancelled", "delivered"]);
+let expandedOrderId = null;
+const orderLinesCache = {};
+
+async function toggleOrderLines(orderId) {
+  expandedOrderId = expandedOrderId === orderId ? null : orderId;
+  if (expandedOrderId && !orderLinesCache[orderId]) {
+    orderLinesCache[orderId] = "loading";
+    renderOrders();
+    const data = await fetch(`/api/dashboard/orders/${orderId}/lines`).then(r => r.json());
+    orderLinesCache[orderId] = data.ok ? data.lines : [];
+  }
+  renderOrders();
+}
+
+function orderLinesHtml(orderId) {
+  const lines = orderLinesCache[orderId];
+  if (lines === "loading" || lines === undefined) return `<div class="searching mt8">Loading order lines…</div>`;
+  if (!lines.length) return `<div class="opt-muted mt8">No line items</div>`;
+  return `
+    <table class="summary-table mt8">
+      <thead><tr><th>Flavour</th><th>Format</th><th>Qty</th><th>Unit Price</th><th class="num">Line Total</th></tr></thead>
+      <tbody>
+        ${lines.map(l => `
+          <tr>
+            <td>${l.flavour_name}</td>
+            <td>${l.pack_format_name}</td>
+            <td>${l.quantity}</td>
+            <td>${fmt(l.unit_price)}</td>
+            <td class="num">${fmt(l.line_total)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
 
 function orderRow(o) {
   const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending"))
@@ -397,14 +447,18 @@ function orderRow(o) {
   const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status))
     ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">✓ Approve</button>
        <button class="btn-option btn-sm" onclick="rejectOrder(${o.id})">✕ Reject</button>` : "";
+  // Available to both the order's own salesperson and admins — the backend re-checks ownership.
+  const completeAction = !_TERMINAL_STATUSES.has(o.status)
+    ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">✔ Mark Completed</button>` : "";
   const invoiceAction = o.status === "invoiced"
     ? `<a class="btn-option btn-sm" href="/api/dashboard/orders/${o.id}/invoice" target="_blank">🧾 Invoice</a>` : "";
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
   const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
+  const isOpen = expandedOrderId === o.id;
   return `
     <div class="dash-order-row">
-      <div class="dash-order-main">
-        <span class="dash-order-no">${o.order_no}</span>
+      <div class="dash-order-main" onclick="toggleOrderLines(${o.id})" style="cursor:pointer">
+        <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${o.order_no}</span>
         <span class="dash-order-client">${o.client_name}${showPlace ? " · " + o.place : ""}</span>
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
       </div>
@@ -414,9 +468,20 @@ function orderRow(o) {
         <span class="ci-price">${fmt(o.total_amount)}</span>
         ${payAction}
         ${approvalActions}
+        ${completeAction}
         ${invoiceAction}
       </div>
+      ${isOpen ? orderLinesHtml(o.id) : ""}
     </div>`;
+}
+
+async function markCompleted(orderId) {
+  const res = await fetch(`/api/dashboard/orders/${orderId}/complete`, {method: "POST"}).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not mark order completed");
+    return;
+  }
+  loadOrders();
 }
 
 // Mumbai Metropolitan Region: these are separate real cities but reported as one "Mumbai" group.
@@ -930,6 +995,88 @@ async function submitEditTeamMember(staffId) {
     return;
   }
   loadTeam();
+}
+
+// ── Flavour Sales Insights (broad view) ──────────────────────────────────────
+let flavourSalesLines = [];
+let insightsGrouping = "city";
+let expandedInsightsGroup = null;
+
+async function loadFlavourSales() {
+  const box = document.getElementById("insightsBox");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/dashboard/flavour-sales").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">⚠ ${data.error}</div>`;
+    return;
+  }
+  flavourSalesLines = data.lines || [];
+  renderInsights();
+}
+
+function setInsightsGrouping(g, btn) {
+  insightsGrouping = g;
+  expandedInsightsGroup = null;
+  document.querySelectorAll("#insightsGroupTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderInsights();
+}
+
+function toggleInsightsGroup(name) {
+  expandedInsightsGroup = expandedInsightsGroup === name ? null : name;
+  renderInsights();
+}
+
+function renderInsights() {
+  const box = document.getElementById("insightsBox");
+  if (!flavourSalesLines.length) {
+    box.innerHTML = `<div class="opt-muted">No sales data yet</div>`;
+    return;
+  }
+  const keyFn = insightsGrouping === "month"
+    ? l => new Date(l.created_at).toLocaleString("en-IN", {month: "long", year: "numeric"})
+    : l => mmrCity(l.city);
+
+  const groups = {};
+  flavourSalesLines.forEach(l => {
+    const k = keyFn(l) || "—";
+    (groups[k] = groups[k] || []).push(l);
+  });
+
+  const groupTotals = Object.entries(groups).map(([name, lines]) => ({
+    name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
+  })).sort((a, b) => b.revenue - a.revenue);
+
+  box.innerHTML = groupTotals.map(g => {
+    const isOpen = expandedInsightsGroup === g.name;
+    const safeName = JSON.stringify(g.name).replace(/'/g, "&#39;");
+    let body = "";
+    if (isOpen) {
+      const byFlavour = {};
+      g.lines.forEach(l => {
+        const entry = byFlavour[l.flavour_name] || (byFlavour[l.flavour_name] = {qty: 0, revenue: 0});
+        entry.qty += l.quantity;
+        entry.revenue += l.revenue;
+      });
+      const ranked = Object.entries(byFlavour).sort((a, b) => b[1].qty - a[1].qty);
+      body = `
+        <table class="summary-table mt8">
+          <thead><tr><th>Flavour</th><th>Qty Sold</th><th class="num">Revenue</th></tr></thead>
+          <tbody>
+            ${ranked.map(([name, v]) => `
+              <tr><td>${name}</td><td>${v.qty.toFixed(0)}</td><td class="num">${fmt(v.revenue)}</td></tr>`).join("")}
+          </tbody>
+        </table>`;
+    }
+    return `
+      <div class="dash-group">
+        <button type="button" class="dash-group-header" onclick='toggleInsightsGroup(${safeName})'>
+          <span>${isOpen ? "▾" : "▸"} ${g.name}</span>
+          <span class="opt-sub">${g.qty.toFixed(0)} units · ${fmt(g.revenue)}</span>
+        </button>
+        ${body}
+      </div>`;
+  }).join("");
 }
 
 // ── SKU Stock (admin) ────────────────────────────────────────────────────────

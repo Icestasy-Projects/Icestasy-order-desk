@@ -30,8 +30,17 @@ MMR_CITIES = {"Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"}
 REPORT_TYPE_LABELS = {
     "all": "All Orders", "month": "Month on Month", "city": "City-wise",
     "client": "Client-wise", "salesperson": "Salesperson-wise",
+    "flavour": "Flavour-wise", "sku": "SKU-wise",
 }
 GROUP_LABELS = {"month": "Month", "city": "City", "client": "Client", "salesperson": "Salesperson"}
+
+LINE_GROUP_KEY_FUNCS = {
+    "flavour": lambda l: l.get("flavour_name") or "—",
+    "sku": lambda l: l.get("sku_code") or "—",
+}
+LINE_GROUP_LABELS = {"flavour": "Flavour", "sku": "SKU Code"}
+LINE_COLUMNS = ["Date", "Flavour", "SKU Code", "City", "Quantity", "Revenue (INR)"]
+LINE_COLUMN_WIDTHS = [14, 30, 16, 16, 12, 16]
 
 
 def _format_date(created_at: str) -> str:
@@ -180,6 +189,123 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
 
     ws.freeze_panes = f"A{header_row + 1}"
     ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
+
+
+def _write_flavour_summary_sheet(ws, lines: list, report_type: str, subtitle_text: str):
+    group_func = LINE_GROUP_KEY_FUNCS[report_type]
+    group_label = LINE_GROUP_LABELS[report_type]
+    columns = [group_label, "Qty Sold", "Revenue (INR)"]
+    last_col_letter = get_column_letter(len(columns))
+
+    _sheet_header(ws, f"Icestasy Order Desk — {REPORT_TYPE_LABELS[report_type]} Report", subtitle_text, last_col_letter)
+
+    header_row = 4
+    for col, title in enumerate(columns, start=1):
+        cell = ws.cell(row=header_row, column=col, value=title)
+        cell.font = HEADER_FONT
+        cell.fill = BRAND_FILL
+        cell.alignment = Alignment(horizontal="center")
+
+    totals = {}
+    for l in lines:
+        key = group_func(l) or "—"
+        entry = totals.setdefault(key, {"qty": 0.0, "revenue": 0.0})
+        entry["qty"] += l.get("quantity", 0) or 0
+        entry["revenue"] += l.get("revenue", 0) or 0
+
+    row = header_row + 1
+    grand_qty = 0.0
+    grand_revenue = 0.0
+    for name, entry in sorted(totals.items(), key=lambda kv: kv[1]["qty"], reverse=True):
+        ws.cell(row=row, column=1, value=name)
+        qty_cell = ws.cell(row=row, column=2, value=entry["qty"])
+        qty_cell.number_format = "#,##0"
+        rev_cell = ws.cell(row=row, column=3, value=entry["revenue"])
+        rev_cell.number_format = "#,##0.00"
+        grand_qty += entry["qty"]
+        grand_revenue += entry["revenue"]
+        row += 1
+
+    ws.cell(row=row, column=1, value="Total").font = TOTAL_FONT
+    qty_total_cell = ws.cell(row=row, column=2, value=grand_qty)
+    qty_total_cell.font = TOTAL_FONT
+    qty_total_cell.number_format = "#,##0"
+    rev_total_cell = ws.cell(row=row, column=3, value=grand_revenue)
+    rev_total_cell.font = TOTAL_FONT
+    rev_total_cell.number_format = "#,##0.00"
+
+    for i, width in enumerate([30, 12, 16], start=1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+    ws.freeze_panes = f"A{header_row + 1}"
+    ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
+
+
+def _write_flavour_detail_sheet(ws, lines: list, subtitle_text: str):
+    last_col_letter = get_column_letter(len(LINE_COLUMNS))
+    _sheet_header(ws, "Icestasy Order Desk — Flavour Sales Detail", subtitle_text, last_col_letter)
+
+    header_row = 4
+    for col, title in enumerate(LINE_COLUMNS, start=1):
+        cell = ws.cell(row=header_row, column=col, value=title)
+        cell.font = HEADER_FONT
+        cell.fill = BRAND_FILL
+        cell.alignment = Alignment(horizontal="center")
+
+    row = header_row + 1
+    total_qty = 0.0
+    total_revenue = 0.0
+    for l in sorted(lines, key=lambda x: x.get("created_at") or ""):
+        values = [
+            _format_date(l.get("created_at", "")), l.get("flavour_name"), l.get("sku_code"),
+            l.get("city"), l.get("quantity", 0), l.get("revenue", 0),
+        ]
+        for col, val in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=col, value=val)
+            if col == 5:
+                cell.number_format = "#,##0"
+            if col == 6:
+                cell.number_format = "#,##0.00"
+        total_qty += l.get("quantity", 0) or 0
+        total_revenue += l.get("revenue", 0) or 0
+        row += 1
+
+    ws.cell(row=row, column=4, value="Total").font = TOTAL_FONT
+    qty_cell = ws.cell(row=row, column=5, value=total_qty)
+    qty_cell.font = TOTAL_FONT
+    qty_cell.number_format = "#,##0"
+    rev_cell = ws.cell(row=row, column=6, value=total_revenue)
+    rev_cell.font = TOTAL_FONT
+    rev_cell.number_format = "#,##0.00"
+
+    for i, width in enumerate(LINE_COLUMN_WIDTHS, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+    ws.freeze_panes = f"A{header_row + 1}"
+    ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
+
+
+def build_flavour_sales_workbook(lines: list, role_label: str, full_name: str,
+                                  report_type: str = "flavour", date_from: str = None, date_to: str = None) -> io.BytesIO:
+    if report_type not in ("flavour", "sku"):
+        report_type = "flavour"
+    if date_from or date_to:
+        lines = [l for l in lines if _in_range(l.get("created_at", ""), date_from, date_to)]
+
+    generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    range_text = f" · {date_from or '…'} to {date_to or '…'}" if (date_from or date_to) else ""
+    total_qty = sum(l.get("quantity", 0) or 0 for l in lines)
+    subtitle_text = f"{full_name} · {role_label} · Generated {generated} · {total_qty:.0f} units sold{range_text}"
+
+    wb = Workbook()
+    summary_ws = wb.active
+    summary_ws.title = "Summary"
+    _write_flavour_summary_sheet(summary_ws, lines, report_type, subtitle_text)
+    detail_ws = wb.create_sheet("Detail")
+    _write_flavour_detail_sheet(detail_ws, lines, subtitle_text)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
 
 
 def build_orders_workbook(orders: list, role_label: str, full_name: str,

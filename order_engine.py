@@ -426,6 +426,123 @@ def mark_payment_received(order_id: int, received_by: int) -> dict:
 _TERMINAL_ORDER_STATUSES = {"invoiced", "rejected", "cancelled", "delivered"}
 
 
+def get_order_lines(order_id: int, user_id: int, role: str) -> list:
+    sb = _sb()
+    order = (
+        sb.schema("sales").from_("orders")
+        .select("id, created_by_user_id, salesperson_id, shipping_address_id")
+        .eq("id", order_id).limit(1).execute()
+    )
+    if not order.data:
+        raise ValueError("Order not found")
+    o = order.data[0]
+    if role in REGION_HEAD_ROLES:
+        addr = (
+            sb.schema("sales").from_("addresses").select("city")
+            .eq("id", o["shipping_address_id"]).limit(1).execute()
+            if o.get("shipping_address_id") else None
+        )
+        place = addr.data[0]["city"] if addr and addr.data else None
+        if _region_role_for_city(place) != role:
+            raise ValueError("Not authorized to view this order")
+    elif role != "admin":
+        if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
+            raise ValueError("Not authorized to view this order")
+
+    lines = (
+        sb.schema("sales").from_("order_lines")
+        .select("id, quantity, unit_price, line_total, status, "
+                "skus(sku_code, flavours(name), pack_formats(name))")
+        .eq("order_id", order_id).execute().data
+    )
+    out = []
+    for l in lines:
+        sku = l.get("skus") or {}
+        out.append({
+            "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
+            "pack_format_name": (sku.get("pack_formats") or {}).get("name", "—"),
+            "sku_code": sku.get("sku_code", "—"),
+            "quantity": float(l["quantity"]),
+            "unit_price": float(l["unit_price"]),
+            "line_total": float(l["line_total"]),
+            "status": l["status"],
+        })
+    return out
+
+
+def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
+    sb = _sb()
+    order = (
+        sb.schema("sales").from_("orders")
+        .select("status, created_by_user_id, salesperson_id")
+        .eq("id", order_id).limit(1).execute()
+    )
+    if not order.data:
+        raise ValueError("Order not found")
+    o = order.data[0]
+    if role not in REGION_HEAD_ROLES and role != "admin":
+        if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
+            raise ValueError("Not authorized to update this order")
+    if o["status"] in _TERMINAL_ORDER_STATUSES:
+        raise ValueError(f"Order is already {o['status']}")
+    res = sb.schema("sales").from_("orders").update({"status": "delivered"}).eq("id", order_id).execute()
+    return res.data[0]
+
+
+def flavour_sales_lines(user_id: int, role: str) -> list:
+    sb = _sb()
+    orders_q = (
+        sb.schema("sales").from_("orders")
+        .select("id, created_at, shipping_address_id, created_by_user_id, salesperson_id")
+    )
+    if role != "admin" and role not in REGION_HEAD_ROLES:
+        orders_q = orders_q.eq("created_by_user_id", user_id)
+    orders = orders_q.execute().data
+    if not orders:
+        return []
+
+    addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
+    addrs = {a["id"]: a for a in (
+        sb.schema("sales").from_("addresses").select("id,city").in_("id", addr_ids).execute().data
+        if addr_ids else [])}
+
+    if role in REGION_HEAD_ROLES:
+        orders = [o for o in orders
+                  if _region_role_for_city((addrs.get(o.get("shipping_address_id")) or {}).get("city")) == role]
+
+    orders_by_id = {o["id"]: o for o in orders}
+    order_ids = list(orders_by_id.keys())
+
+    lines = []
+    CHUNK = 200
+    for i in range(0, len(order_ids), CHUNK):
+        chunk_ids = order_ids[i:i + CHUNK]
+        rows = (
+            sb.schema("sales").from_("order_lines")
+            .select("order_id, quantity, line_total, skus(sku_code, flavours(name))")
+            .eq("status", "active").in_("order_id", chunk_ids).execute().data
+        )
+        lines.extend(rows)
+
+    out = []
+    for l in lines:
+        o = orders_by_id.get(l["order_id"])
+        if not o:
+            continue
+        addr = addrs.get(o.get("shipping_address_id")) or {}
+        place = addr.get("city")
+        sku = l.get("skus") or {}
+        out.append({
+            "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
+            "sku_code": sku.get("sku_code", "—"),
+            "city": city_for_place(place) if place else "—",
+            "created_at": o["created_at"],
+            "quantity": float(l["quantity"]),
+            "revenue": float(l["line_total"]),
+        })
+    return out
+
+
 def approve_order(order_id: int, approved_by: int) -> dict:
     sb = _sb()
     order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
