@@ -1268,6 +1268,7 @@ async function submitEditTeamMember(staffId) {
 
 // ── Flavour Sales Insights (broad view) ──────────────────────────────────────
 let flavourSalesLines = [];
+let flavourOrderTotals = [];
 let insightsGrouping = "city";
 let expandedInsightsGroup = null;
 let insightsGap = {count: 0, value: 0};
@@ -1281,6 +1282,7 @@ async function loadFlavourSales() {
     return;
   }
   flavourSalesLines = data.lines || [];
+  flavourOrderTotals = data.order_totals || [];
   insightsGap = {count: data.orders_without_lines || 0, value: data.value_without_lines || 0};
   renderInsights();
 }
@@ -1341,10 +1343,22 @@ function renderInsights() {
     (groups[k] = groups[k] || []).push(l);
   });
 
-  const groupTotals = Object.entries(groups).map(([name, lines]) => ({
-    name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
-    tax: lines.reduce((s, l) => s + (l.tax || 0), 0), total: lines.reduce((s, l) => s + (l.total || l.revenue), 0),
-  })).sort((a, b) => b.revenue - a.revenue);
+  // Tax/total per group come from each order's actual recorded tax_amount/total_amount
+  // (one entry per order, not per line) so they foot exactly to Overview's Total Value —
+  // recomputing tax from a flat GST-rate assumption drifted from the real figures.
+  const orderGroups = {};
+  flavourOrderTotals.forEach(o => {
+    const k = keyFn(o) || "—";
+    (orderGroups[k] = orderGroups[k] || []).push(o);
+  });
+
+  const groupTotals = Object.entries(groups).map(([name, lines]) => {
+    const orders = orderGroups[name] || [];
+    return {
+      name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
+      tax: orders.reduce((s, o) => s + o.tax, 0), total: orders.reduce((s, o) => s + o.total, 0),
+    };
+  }).sort((a, b) => b.revenue - a.revenue);
 
   box.innerHTML = groupTotals.map(g => {
     const isOpen = expandedInsightsGroup === g.name;

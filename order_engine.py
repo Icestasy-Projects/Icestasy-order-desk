@@ -565,7 +565,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
     def build_orders_query(start, end):
         q = (
             sb.schema("sales").from_("orders")
-            .select("id, created_at, total_amount, shipping_address_id, created_by_user_id, salesperson_id")
+            .select("id, created_at, total_amount, tax_amount, shipping_address_id, created_by_user_id, salesperson_id")
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
             q = q.eq("created_by_user_id", user_id)
@@ -616,23 +616,35 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
         ids_with_lines.add(l["order_id"])
         place = _addr_place(o)
         sku = l.get("skus") or {}
-        revenue = float(l["line_total"])
-        gst_rate = float(sku["gst_rate"]) if sku.get("gst_rate") is not None else 5.0
-        tax = revenue * gst_rate / 100
         out.append({
             "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
             "sku_code": sku.get("sku_code", "—"),
             "city": city_for_place(place) if place else "—",
             "created_at": o["created_at"],
             "quantity": float(l["quantity"]),
-            "revenue": revenue,
-            "tax": tax,
-            "total": revenue + tax,
+            "revenue": float(l["line_total"]),
+        })
+
+    # Tax/total per order come straight from orders.tax_amount / total_amount (the
+    # actual recorded figures — which don't always equal line revenue x a flat GST
+    # rate, e.g. historical data with per-order rounding) rather than being
+    # recomputed from SKU gst_rate, so group totals here exactly foot to Overview's
+    # Total Value instead of drifting from it by a small reconciliation gap.
+    order_totals = []
+    for oid in ids_with_lines:
+        o = orders_by_id[oid]
+        place = _addr_place(o)
+        order_totals.append({
+            "city": city_for_place(place) if place else "—",
+            "created_at": o["created_at"],
+            "tax": float(o.get("tax_amount") or 0),
+            "total": float(o["total_amount"]),
         })
 
     missing = [o for o in orders if o["id"] not in ids_with_lines]
     return {
         "lines": out,
+        "order_totals": order_totals,
         "orders_without_lines": len(missing),
         "value_without_lines": sum(o.get("total_amount", 0) or 0 for o in missing),
     }
