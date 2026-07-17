@@ -24,6 +24,12 @@ PAY_LABELS = {
 COLUMNS = ["Order No", "Date", "Client", "Locality", "City", "Salesperson", "Status", "Payment Status", "Amount (INR)"]
 COLUMN_WIDTHS = [16, 14, 28, 20, 16, 18, 16, 18, 14]
 
+ORDER_LINE_COLUMNS = ["", "", "Flavour", "Format", "SKU Code", "Qty", "Unit Price", "Line Total", ""]
+LINE_FILL = PatternFill(start_color="FFF3E8", end_color="FFF3E8", fill_type="solid")
+LINE_FONT = Font(size=10, color="555555")
+ORDER_HEADER_FILL = PatternFill(start_color="FFECD6", end_color="FFECD6", fill_type="solid")
+ORDER_HEADER_FONT = Font(bold=True, size=11)
+
 # Mumbai Metropolitan Region: reported as a single "Mumbai" group, matching the dashboard's By City tab.
 MMR_CITIES = {"Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"}
 
@@ -172,8 +178,29 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
             cell = ws.cell(row=row, column=col, value=val)
             if col == amount_col:
                 cell.number_format = "#,##0.00"
+            cell.fill = ORDER_HEADER_FILL
+            cell.font = ORDER_HEADER_FONT
         total_value += o.get("total_amount", 0) or 0
         row += 1
+
+        lines = o.get("lines") or []
+        if lines:
+            for ln in lines:
+                ws.cell(row=row, column=3, value=ln.get("flavour_name")).font = LINE_FONT
+                ws.cell(row=row, column=4, value=ln.get("format_name")).font = LINE_FONT
+                ws.cell(row=row, column=5, value=ln.get("sku_code")).font = LINE_FONT
+                qty_cell = ws.cell(row=row, column=6, value=ln.get("quantity"))
+                qty_cell.font = LINE_FONT
+                qty_cell.number_format = "#,##0"
+                up_cell = ws.cell(row=row, column=7, value=ln.get("unit_price"))
+                up_cell.font = LINE_FONT
+                up_cell.number_format = "#,##0.00"
+                lt_cell = ws.cell(row=row, column=8, value=ln.get("line_total"))
+                lt_cell.font = LINE_FONT
+                lt_cell.number_format = "#,##0.00"
+                for c in range(1, len(COLUMNS) + 1):
+                    ws.cell(row=row, column=c).fill = LINE_FILL
+                row += 1
 
     total_label_col = amount_col - 1
     ws.cell(row=row, column=total_label_col, value="Total").font = TOTAL_FONT
@@ -185,7 +212,6 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         ws.column_dimensions[get_column_letter(i)].width = width
 
     ws.freeze_panes = f"A{header_row + 1}"
-    ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
 
 
 def _write_flavour_summary_sheet(ws, lines: list, report_type: str, subtitle_text: str):
@@ -309,6 +335,60 @@ def build_flavour_sales_workbook(lines: list, role_label: str, full_name: str,
     return buf
 
 
+CLIENT_SUMMARY_COLUMNS = ["Client", "City", "Orders", "Total Amount (INR)", "Amount Paid (INR)", "Amount Pending (INR)"]
+CLIENT_SUMMARY_WIDTHS = [30, 16, 10, 20, 20, 20]
+
+
+def _write_client_summary_sheet(ws, orders: list, subtitle_text: str):
+    columns = CLIENT_SUMMARY_COLUMNS
+    last_col_letter = get_column_letter(len(columns))
+    _sheet_header(ws, "Icestasy Order Desk — Client Summary", subtitle_text, last_col_letter)
+
+    header_row = 4
+    for col, title in enumerate(columns, start=1):
+        cell = ws.cell(row=header_row, column=col, value=title)
+        cell.font = HEADER_FONT
+        cell.fill = BRAND_FILL
+        cell.alignment = Alignment(horizontal="center")
+
+    clients = {}
+    for o in orders:
+        name = o.get("client_name") or "—"
+        entry = clients.setdefault(name, {"city": o.get("city") or "—", "count": 0, "total": 0.0, "paid": 0.0})
+        entry["count"] += 1
+        entry["total"] += o.get("total_amount", 0) or 0
+        entry["paid"] += o.get("amount_paid", 0) or 0
+
+    row = header_row + 1
+    grand_total = grand_paid = grand_pending = 0.0
+    grand_count = 0
+    for name, e in sorted(clients.items(), key=lambda kv: kv[1]["total"], reverse=True):
+        pending = e["total"] - e["paid"]
+        ws.cell(row=row, column=1, value=name)
+        ws.cell(row=row, column=2, value=e["city"])
+        ws.cell(row=row, column=3, value=e["count"])
+        for col, val in [(4, e["total"]), (5, e["paid"]), (6, pending)]:
+            c = ws.cell(row=row, column=col, value=val)
+            c.number_format = "#,##0.00"
+        grand_count += e["count"]
+        grand_total += e["total"]
+        grand_paid += e["paid"]
+        grand_pending += pending
+        row += 1
+
+    ws.cell(row=row, column=1, value="Total").font = TOTAL_FONT
+    ws.cell(row=row, column=3, value=grand_count).font = TOTAL_FONT
+    for col, val in [(4, grand_total), (5, grand_paid), (6, grand_pending)]:
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = TOTAL_FONT
+        c.number_format = "#,##0.00"
+
+    for i, width in enumerate(CLIENT_SUMMARY_WIDTHS, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+    ws.freeze_panes = f"A{header_row + 1}"
+    ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
+
+
 def build_orders_workbook(orders: list, role_label: str, full_name: str,
                            report_type: str = "all", date_from: str = None, date_to: str = None) -> io.BytesIO:
     if report_type not in REPORT_TYPE_LABELS:
@@ -333,6 +413,9 @@ def build_orders_workbook(orders: list, role_label: str, full_name: str,
         _write_summary_sheet(summary_ws, orders, report_type, subtitle_text)
         detail_ws = wb.create_sheet("Orders")
         _write_orders_sheet(detail_ws, orders, subtitle_text)
+
+    client_ws = wb.create_sheet("Client Summary")
+    _write_client_summary_sheet(client_ws, orders, subtitle_text)
 
     buf = io.BytesIO()
     wb.save(buf)

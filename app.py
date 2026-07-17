@@ -22,6 +22,7 @@ from order_engine import (
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status,
     update_client, update_address,
     get_order_lines, mark_order_completed, flavour_sales_summary,
+    fetch_report_order_lines, fetch_payment_summaries,
 )
 from invoicing import build_invoice_pdf
 from reports import build_orders_workbook, build_flavour_sales_workbook
@@ -282,6 +283,12 @@ def api_dashboard_export():
                                             value_without_lines=summary["value_without_lines"])
     else:
         orders = list_dashboard_orders(user_id=session["user_id"], role=role)
+        order_ids = [o["id"] for o in orders]
+        lines_by_order = fetch_report_order_lines(order_ids)
+        paid_by_order = fetch_payment_summaries(order_ids)
+        for o in orders:
+            o["lines"] = lines_by_order.get(o["id"], [])
+            o["amount_paid"] = paid_by_order.get(o["id"], 0.0)
         buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
                                      report_type=report_type, date_from=date_from, date_to=date_to)
     filename = f"icestasy-orders-{report_type}-{date.today().isoformat()}.xlsx"
