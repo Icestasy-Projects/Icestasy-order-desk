@@ -1382,7 +1382,7 @@ function renderInsights() {
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleInsightsGroup(${safeName})'>
           <span>${isOpen ? "▾" : "▸"} ${g.name}</span>
-          <span class="opt-sub">${g.qty.toFixed(0)} units · ${fmt(g.revenue)}</span>
+          <span class="opt-sub">${g.qty.toFixed(0)} units · ${fmt(g.total)} (incl. GST)</span>
         </button>
         ${body}
       </div>`;
