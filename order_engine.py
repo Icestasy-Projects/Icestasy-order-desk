@@ -650,6 +650,60 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
     }
 
 
+def fetch_report_order_lines(order_ids: list) -> dict:
+    """Bulk-fetch order lines with SKU details for report generation.
+    Returns {order_id: [line_dicts]}."""
+    if not order_ids:
+        return {}
+    sb = _sb()
+    lines = []
+    CHUNK = 600
+    for i in range(0, len(order_ids), CHUNK):
+        chunk_ids = order_ids[i:i + CHUNK]
+
+        def build_lines_query(start, end, chunk_ids=chunk_ids):
+            return (
+                sb.schema("sales").from_("order_lines")
+                .select("order_id, quantity, unit_price, line_total, line_discount_amount, status, "
+                        "skus(sku_code, flavours(name), pack_formats(name))")
+                .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+            )
+
+        lines.extend(_fetch_all_pages(build_lines_query))
+
+    out = {}
+    for l in lines:
+        sku = l.get("skus") or {}
+        row = {
+            "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
+            "format_name": (sku.get("pack_formats") or {}).get("name", "—"),
+            "sku_code": sku.get("sku_code", "—"),
+            "quantity": float(l["quantity"]),
+            "unit_price": float(l["unit_price"]),
+            "line_total": float(l["line_total"]),
+        }
+        out.setdefault(l["order_id"], []).append(row)
+    return out
+
+
+def fetch_payment_summaries(order_ids: list) -> dict:
+    """Bulk-fetch total paid amount per order.
+    Returns {order_id: total_paid_float}."""
+    if not order_ids:
+        return {}
+    sb = _sb()
+    payments = {}
+    CHUNK = 600
+    for i in range(0, len(order_ids), CHUNK):
+        chunk_ids = order_ids[i:i + CHUNK]
+        for p in (
+            sb.schema("sales").from_("payments").select("order_id, amount, status")
+            .eq("status", "received").in_("order_id", chunk_ids).execute().data
+        ):
+            payments[p["order_id"]] = payments.get(p["order_id"], 0.0) + float(p["amount"])
+    return payments
+
+
 def approve_order(order_id: int, approved_by: int) -> dict:
     sb = _sb()
     order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
