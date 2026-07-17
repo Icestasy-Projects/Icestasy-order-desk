@@ -601,7 +601,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
         def build_lines_query(start, end, chunk_ids=chunk_ids):
             return (
                 sb.schema("sales").from_("order_lines")
-                .select("order_id, quantity, line_total, skus(sku_code, flavours(name))")
+                .select("order_id, quantity, line_total, skus(sku_code, gst_rate, flavours(name))")
                 .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
             )
 
@@ -616,13 +616,18 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
         ids_with_lines.add(l["order_id"])
         place = _addr_place(o)
         sku = l.get("skus") or {}
+        revenue = float(l["line_total"])
+        gst_rate = float(sku["gst_rate"]) if sku.get("gst_rate") is not None else 5.0
+        tax = revenue * gst_rate / 100
         out.append({
             "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
             "sku_code": sku.get("sku_code", "—"),
             "city": city_for_place(place) if place else "—",
             "created_at": o["created_at"],
             "quantity": float(l["quantity"]),
-            "revenue": float(l["line_total"]),
+            "revenue": revenue,
+            "tax": tax,
+            "total": revenue + tax,
         })
 
     missing = [o for o in orders if o["id"] not in ids_with_lines]

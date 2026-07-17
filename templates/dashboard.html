@@ -1343,6 +1343,7 @@ function renderInsights() {
 
   const groupTotals = Object.entries(groups).map(([name, lines]) => ({
     name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
+    tax: lines.reduce((s, l) => s + (l.tax || 0), 0), total: lines.reduce((s, l) => s + (l.total || l.revenue), 0),
   })).sort((a, b) => b.revenue - a.revenue);
 
   box.innerHTML = groupTotals.map(g => {
@@ -1372,7 +1373,10 @@ function renderInsights() {
             ${ranked.map(([name, v]) => `
               <tr><td>${name}</td><td>${v.qty.toFixed(0)}</td><td class="num">${fmt(v.revenue)}</td></tr>`).join("")}
           </tbody>
-        </table>`;
+        </table>
+        <div class="opt-sub mt8" style="text-align:right">
+          Tax (GST): ${fmt(g.tax)} &nbsp;·&nbsp; <strong>Total (incl. GST): ${fmt(g.total)}</strong>
+        </div>`;
     }
     return `
       <div class="dash-group">
