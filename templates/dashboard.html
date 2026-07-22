@@ -1030,14 +1030,19 @@ function renderClients() {
     if (cityOpen) {
       const placeGroups = {};
       cityClients.forEach(c => { (placeGroups[c.place || "—"] = placeGroups[c.place || "—"] || []).push(c); });
-      const orderedPlaces = Object.keys(placeGroups).sort((a, b) => a.localeCompare(b));
-      cityBody = orderedPlaces.map(place => {
+      const orderedPlaces = Object.keys(placeGroups).sort((a, b) =>
+        a === "—" ? 1 : b === "—" ? -1 : a.localeCompare(b));
+      const skipSubgroup = orderedPlaces.length === 1 && orderedPlaces[0] === "—";
+      cityBody = skipSubgroup
+        ? cityClients.map(clientRowHtml).join("")
+        : orderedPlaces.map(place => {
         const placeClients = placeGroups[place];
         const placeOpen = searching || expandedClientPlace === place;
+        const label = place === "—" ? "Other" : place;
         return `
           <div class="dash-subgroup">
             <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${JSON.stringify(place)})'>
-              <span>${placeOpen ? "▾" : "▸"} ${place}</span>
+              <span>${placeOpen ? "▾" : "▸"} ${label}</span>
               <span class="opt-sub">${placeClients.length} client${placeClients.length === 1 ? "" : "s"}</span>
             </button>
             ${placeOpen ? placeClients.map(clientRowHtml).join("") : ""}
