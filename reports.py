@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.properties import WorksheetProperties, OutlineProperties
 
 BRAND_FILL = PatternFill(start_color="FF8A3D", end_color="FF8A3D", fill_type="solid")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
@@ -156,6 +157,8 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
     last_col_letter = get_column_letter(len(COLUMNS))
     _sheet_header(ws, "Icestasy Order Desk — Orders Report", subtitle_text, last_col_letter)
 
+    ws.sheet_properties.outlinePr = OutlineProperties(summaryBelow=False)
+
     header_row = 4
     for col, title in enumerate(COLUMNS, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
@@ -200,6 +203,8 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 lt_cell.number_format = "#,##0.00"
                 for c in range(1, len(COLUMNS) + 1):
                     ws.cell(row=row, column=c).fill = LINE_FILL
+                ws.row_dimensions[row].outline_level = 1
+                ws.row_dimensions[row].hidden = True
                 row += 1
 
     total_label_col = amount_col - 1
