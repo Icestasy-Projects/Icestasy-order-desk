@@ -827,6 +827,8 @@ let clientSearchQuery = "";
 let expandedClient = null;
 let expandedClientCity = null;
 let expandedClientPlace = null;
+let expandedClientROI = false;
+let expandedClientState = null;
 
 async function loadClients() {
   const box = document.getElementById("clientsList");
@@ -903,6 +905,8 @@ function handleClientSearchInput(val) {
   clientSearchQuery = val.trim().toLowerCase();
   expandedClientCity = null;
   expandedClientPlace = null;
+  expandedClientROI = false;
+  expandedClientState = null;
   renderClients();
 }
 
@@ -919,6 +923,21 @@ function toggleClientCity(city) {
 
 function toggleClientPlace(place) {
   expandedClientPlace = expandedClientPlace === place ? null : place;
+  renderClients();
+}
+
+function toggleClientROI() {
+  expandedClientROI = !expandedClientROI;
+  expandedClientState = null;
+  expandedClientCity = null;
+  expandedClientPlace = null;
+  renderClients();
+}
+
+function toggleClientState(state) {
+  expandedClientState = expandedClientState === state ? null : state;
+  expandedClientCity = null;
+  expandedClientPlace = null;
   renderClients();
 }
 
@@ -982,26 +1001,30 @@ function renderClients() {
     (c.primary_contact_phone || "").toLowerCase().includes(q) ||
     (c.gstin || "").toLowerCase().includes(q) ||
     (c.city || "").toLowerCase().includes(q) ||
-    (c.place || "").toLowerCase().includes(q));
+    (c.place || "").toLowerCase().includes(q) ||
+    (c.state || "").toLowerCase().includes(q));
   if (!filtered.length) {
     box.innerHTML = `<div class="opt-muted">No clients match "${clientSearchQuery}"</div>`;
     return;
   }
 
-  // While searching, auto-expand every group/subgroup that has a match so
-  // results are visible immediately instead of needing manual drill-down.
   const searching = !!q;
+  const CORE_CITIES = new Set(["Mumbai", "Pune", "Hyderabad", "Bangalore", "Delhi"]);
+  const coreGroups = {};
+  const roiClients = [];
 
-  const cityGroups = {};
   filtered.forEach(c => {
-    const city = c.city ? mmrCity(c.city) : "Unassigned";
-    (cityGroups[city] = cityGroups[city] || []).push(c);
+    const city = c.city ? mmrCity(c.city) : null;
+    if (city && CORE_CITIES.has(city)) {
+      (coreGroups[city] = coreGroups[city] || []).push(c);
+    } else {
+      roiClients.push(c);
+    }
   });
-  const orderedCities = Object.keys(cityGroups).sort((a, b) =>
-    a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b));
 
-  box.innerHTML = orderedCities.map(city => {
-    const cityClients = cityGroups[city];
+  const orderedCities = Object.keys(coreGroups).sort((a, b) => a.localeCompare(b));
+  let html = orderedCities.map(city => {
+    const cityClients = coreGroups[city];
     const cityOpen = searching || expandedClientCity === city;
     let cityBody = "";
     if (cityOpen) {
@@ -1030,6 +1053,68 @@ function renderClients() {
         ${cityBody}
       </div>`;
   }).join("");
+
+  if (roiClients.length) {
+    const roiOpen = searching || expandedClientROI;
+    let roiBody = "";
+    if (roiOpen) {
+      const stateGroups = {};
+      roiClients.forEach(c => {
+        const st = c.state || "Other";
+        (stateGroups[st] = stateGroups[st] || []).push(c);
+      });
+      const orderedStates = Object.keys(stateGroups).sort((a, b) =>
+        a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b));
+      roiBody = orderedStates.map(st => {
+        const stClients = stateGroups[st];
+        const stOpen = searching || expandedClientState === st;
+        let stBody = "";
+        if (stOpen) {
+          const cityMap = {};
+          stClients.forEach(c => {
+            const cn = (c.city && c.city !== st) ? c.city : null;
+            const key = cn || "_direct";
+            (cityMap[key] = cityMap[key] || []).push(c);
+          });
+          const cityKeys = Object.keys(cityMap).sort((a, b) =>
+            a === "_direct" ? 1 : b === "_direct" ? -1 : a.localeCompare(b));
+          stBody = cityKeys.map(ck => {
+            const clients = cityMap[ck];
+            if (ck === "_direct") {
+              return clients.map(clientRowHtml).join("");
+            }
+            const ckOpen = searching || expandedClientCity === ck;
+            return `
+              <div class="dash-subgroup" style="margin-left:16px">
+                <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientCity(${JSON.stringify(ck)})'>
+                  <span>${ckOpen ? "▾" : "▸"} ${ck}</span>
+                  <span class="opt-sub">${clients.length} client${clients.length === 1 ? "" : "s"}</span>
+                </button>
+                ${ckOpen ? clients.map(clientRowHtml).join("") : ""}
+              </div>`;
+          }).join("");
+        }
+        return `
+          <div class="dash-subgroup">
+            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientState(${JSON.stringify(st)})'>
+              <span>${stOpen ? "▾" : "▸"} ${st}</span>
+              <span class="opt-sub">${stClients.length} client${stClients.length === 1 ? "" : "s"}</span>
+            </button>
+            ${stBody}
+          </div>`;
+      }).join("");
+    }
+    html += `
+      <div class="dash-group">
+        <button type="button" class="dash-group-header" onclick='toggleClientROI()'>
+          <span>${roiOpen ? "▾" : "▸"} ROI</span>
+          <span class="opt-sub">${roiClients.length} client${roiClients.length === 1 ? "" : "s"}</span>
+        </button>
+        ${roiBody}
+      </div>`;
+  }
+
+  box.innerHTML = html;
 }
 
 async function submitClientEdit(clientId) {
