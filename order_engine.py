@@ -745,6 +745,7 @@ def list_clients() -> list:
         c["place"] = addr.get("locality") or addr.get("city") or "—"
         raw_city = addr.get("city")
         c["city"] = raw_city or (city_for_place(c["place"]) if c["place"] != "—" else "Unassigned")
+        c["state"] = addr.get("state") or ""
     return clients
 
 
