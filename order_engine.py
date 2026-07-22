@@ -741,9 +741,10 @@ def list_clients() -> list:
     for c in clients:
         addrs = c.get("addresses") or []
         default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
-        place = (default_addr or {}).get("locality") or (default_addr or {}).get("city")
-        c["place"] = place or "—"
-        c["city"] = city_for_place(place) if place else "Unassigned"
+        addr = default_addr or {}
+        c["place"] = addr.get("locality") or addr.get("city") or "—"
+        raw_city = addr.get("city")
+        c["city"] = raw_city or (city_for_place(c["place"]) if c["place"] != "—" else "Unassigned")
     return clients
 
 
