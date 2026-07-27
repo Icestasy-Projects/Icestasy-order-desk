@@ -746,16 +746,7 @@ function renderOrders() {
       </div>`;
   }).join("");
 
-  // Base is the full dataset (not the search/payment-filtered `source`) so stats stay
-  // stable while typing; drilling into a group is a deliberate click, so that still narrows.
-  let statsSource = allOrders;
-  if (expandedGroup) {
-    statsSource = allOrders.filter(o => groupKey(o) === expandedGroup);
-    if (grouping === "city" && expandedPlace) {
-      statsSource = statsSource.filter(o => o.place === expandedPlace);
-    }
-  }
-  renderStats(statsSource);
+  renderStats(allOrders);
 }
 
 // Second drill-down level under a City group: by locality ("place"), since
