@@ -1083,7 +1083,10 @@ function renderClients() {
           });
           const cityKeys = Object.keys(cityMap).sort((a, b) =>
             a === "_direct" ? 1 : b === "_direct" ? -1 : a.localeCompare(b));
-          stBody = cityKeys.map(ck => {
+          const skipCitySub = cityKeys.length === 1 && cityKeys[0] === "_direct";
+          stBody = skipCitySub
+            ? stClients.map(clientRowHtml).join("")
+            : cityKeys.map(ck => {
             const clients = cityMap[ck];
             const label = ck === "_direct" ? "Others" : ck;
             const ckOpen = searching || expandedClientCity === label;
