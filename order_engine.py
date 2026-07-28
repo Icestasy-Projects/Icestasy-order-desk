@@ -35,6 +35,15 @@ ROLE_LABELS = {
     "salesperson": "Sales Team Member",
     **{role: f"{label} Head" for role, label in REGION_HEAD_ROLES.items()},
 }
+PRICE_REGIONS = ["mumbai", "pune", "hyderabad", "bangalore", "delhi", "roi"]
+PRICE_REGION_LABELS = {
+    "mumbai": "Mumbai", "pune": "Pune", "hyderabad": "Hyderabad",
+    "bangalore": "Bangalore", "delhi": "Delhi", "roi": "ROI",
+}
+_CITY_TO_PRICE_REGION = {
+    "Mumbai": "mumbai", "Thane": "mumbai", "Navi Mumbai": "mumbai", "Vasai-Virar": "mumbai",
+    "Pune": "pune", "Hyderabad": "hyderabad", "Bangalore": "bangalore", "Delhi": "delhi",
+}
 # Address "city" values are entered at locality/neighbourhood precision (e.g. "Bandra West"),
 # not actual city precision — this rolls localities up to their real city for reporting.
 _PLACE_TO_CITY = {
@@ -276,18 +285,25 @@ def addr_label(addr: dict) -> str:
     return ", ".join(parts) if parts else f"Address #{addr.get('id','?')}"
 
 
-def get_sku_price(sku_id: int, pack_format_id: int) -> float:
+def price_region_for_city(city: str) -> str:
+    return _CITY_TO_PRICE_REGION.get(city, "roi")
+
+
+def get_sku_price(sku_id: int, pack_format_id: int, region: str = "default") -> float:
     try:
         sb = _sb()
         today = date.today().isoformat()
         result = (
             sb.schema("sales").from_("sku_prices").select("price")
-            .eq("sku_id", sku_id).lte("effective_from", today)
+            .eq("sku_id", sku_id).eq("region", region)
+            .lte("effective_from", today)
             .or_(f"effective_to.is.null,effective_to.gte.{today}")
             .order("effective_from", desc=True).limit(1).execute()
         )
         if result.data:
             return float(result.data[0]["price"])
+        if region != "default":
+            return get_sku_price(sku_id, pack_format_id, "default")
     except Exception:
         pass
     return MOCK_PRICES.get(pack_format_id, 0.0)
@@ -917,21 +933,22 @@ def list_pack_formats() -> list:
 
 
 def _current_prices_by_sku() -> dict:
-    """One batched query for every SKU's currently-effective price, instead of
-    a separate get_sku_price() network round-trip per SKU (was the cause of a
-    ~60s load for the Flavours admin tab with 80+ SKUs — classic N+1)."""
+    """One batched query for every SKU's currently-effective price per region.
+    Returns {sku_id: {"default": 480, "mumbai": 500, ...}}."""
     sb = _sb()
     today = date.today().isoformat()
     rows = (
-        sb.schema("sales").from_("sku_prices").select("sku_id,price,effective_from")
+        sb.schema("sales").from_("sku_prices").select("sku_id,price,region,effective_from")
         .lte("effective_from", today)
         .or_(f"effective_to.is.null,effective_to.gte.{today}")
         .order("effective_from", desc=True)
         .execute().data
     )
-    out = {}
+    out: dict[int, dict] = {}
     for r in rows:
-        out.setdefault(r["sku_id"], float(r["price"]))  # first (most recent) wins
+        sku_map = out.setdefault(r["sku_id"], {})
+        region = r.get("region") or "default"
+        sku_map.setdefault(region, float(r["price"]))
     return out
 
 
@@ -946,12 +963,16 @@ def list_flavours_admin() -> list:
     prices = _current_prices_by_sku()
     by_flavour = {}
     for s in skus:
+        sku_prices = prices.get(s["id"], {})
+        default_price = sku_prices.get("default", MOCK_PRICES.get(s["pack_format_id"], 0.0))
+        region_prices = {r: sku_prices.get(r, "") for r in PRICE_REGIONS}
         by_flavour.setdefault(s["flavour_id"], []).append({
             "id": s["id"], "sku_code": s["sku_code"],
             "pack_format_id": s["pack_format_id"],
             "pack_format_name": s["pack_formats"]["name"] if s.get("pack_formats") else "",
             "status": s["status"],
-            "price": prices.get(s["id"], MOCK_PRICES.get(s["pack_format_id"], 0.0)),
+            "price": default_price,
+            "region_prices": region_prices,
             "hsn_code": s.get("hsn_code") or "",
             "gst_rate": float(s["gst_rate"]) if s.get("gst_rate") is not None else 5.0,
         })
@@ -1015,20 +1036,19 @@ def update_flavour(flavour_id: int, data: dict) -> dict:
     return res.data[0]
 
 
-def set_sku_price(sku_id: int, price: float, set_by: int) -> dict:
+def set_sku_price(sku_id: int, price: float, set_by: int, region: str = "default") -> dict:
     if price < 0:
         raise ValueError("Price must be non-negative")
+    if region not in ("default", *PRICE_REGIONS):
+        raise ValueError("Invalid pricing region")
     sb = _sb()
     today = date.today().isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    # Close out whatever price row is currently open for this SKU, then open
-    # a new one from today — so it takes effect immediately for new orders,
-    # without erasing price history.
     sb.schema("sales").from_("sku_prices").update({"effective_to": yesterday}) \
-        .eq("sku_id", sku_id).is_("effective_to", "null").execute()
+        .eq("sku_id", sku_id).eq("region", region).is_("effective_to", "null").execute()
     row = {
         "sku_id": sku_id, "price": price, "currency": "INR",
-        "effective_from": today, "created_by": set_by,
+        "effective_from": today, "created_by": set_by, "region": region,
     }
     res = sb.schema("sales").from_("sku_prices").insert(row).execute()
     return res.data[0]

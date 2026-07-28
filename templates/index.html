@@ -446,7 +446,7 @@ async function loadAddresses(clientId) {
       <button class="btn-ghost mt8" onclick="skipAddress()">Skip for now</button>`;
   } else {
     box.innerHTML = addrs.map(a => `
-      <button class="option-btn" onclick="selectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}')">
+      <button class="option-btn" onclick="selectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}', '${(a.city||"").replace(/'/g,"\\'")}')">
         ${a.label}
       </button>`).join("");
   }
@@ -566,7 +566,7 @@ async function submitAddress() {
     errBox.textContent = res.error || "Could not save address";
     return;
   }
-  selectAddress(res.address.id, res.address.label);
+  selectAddress(res.address.id, res.address.label, res.address.city || "");
 }
 
 function changeClient() {
@@ -578,12 +578,33 @@ function changeClient() {
 }
 
 // ── STEP 4: Address ──────────────────────────────────────────────────────────
-function selectAddress(id, label) {
+async function selectAddress(id, label, city) {
   state.address_id = id;
   state.address_label = label;
   document.getElementById("addressList").innerHTML =
     `<div class="selected-pill">${icon("check")} ${label} <button class="pill-change" onclick="changeAddress()">change</button></div>`;
   document.getElementById("addAddressToggleBtn").style.display = "none";
+  if (city) {
+    const items = state.items
+      .filter(i => !i.not_found && i.resolved_sku)
+      .map(i => ({sku_id: i.resolved_sku.id, pack_format_id: i.resolved_sku.pack_format_id}));
+    if (items.length) {
+      try {
+        const rp = await fetch("/api/reprice", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({city, items}),
+        }).then(r => r.json());
+        if (rp.prices) {
+          const priceMap = {};
+          rp.prices.forEach(p => priceMap[p.sku_id] = p.price);
+          state.items.forEach(i => {
+            if (i.resolved_sku && priceMap[i.resolved_sku.id] !== undefined)
+              i.unit_price = priceMap[i.resolved_sku.id];
+          });
+        }
+      } catch (e) { /* keep original prices on error */ }
+    }
+  }
   hide("step-address");
   showConfirm();
 }
