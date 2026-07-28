@@ -23,6 +23,7 @@ from order_engine import (
     update_client, update_address,
     get_order_lines, mark_order_completed, flavour_sales_summary,
     fetch_report_order_lines, fetch_payment_summaries,
+    get_sku_price, price_region_for_city,
 )
 from invoicing import build_invoice_pdf
 from reports import build_orders_workbook, build_flavour_sales_workbook
@@ -183,6 +184,21 @@ def api_parse():
     return jsonify(result)
 
 
+@app.route("/api/reprice", methods=["POST"])
+def api_reprice():
+    body = request.get_json(force=True)
+    city = (body.get("city") or "").strip()
+    items = body.get("items") or []
+    region = price_region_for_city(city) if city else "default"
+    out = []
+    for item in items:
+        sku_id = item.get("sku_id")
+        pack_format_id = item.get("pack_format_id", 0)
+        price = get_sku_price(sku_id, pack_format_id, region)
+        out.append({"sku_id": sku_id, "price": price})
+    return jsonify({"prices": out, "region": region})
+
+
 @app.route("/api/clients/search")
 def api_clients():
     q = request.args.get("q", "").strip()
@@ -222,7 +238,7 @@ def api_register_client():
 def api_addresses(client_id):
     try:
         addrs = get_client_addresses(client_id)
-        return jsonify({"addresses": [{"id": a["id"], "label": addr_label(a)} for a in addrs]})
+        return jsonify({"addresses": [{"id": a["id"], "label": addr_label(a), "city": a.get("city") or ""} for a in addrs]})
     except Exception as e:
         return jsonify({"addresses": [], "error": str(e)}), 200
 
@@ -232,7 +248,7 @@ def api_create_address(client_id):
     body = request.get_json(force=True)
     try:
         addr = create_address(client_id, body)
-        return jsonify({"ok": True, "address": {"id": addr["id"], "label": addr_label(addr)}})
+        return jsonify({"ok": True, "address": {"id": addr["id"], "label": addr_label(addr), "city": addr.get("city") or ""}})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
@@ -415,7 +431,9 @@ def api_sku_stock():
 @admin_required
 def api_flavours():
     try:
-        return jsonify({"flavours": list_flavours_admin(), "pack_formats": list_pack_formats()})
+        from order_engine import PRICE_REGIONS, PRICE_REGION_LABELS
+        return jsonify({"flavours": list_flavours_admin(), "pack_formats": list_pack_formats(),
+                        "price_regions": PRICE_REGIONS, "price_region_labels": PRICE_REGION_LABELS})
     except Exception as e:
         return jsonify({"flavours": [], "pack_formats": [], "error": str(e)}), 200
 
@@ -452,7 +470,8 @@ def api_set_sku_price(sku_id):
     body = request.get_json(force=True)
     try:
         price = float(body.get("price"))
-        row = set_sku_price(sku_id, price, set_by=session["user_id"])
+        region = body.get("region", "default")
+        row = set_sku_price(sku_id, price, set_by=session["user_id"], region=region)
         return jsonify({"ok": True, "price": row})
     except (ValueError, TypeError) as e:
         return jsonify({"ok": False, "error": str(e) or "Invalid price"}), 409

@@ -236,11 +236,19 @@ body {
 .flavour-row td:first-child { font-weight: 700; white-space: nowrap; }
 .flavour-detail { padding: 12px 0 20px !important; border-bottom: 1.5px dashed var(--slate-300) !important; }
 .section-header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.sku-price-list { display: flex; flex-direction: column; gap: 6px; }
-.sku-price-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.sku-price-row .sku-fmt-name { font-size: 12px; color: var(--slate-500); min-width: 74px; }
-.sku-price-row .search-input { width: 84px; padding: 6px 8px; font-size: 12.5px; min-height: 30px; }
-.sku-price-row .btn-option { padding: 5px 10px; font-size: 11.5px; min-height: 28px; }
+.sku-price-list { display: flex; flex-direction: column; gap: 12px; }
+.sku-price-block { border: 1px solid var(--slate-200); border-radius: 8px; padding: 8px 10px; }
+.sku-price-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.sku-price-header .sku-fmt-name { font-size: 12.5px; font-weight: 600; color: var(--slate-600); }
+.sku-region-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; }
+.sku-region-cell { display: flex; flex-direction: column; gap: 2px; }
+.sku-region-label { font-size: 10.5px; font-weight: 600; color: var(--slate-400); text-transform: uppercase; letter-spacing: 0.3px; }
+.sku-region-input-row { display: flex; align-items: center; gap: 4px; }
+.sku-region-input { width: 72px !important; padding: 4px 6px !important; font-size: 12px !important; min-height: 26px !important; }
+.sku-region-input-row .btn-option { padding: 3px 8px; font-size: 10.5px; min-height: 26px; }
+@media (max-width: 700px) {
+  .sku-region-grid { grid-template-columns: repeat(2, 1fr); }
+}
 .pagination-row { display: flex; align-items: center; justify-content: center; gap: 14px; }
 .pagination-row span { font-size: 12.5px; color: var(--slate-500); font-weight: 600; }
 .summary-total {
