@@ -187,8 +187,16 @@
         <div class="step-label">Clients</div>
         <input id="clientSearch" class="search-input mt16" type="text"
                placeholder="Search by name, contact, phone, or GSTIN…" oninput="handleClientSearchInput(this.value)">
+        <div class="btn-group mt8" style="gap:8px">
+          {% if is_admin %}
+          <button id="addClientBtn" type="button" class="btn-option btn-sm" onclick="showAddClientForm()">+ Add Client</button>
+          {% endif %}
+          <button type="button" class="btn-option btn-sm" onclick="downloadClientList()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+            Download List
+          </button>
+        </div>
         {% if is_admin %}
-        <button id="addClientBtn" type="button" class="btn-option btn-sm mt8" onclick="showAddClientForm()">+ Add Client</button>
         <div id="addClientFormBox"></div>
         {% endif %}
         <div id="clientsList" class="option-list mt16"></div>
@@ -820,6 +828,10 @@ let expandedClientCity = null;
 let expandedClientPlace = null;
 let expandedClientROI = false;
 let expandedClientState = null;
+
+function downloadClientList() {
+  window.location = "/api/clients/export";
+}
 
 async function loadClients() {
   const box = document.getElementById("clientsList");

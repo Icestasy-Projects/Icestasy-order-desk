@@ -426,3 +426,58 @@ def build_orders_workbook(orders: list, role_label: str, full_name: str,
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+CLIENT_COLUMNS = ["Business Name", "Type", "Contact Name", "Phone", "GSTIN", "FSSAI No",
+                  "City", "Locality", "State", "Address"]
+CLIENT_COLUMN_WIDTHS = [28, 14, 22, 18, 20, 18, 16, 20, 16, 40]
+
+
+def build_clients_workbook(clients: list) -> io.BytesIO:
+    generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    subtitle_text = f"Generated {generated} · {len(clients)} clients"
+    last_col_letter = get_column_letter(len(CLIENT_COLUMNS))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Clients"
+
+    _sheet_header(ws, "Icestasy Order Desk — Client List", subtitle_text, last_col_letter)
+
+    header_row = 4
+    for col, title in enumerate(CLIENT_COLUMNS, start=1):
+        cell = ws.cell(row=header_row, column=col, value=title)
+        cell.font = HEADER_FONT
+        cell.fill = BRAND_FILL
+        cell.alignment = Alignment(horizontal="center")
+
+    row = header_row + 1
+    for c in clients:
+        addrs = c.get("addresses") or []
+        default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
+        addr = default_addr or {}
+        addr_parts = [p for p in [addr.get("line1"), addr.get("line2")] if p]
+        addr_text = ", ".join(addr_parts)
+
+        ws.cell(row=row, column=1, value=c.get("business_name") or "")
+        ws.cell(row=row, column=2, value=c.get("client_type") or "")
+        ws.cell(row=row, column=3, value=c.get("primary_contact_name") or "")
+        ws.cell(row=row, column=4, value=c.get("primary_contact_phone") or "")
+        ws.cell(row=row, column=5, value=c.get("gstin") or "")
+        ws.cell(row=row, column=6, value=c.get("fssai_no") or "")
+        ws.cell(row=row, column=7, value=c.get("city") or "")
+        ws.cell(row=row, column=8, value=addr.get("locality") or c.get("place") or "")
+        ws.cell(row=row, column=9, value=addr.get("state") or c.get("state") or "")
+        ws.cell(row=row, column=10, value=addr_text)
+        row += 1
+
+    for col, width in enumerate(CLIENT_COLUMN_WIDTHS, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    ws.freeze_panes = f"A{header_row + 1}"
+    ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf

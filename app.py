@@ -26,7 +26,7 @@ from order_engine import (
     get_sku_price, price_region_for_city,
 )
 from invoicing import build_invoice_pdf
-from reports import build_orders_workbook, build_flavour_sales_workbook
+from reports import build_orders_workbook, build_flavour_sales_workbook, build_clients_workbook
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
@@ -219,6 +219,15 @@ def api_clients_list():
         return jsonify({"clients": list_clients()})
     except Exception as e:
         return jsonify({"clients": [], "error": str(e)}), 200
+
+
+@app.route("/api/clients/export")
+def api_clients_export():
+    clients = list_clients()
+    buf = build_clients_workbook(clients)
+    filename = f"icestasy-clients-{date.today().isoformat()}.xlsx"
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=filename)
 
 
 @app.route("/api/clients", methods=["POST"])
