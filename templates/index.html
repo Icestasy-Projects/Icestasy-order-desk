@@ -126,6 +126,22 @@
   </main>
 </div>
 
+<!-- Pending-order warning modal -->
+<div class="modal-overlay hidden" id="pendingModal">
+  <div class="modal-card">
+    <div class="modal-title" style="color:var(--brand)">
+      <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      Pending Order Found
+    </div>
+    <div id="pendingModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" style="background:var(--red)" id="pendingCancelBtn">Cancel Previous &amp; Place New</button>
+      <button class="btn-primary" id="pendingSeparateBtn">Place as Separate Order</button>
+      <button class="btn-ghost" onclick="closePendingModal()">Go Back</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Icons (inline Lucide SVGs — no external dependency) ─────────────────────
 const ICON_PATHS = {
@@ -646,6 +662,75 @@ function showConfirm() {
 
 // ── STEP 6: Place ────────────────────────────────────────────────────────────
 async function placeOrder() {
+  const btn = document.querySelector("#step-confirm .btn-green");
+  btn.disabled = true; btn.textContent = "Checking…";
+
+  const pending = await fetch(`/api/clients/${state.client.id}/pending-orders`).then(r => r.json());
+  const pendingOrders = (pending.orders || []);
+
+  btn.disabled = false; btn.innerHTML = `${icon("check")} Confirm &amp; Place Order`;
+
+  if (pendingOrders.length) {
+    showPendingModal(pendingOrders);
+    return;
+  }
+
+  await submitNewOrder();
+}
+
+function showPendingModal(pendingOrders) {
+  const list = pendingOrders.map(o => {
+    const d = new Date(o.created_at);
+    const dateStr = d.toLocaleDateString("en-IN", {day:"numeric", month:"short", year:"numeric"});
+    return `<div class="pending-order-row">
+      <strong>${o.order_no}</strong>
+      <span>${o.status} · ${fmt(parseFloat(o.total_amount))} · ${dateStr}</span>
+    </div>`;
+  }).join("");
+
+  document.getElementById("pendingModalBody").innerHTML = `
+    <p style="margin:8px 0 12px;color:var(--slate-700)">
+      This client already has ${pendingOrders.length === 1 ? "a pending order" : pendingOrders.length + " pending orders"}
+      from the last 7 days:
+    </p>
+    ${list}
+    <p style="margin:12px 0 0;color:var(--slate-500);font-size:13px">
+      Would you like to cancel ${pendingOrders.length === 1 ? "it" : "them"} and place this new order, or place this as a separate order?
+    </p>`;
+
+  const cancelBtn = document.getElementById("pendingCancelBtn");
+  const sepBtn = document.getElementById("pendingSeparateBtn");
+
+  const newCancelBtn = cancelBtn.cloneNode(true);
+  cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+  newCancelBtn.id = "pendingCancelBtn";
+
+  const newSepBtn = sepBtn.cloneNode(true);
+  sepBtn.parentNode.replaceChild(newSepBtn, sepBtn);
+  newSepBtn.id = "pendingSeparateBtn";
+
+  newCancelBtn.onclick = async () => {
+    newCancelBtn.disabled = true; newCancelBtn.textContent = "Cancelling…";
+    for (const o of pendingOrders) {
+      await fetch(`/api/orders/${o.id}/cancel`, {method:"POST"});
+    }
+    closePendingModal();
+    await submitNewOrder();
+  };
+
+  newSepBtn.onclick = () => {
+    closePendingModal();
+    submitNewOrder();
+  };
+
+  document.getElementById("pendingModal").classList.remove("hidden");
+}
+
+function closePendingModal() {
+  document.getElementById("pendingModal").classList.add("hidden");
+}
+
+async function submitNewOrder() {
   const btn = document.querySelector("#step-confirm .btn-green");
   btn.disabled = true; btn.textContent = "Placing…";
 
