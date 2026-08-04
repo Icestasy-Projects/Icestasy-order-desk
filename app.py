@@ -24,6 +24,7 @@ from order_engine import (
     get_order_lines, mark_order_completed, flavour_sales_summary,
     fetch_report_order_lines, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
+    check_pending_orders, cancel_order,
 )
 from invoicing import build_invoice_pdf
 from reports import build_orders_workbook, build_flavour_sales_workbook, build_clients_workbook
@@ -258,6 +259,26 @@ def api_create_address(client_id):
     try:
         addr = create_address(client_id, body)
         return jsonify({"ok": True, "address": {"id": addr["id"], "label": addr_label(addr), "city": addr.get("city") or ""}})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/clients/<int:client_id>/pending-orders")
+def api_pending_orders(client_id):
+    try:
+        pending = check_pending_orders(client_id)
+        return jsonify({"orders": pending})
+    except Exception as e:
+        return jsonify({"orders": [], "error": str(e)}), 200
+
+
+@app.route("/api/orders/<int:order_id>/cancel", methods=["POST"])
+def api_cancel_order(order_id):
+    try:
+        cancel_order(order_id)
+        return jsonify({"ok": True})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:

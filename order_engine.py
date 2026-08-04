@@ -340,6 +340,37 @@ def add_order_collateral(sb, order_id: int, collateral: list) -> list:
     return res.data
 
 
+def check_pending_orders(client_id: int) -> list:
+    sb = _sb()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    pending = (
+        sb.schema("sales").from_("orders")
+        .select("id, order_no, status, total_amount, created_at")
+        .eq("client_id", client_id)
+        .not_.in_("status", ["invoiced", "rejected", "cancelled", "delivered"])
+        .gte("created_at", cutoff)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return pending.data
+
+
+def cancel_order(order_id: int) -> dict:
+    sb = _sb()
+    order = sb.schema("sales").from_("orders").select("id, status").eq("id", order_id).limit(1).execute()
+    if not order.data:
+        raise ValueError("Order not found")
+    if order.data[0]["status"] in ("invoiced", "delivered", "cancelled", "rejected"):
+        raise ValueError(f"Cannot cancel — order is already {order.data[0]['status']}")
+    res = (
+        sb.schema("sales").from_("orders")
+        .update({"status": "cancelled"})
+        .eq("id", order_id)
+        .execute()
+    )
+    return res.data[0]
+
+
 def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None):
     sb = _sb()
     payment_mode = payment_mode or "advance"  # payment_mode is NOT NULL; not asked for collateral-only orders
