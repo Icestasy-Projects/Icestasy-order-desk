@@ -6,10 +6,10 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.properties import Outline
 
-BRAND_FILL = PatternFill(start_color="FF8A3D", end_color="FF8A3D", fill_type="solid")
+BRAND_FILL = PatternFill(start_color="1D4ED8", end_color="1D4ED8", fill_type="solid")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
-TITLE_FONT = Font(bold=True, size=14, color="21201D")
-SUBTLE_FONT = Font(size=10, color="847E74", italic=True)
+TITLE_FONT = Font(bold=True, size=14, color="0F172A")
+SUBTLE_FONT = Font(size=10, color="64748B", italic=True)
 TOTAL_FONT = Font(bold=True)
 
 STATUS_LABELS = {
@@ -26,9 +26,9 @@ COLUMNS = ["Order No", "Date", "Client", "Locality", "City", "Salesperson", "Sta
 COLUMN_WIDTHS = [16, 14, 28, 20, 16, 18, 16, 18, 14]
 
 ORDER_LINE_COLUMNS = ["", "", "Flavour", "Format", "SKU Code", "Qty", "Unit Price", "Line Total", ""]
-LINE_FILL = PatternFill(start_color="FFF3E8", end_color="FFF3E8", fill_type="solid")
+LINE_FILL = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")
 LINE_FONT = Font(size=10, color="555555")
-ORDER_HEADER_FILL = PatternFill(start_color="FFECD6", end_color="FFECD6", fill_type="solid")
+ORDER_HEADER_FILL = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
 ORDER_HEADER_FONT = Font(bold=True, size=11)
 
 # Mumbai Metropolitan Region: reported as a single "Mumbai" group, matching the dashboard's By City tab.
