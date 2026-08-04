@@ -33,9 +33,9 @@ body {
   line-height: 1.45;
 }
 
-/* Header — solid blue bar matching the HR Portal */
+/* Header — gradient blue bar matching the HR Portal */
 .header {
-  background: var(--brand);
+  background: linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 40%, #2563EB 100%);
   padding: 0 20px;
   min-height: 56px;
   display: flex;
@@ -44,6 +44,7 @@ body {
   top: 0;
   z-index: 50;
   box-shadow: 0 2px 8px rgba(15,23,42,.15);
+  border-top: 3px solid #7C3AED;
 }
 .header-inner {
   max-width: 720px; width: 100%; margin: 0 auto;
@@ -51,10 +52,16 @@ body {
   flex-wrap: wrap; gap: 8px 12px;
 }
 .brand { color: #fff; font-weight: 800; font-size: 18px; letter-spacing: -.3px;
-         display: flex; align-items: center; gap: 8px; white-space: nowrap;
+         display: flex; align-items: center; gap: 10px; white-space: nowrap;
          background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
          text-decoration: none; }
-.brand .icon, .brand .icon-lg { stroke: #fff; }
+.brand-logo {
+  width: 36px; height: 36px; border-radius: 8px; background: #fff;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-text strong { font-size: 16px; font-weight: 800; letter-spacing: .3px; }
+.brand-text small { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; opacity: .75; }
 .btn-ghost {
   background: rgba(255,255,255,.15); border: none; color: #fff;
   padding: 9px 18px; border-radius: 20px; cursor: pointer; font-size: 13px;
