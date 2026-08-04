@@ -11,8 +11,8 @@
   <header class="header">
     <div class="header-inner">
       <button type="button" class="brand" onclick="switchPage('orders', document.getElementById('page-tab-orders'))">
-        <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 11 4.08 10.35a1 1 0 0 0 1.84 0L17 11"/><path d="M17 7A5 5 0 0 0 7 7"/><path d="M17 7a2 2 0 0 1 0 4H7a2 2 0 0 1 0-4"/></svg>
-        Icestasy Order Desk
+        <span class="brand-logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 11 4.08 10.35a1 1 0 0 0 1.84 0L17 11"/><path d="M17 7A5 5 0 0 0 7 7"/><path d="M17 7H7"/><path d="m12 11 0 10"/></svg></span>
+        <span class="brand-text"><strong>Icestasy</strong><small>ORDER DESK</small></span>
       </button>
       <div class="header-right menu-wrap">
         <span class="user-email">Hi, {{ (full_name.split(" ")[0] if full_name else user_email) }}</span>
