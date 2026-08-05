@@ -24,7 +24,7 @@ from order_engine import (
     get_order_lines, mark_order_completed, flavour_sales_summary,
     fetch_report_order_lines, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
-    check_pending_orders, cancel_order,
+    check_pending_orders, cancel_order, should_auto_hold, release_hold,
 )
 from invoicing import build_invoice_pdf
 from reports import build_orders_workbook, build_flavour_sales_workbook, build_clients_workbook
@@ -285,6 +285,27 @@ def api_cancel_order(order_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/clients/<int:client_id>/hold-check")
+def api_hold_check(client_id):
+    try:
+        return jsonify(should_auto_hold(client_id))
+    except Exception as e:
+        return jsonify({"hold": False, "error": str(e)}), 200
+
+
+@app.route("/api/orders/<int:order_id>/release-hold", methods=["POST"])
+def api_release_hold(order_id):
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "Only admins can release held orders"}), 403
+    try:
+        release_hold(order_id)
+        return jsonify({"ok": True})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/orders", methods=["POST"])
 def api_orders():
     body = request.get_json(force=True)
@@ -298,6 +319,7 @@ def api_orders():
             shipping_address_id=body.get("shipping_address_id"),
             notes=body.get("notes"),
             collateral=body.get("collateral"),
+            discount_pct=float(body.get("discount_pct") or 0),
         )
         return jsonify({"ok": True, "order": order})
     except Exception as e:

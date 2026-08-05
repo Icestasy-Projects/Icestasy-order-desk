@@ -532,6 +532,26 @@ body {
 }
 .pending-order-row strong { color: var(--slate-900); }
 .pending-order-row span { color: var(--slate-500); font-size: 12.5px; }
+
+/* Hold warning on confirm step */
+.hold-warning {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; margin: 12px 0;
+  background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius-sm);
+  color: var(--red); font-size: 13px; font-weight: 600;
+}
+.hold-warning.hidden { display: none; }
+.hold-banner {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; margin: 8px 0;
+  background: #FEF2F2; border-radius: var(--radius-sm);
+  color: var(--red); font-size: 13px; font-weight: 600;
+}
+
+/* Discount + comment on confirm step */
+.confirm-extras { margin: 16px 0; display: flex; flex-direction: column; gap: 12px; }
+.confirm-row { display: flex; align-items: center; gap: 8px; }
+.confirm-label { font-size: 13px; font-weight: 700; color: var(--slate-700); min-width: 80px; }
 .modal-actions {
   display: flex; flex-direction: column; gap: 8px; margin-top: 16px;
 }

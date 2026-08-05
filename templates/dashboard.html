@@ -431,12 +431,12 @@ function downloadReport() {
 })();
 
 const STATUS_LABELS = {
-  draft: "Order Pending", pending_approval: "In Progress", approved: "In Progress",
+  draft: "Order Pending", hold: "On Hold", pending_approval: "In Progress", approved: "In Progress",
   in_production: "In Progress", dispatched: "In Progress", delivered: "Completed",
   rejected: "Rejected", cancelled: "Cancelled", invoiced: "Invoiced",
 };
 const STATUS_CLASS = {
-  draft: "badge-amber", pending_approval: "badge-blue", approved: "badge-blue",
+  draft: "badge-amber", hold: "badge-red", pending_approval: "badge-blue", approved: "badge-blue",
   in_production: "badge-blue", dispatched: "badge-purple", delivered: "badge-green",
   rejected: "badge-red", cancelled: "badge-red", invoiced: "badge-blue",
 };
@@ -607,7 +607,7 @@ function setGrouping(g, btn) {
 
 const _TERMINAL_STATUSES = new Set(["invoiced", "rejected", "cancelled", "delivered"]);
 // Completion is independent of invoicing — an invoiced order can still be marked completed.
-const _COMPLETABLE_BLOCKED_STATUSES = new Set(["delivered", "rejected", "cancelled"]);
+const _COMPLETABLE_BLOCKED_STATUSES = new Set(["delivered", "rejected", "cancelled", "hold"]);
 let expandedOrderId = null;
 const orderLinesCache = {};
 
@@ -646,7 +646,9 @@ function orderRow(o) {
   const payAction = (CAN_VIEW_TEAM && (o.payment_status === "not_recorded" || o.payment_status === "pending")
                       && o.status !== "rejected" && o.status !== "cancelled")
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
-  const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status))
+  const holdAction = (IS_ADMIN && o.status === "hold")
+    ? `<button class="btn-option btn-sm" onclick="releaseHold(${o.id})">${icon("play")} Release Hold</button>` : "";
+  const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status) && o.status !== "hold")
     ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">${icon("check")} Approve</button>
        <button class="btn-option btn-sm" onclick="rejectOrder(${o.id})">${icon("x")} Reject</button>` : "";
   // Available to both the order's own salesperson and admins — the backend re-checks ownership.
@@ -669,12 +671,20 @@ function orderRow(o) {
         <span class="badge badge-pay ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>
         <span class="ci-price">${fmt(o.total_amount)}</span>
         ${payAction}
+        ${holdAction}
         ${approvalActions}
         ${completeAction}
         ${invoiceAction}
       </div>
       ${isOpen ? orderLinesHtml(o.id) : ""}
     </div>`;
+}
+
+async function releaseHold(orderId) {
+  if (!confirm("Release this order from hold?")) return;
+  const res = await fetch(`/api/orders/${orderId}/release-hold`, {method: "POST"}).then(r => r.json());
+  if (!res.ok) { alert(res.error || "Could not release hold"); return; }
+  loadOrders();
 }
 
 async function markCompleted(orderId) {
