@@ -111,6 +111,24 @@
     <section class="step hidden" id="step-confirm">
       <div class="step-label">Order Summary</div>
       <div id="summaryBox" class="summary-box"></div>
+
+      <div id="holdWarning" class="hold-warning hidden">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        <span id="holdWarningText"></span>
+      </div>
+
+      <div class="confirm-extras">
+        <div class="confirm-row">
+          <label class="confirm-label" for="discountPct">Discount %</label>
+          <input id="discountPct" class="search-input" type="number" min="0" max="100" step="0.5" value="0" style="width:100px;text-align:center" oninput="updateDiscountPreview()">
+          <span id="discountPreview" class="opt-sub" style="margin-left:8px"></span>
+        </div>
+        <div class="confirm-row" style="flex-direction:column;align-items:stretch">
+          <label class="confirm-label" for="orderComment">Comments</label>
+          <textarea id="orderComment" class="paste-box" rows="2" placeholder="Add any notes or comments for this order…" style="margin-top:4px"></textarea>
+        </div>
+      </div>
+
       <button class="btn-primary btn-green" onclick="placeOrder()">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
         Confirm &amp; Place Order
@@ -634,9 +652,9 @@ function changeAddress() {
 }
 
 // ── STEP 5: Confirm ──────────────────────────────────────────────────────────
-function showConfirm() {
+async function showConfirm() {
   const resolved = state.items.filter(i => !i.not_found && i.resolved_sku);
-  const subtotal = resolved.reduce((s,i) => s + i.qty * i.unit_price, 0);
+  state._subtotal = resolved.reduce((s,i) => s + i.qty * i.unit_price, 0);
   const itemRows = resolved.map(i =>
     `<tr><td>${i.resolved_sku.flavour_name}</td><td>${i.resolved_sku.pack_format_name}</td>
      <td class="num">${i.qty}</td><td class="num">${fmt(i.unit_price)}</td>
@@ -656,8 +674,44 @@ function showConfirm() {
       <tbody>${itemRows}</tbody>
     </table>` : ""}
     ${collateralRows ? `<div class="step-label mt16">Marketing Collateral</div>${collateralRows}` : ""}
-    <div class="summary-total">Total <strong>${fmt(subtotal)}</strong></div>`;
+    <div class="summary-total">Subtotal <strong>${fmt(state._subtotal)}</strong></div>
+    <div class="summary-total" id="discountTotalRow" style="display:none">After Discount <strong id="discountTotalAmt"></strong></div>`;
+
+  document.getElementById("discountPct").value = "0";
+  document.getElementById("discountPreview").textContent = "";
+  document.getElementById("discountTotalRow").style.display = "none";
+  document.getElementById("orderComment").value = "";
+
+  // Check hold status
+  const holdEl = document.getElementById("holdWarning");
+  try {
+    const hc = await fetch(`/api/clients/${state.client.id}/hold-check`).then(r => r.json());
+    if (hc.hold) {
+      document.getElementById("holdWarningText").textContent =
+        "This order will be placed ON HOLD — " + (hc.reason || "previous unpaid orders");
+      holdEl.classList.remove("hidden");
+    } else {
+      holdEl.classList.add("hidden");
+    }
+  } catch (e) { holdEl.classList.add("hidden"); }
+
   show("step-confirm");
+}
+
+function updateDiscountPreview() {
+  const pct = parseFloat(document.getElementById("discountPct").value) || 0;
+  const preview = document.getElementById("discountPreview");
+  const totalRow = document.getElementById("discountTotalRow");
+  const totalAmt = document.getElementById("discountTotalAmt");
+  if (pct > 0 && state._subtotal) {
+    const disc = Math.round(state._subtotal * pct / 100 * 100) / 100;
+    preview.textContent = `−${fmt(disc)}`;
+    totalAmt.textContent = fmt(state._subtotal - disc);
+    totalRow.style.display = "";
+  } else {
+    preview.textContent = "";
+    totalRow.style.display = "none";
+  }
 }
 
 // ── STEP 6: Place ────────────────────────────────────────────────────────────
@@ -734,6 +788,9 @@ async function submitNewOrder() {
   const btn = document.querySelector("#step-confirm .btn-green");
   btn.disabled = true; btn.textContent = "Placing…";
 
+  const discountPct = parseFloat(document.getElementById("discountPct").value) || 0;
+  const comment = document.getElementById("orderComment").value.trim();
+
   const lines = state.items.filter(i => !i.not_found && i.resolved_sku).map(i => ({
     sku_id: i.resolved_sku.id,
     sku_code: i.resolved_sku.sku_code,
@@ -753,6 +810,8 @@ async function submitNewOrder() {
       shipping_address_id: state.address_id,
       billing_address_id: state.address_id,
       collateral: state.collateral,
+      discount_pct: discountPct,
+      notes: comment || null,
     }),
   }).then(r => r.json());
 
@@ -762,16 +821,22 @@ async function submitNewOrder() {
   if (res.ok) {
     const order = res.order;
     const total = fmt(order.total);
+    const discLine = order.discount_pct ? `<div class="done-meta" style="color:var(--green)">Discount: ${order.discount_pct}% (−${fmt(order.discount)})</div>` : "";
+    const holdBanner = order.on_hold
+      ? `<div class="hold-banner">${icon("alert-triangle")} Order placed ON HOLD — ${order.hold_reason || "admin review required"}</div>`
+      : "";
     const linesList = (order.lines || []).map(l =>
       `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
     ).join("") + (order.collateral || []).map(c =>
       `<li>${c.quantity} × ${c.type}${c.notes ? " — " + c.notes : ""}</li>`
     ).join("");
     document.getElementById("doneBox").innerHTML = `
-      <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
-      <div class="done-title">Order Confirmed</div>
+      <div class="done-icon" style="color:${order.on_hold ? "var(--red)" : "var(--green)"}">${icon(order.on_hold ? "alert-triangle" : "circle-check-big")}</div>
+      <div class="done-title">${order.on_hold ? "Order On Hold" : "Order Confirmed"}</div>
       <div class="done-no">${order.order_no}</div>
       <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
+      ${holdBanner}
+      ${discLine}
       <ul class="done-lines">${linesList}</ul>
       <div class="done-total">Total: <strong>${total}</strong></div>
       <button class="btn-primary mt16" onclick="resetAll()">New Order</button>`;

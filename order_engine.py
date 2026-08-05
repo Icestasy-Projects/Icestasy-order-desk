@@ -371,11 +371,58 @@ def cancel_order(order_id: int) -> dict:
     return res.data[0]
 
 
-def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None):
+def _client_has_unpaid_orders(sb, client_id: int) -> bool:
+    """True if the client has any non-terminal order with no 'received' payment."""
+    orders = (
+        sb.schema("sales").from_("orders")
+        .select("id")
+        .eq("client_id", client_id)
+        .not_.in_("status", ["rejected", "cancelled"])
+        .execute()
+    )
+    if not orders.data:
+        return False
+    order_ids = [o["id"] for o in orders.data]
+    paid_ids = set()
+    for p in (
+        sb.schema("sales").from_("payments")
+        .select("order_id")
+        .eq("status", "received")
+        .in_("order_id", order_ids)
+        .execute().data
+    ):
+        paid_ids.add(p["order_id"])
+    return any(oid not in paid_ids for oid in order_ids)
+
+
+def should_auto_hold(client_id: int) -> dict:
     sb = _sb()
-    payment_mode = payment_mode or "advance"  # payment_mode is NOT NULL; not asked for collateral-only orders
+    today = date.today()
+    if today.day < 15:
+        return {"hold": False}
+    if _client_has_unpaid_orders(sb, client_id):
+        return {"hold": True, "reason": "Previous order unpaid past the 15th of the month"}
+    return {"hold": False}
+
+
+def release_hold(order_id: int) -> dict:
+    sb = _sb()
+    order = sb.schema("sales").from_("orders").select("id, status").eq("id", order_id).limit(1).execute()
+    if not order.data:
+        raise ValueError("Order not found")
+    if order.data[0]["status"] != "hold":
+        raise ValueError(f"Order is not on hold (status: {order.data[0]['status']})")
+    res = sb.schema("sales").from_("orders").update({"status": "draft"}).eq("id", order_id).execute()
+    return res.data[0]
+
+
+def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0):
+    sb = _sb()
+    payment_mode = payment_mode or "advance"
     subtotal = sum(l["quantity"] * l["unit_price"] for l in lines)
-    discount = sum(l.get("line_discount", 0.0) * l["quantity"] for l in lines)
+    line_discount = sum(l.get("line_discount", 0.0) * l["quantity"] for l in lines)
+    pct_discount = round(subtotal * (discount_pct / 100), 2) if discount_pct else 0.0
+    discount = line_discount + pct_discount
     total = subtotal - discount
 
     city_code = "ROI"
@@ -385,6 +432,10 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             place = addr.data[0].get("locality") or addr.data[0].get("city")
             if place:
                 city_code = _order_city_code(place)
+
+    hold_check = should_auto_hold(client_id)
+    status = "hold" if hold_check["hold"] else "draft"
+
     order_no = _next_order_no(sb, city_code)
     order_row = {
         "order_no": order_no, "client_id": client_id,
@@ -392,7 +443,7 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
         "payment_mode": payment_mode,
         "billing_address_id": billing_address_id,
         "shipping_address_id": shipping_address_id,
-        "status": "draft", "salesperson_id": user_id, "created_by_user_id": user_id,
+        "status": status, "salesperson_id": user_id, "created_by_user_id": user_id,
         "placed_by_client": False, "source": "whatsapp_ai",
         "is_urgent": False,
         "subtotal_amount": str(subtotal), "discount_amount": str(discount),
@@ -419,13 +470,17 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
         collateral_out = [{"type": c["collateral_type"], "quantity": c["quantity"], "notes": c.get("notes")}
                            for c in saved]
 
-    return {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
+    result = {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
+            "discount_pct": discount_pct,
+            "on_hold": status == "hold",
+            "hold_reason": hold_check.get("reason", ""),
             "lines": [{"sku_code": l["sku_code"], "flavour_name": l["flavour_name"],
                        "format_name": l["format_name"], "quantity": l["quantity"],
                        "unit_price": l["unit_price"],
                        "line_total": l["quantity"] * l["unit_price"] - l.get("line_discount", 0.0) * l["quantity"]}
                       for l in lines],
             "collateral": collateral_out}
+    return result
 
 
 def list_dashboard_orders(user_id: int, role: str) -> list:
@@ -529,7 +584,7 @@ def mark_payment_received(order_id: int, received_by: int) -> dict:
 
 
 _TERMINAL_ORDER_STATUSES = {"invoiced", "rejected", "cancelled", "delivered"}
-_COMPLETABLE_BLOCKED_STATUSES = {"delivered", "rejected", "cancelled"}
+_COMPLETABLE_BLOCKED_STATUSES = {"delivered", "rejected", "cancelled", "hold"}
 
 
 def get_order_lines(order_id: int, user_id: int, role: str) -> list:
