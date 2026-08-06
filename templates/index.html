@@ -748,27 +748,32 @@ function _effectiveDiscPct() {
   return pct;
 }
 function updateDiscountPreview() {
-  _baseDiscPct = parseFloat(document.getElementById("discountPct").value) || 0;
+  const discInput = document.getElementById("discountPct");
+  if (!discInput) return;
+  _baseDiscPct = parseFloat(discInput.value) || 0;
   const pct = _effectiveDiscPct();
   const advNote = document.getElementById("discAdvanceNote");
-  advNote.classList.toggle("hidden", state.payment !== "advance");
+  if (advNote) advNote.classList.toggle("hidden", state.payment !== "advance");
   const summary = document.getElementById("discSummary");
   const preview = document.getElementById("discountPreview");
   const totalRow = document.getElementById("discountTotalRow");
   const totalAmt = document.getElementById("discountTotalAmt");
   if (pct > 0 && state._subtotal) {
     const disc = Math.round(state._subtotal * pct / 100 * 100) / 100;
-    preview.textContent = `−${fmt(disc)}`;
-    totalAmt.textContent = fmt(state._subtotal - disc);
-    totalRow.style.display = "";
-    document.getElementById("discSumPct").textContent = pct + "%";
-    document.getElementById("discSumAmt").textContent = fmt(disc);
-    document.getElementById("discSumTotal").textContent = fmt(state._subtotal - disc);
-    summary.classList.remove("hidden");
+    if (preview) preview.textContent = `−${fmt(disc)}`;
+    if (totalAmt) totalAmt.textContent = fmt(state._subtotal - disc);
+    if (totalRow) totalRow.style.display = "";
+    const sp = document.getElementById("discSumPct");
+    const sa = document.getElementById("discSumAmt");
+    const st = document.getElementById("discSumTotal");
+    if (sp) sp.textContent = pct + "%";
+    if (sa) sa.textContent = fmt(disc);
+    if (st) st.textContent = fmt(state._subtotal - disc);
+    if (summary) summary.classList.remove("hidden");
   } else {
-    preview.textContent = "";
-    totalRow.style.display = "none";
-    summary.classList.add("hidden");
+    if (preview) preview.textContent = "";
+    if (totalRow) totalRow.style.display = "none";
+    if (summary) summary.classList.add("hidden");
   }
 }
 
