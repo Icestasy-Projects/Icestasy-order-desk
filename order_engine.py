@@ -1168,3 +1168,12 @@ def set_sku_status(sku_id: int, status: str) -> dict:
     return res.data[0]
 
 
+def delete_flavours(flavour_ids: list[int]) -> int:
+    if not flavour_ids:
+        raise ValueError("No flavour IDs provided")
+    sb = _sb()
+    sb.schema("sales").from_("skus").update({"status": "discontinued"}).in_("flavour_id", flavour_ids).execute()
+    res = sb.schema("sales").from_("flavours").update({"status": "discontinued"}).in_("id", flavour_ids).execute()
+    return len(res.data)
+
+

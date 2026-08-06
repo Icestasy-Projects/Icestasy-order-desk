@@ -19,7 +19,7 @@ from order_engine import (
     set_user_password, mark_password_changed,
     approve_order, reject_order, list_clients,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
-    set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status,
+    set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
     update_client, update_address,
     get_order_lines, mark_order_completed, flavour_sales_summary,
     fetch_report_order_lines, fetch_payment_summaries,
@@ -512,6 +512,20 @@ def api_update_flavour(flavour_id):
         return jsonify({"ok": True, "flavour": flavour})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/flavours/bulk-delete", methods=["POST"])
+@admin_required
+def api_bulk_delete_flavours():
+    body = request.get_json(force=True)
+    ids = body.get("ids") or []
+    if not ids:
+        return jsonify({"ok": False, "error": "No flavour IDs provided"}), 400
+    try:
+        count = delete_flavours(ids)
+        return jsonify({"ok": True, "deleted": count})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
