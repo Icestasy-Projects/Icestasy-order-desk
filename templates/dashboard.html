@@ -243,15 +243,34 @@
     </div>
 
     <div id="page-flavours" class="hidden">
-      <section class="step">
-        <div class="section-header-row">
-          <div class="step-label" style="margin-bottom:0">Flavour Management</div>
-          <button class="btn-option btn-sm" onclick="showAddFlavourForm()">+ Add flavour</button>
+      <section class="step flavour-mgmt">
+        <div class="fm-toolbar">
+          <div class="fm-toolbar-left">
+            <div class="step-label" style="margin-bottom:0">Flavour Management</div>
+            <span id="flavourCount" class="fm-count"></span>
+          </div>
+          <div class="fm-toolbar-right">
+            <button class="fm-btn fm-btn-danger" id="bulkDeleteBtn" style="display:none" onclick="bulkDeleteFlavours()">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+              Delete selected</button>
+            <button class="fm-btn fm-btn-primary" onclick="showAddFlavourForm()">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              Add flavour</button>
+          </div>
         </div>
-        <input id="flavourSearch" class="search-input mt16" type="text"
-               placeholder="Search flavours…" oninput="handleFlavourSearchInput(this.value)">
-        <div id="flavoursList" class="mt16"></div>
-        <div id="flavoursPagination" class="mt8"></div>
+        <div class="fm-search-row">
+          <span class="fm-search-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+          <input id="flavourSearch" class="fm-search" type="text"
+                 placeholder="Search flavours…" oninput="handleFlavourSearchInput(this.value)">
+        </div>
+        <div class="fm-select-all-row" id="selectAllRow" style="display:none">
+          <label class="fm-checkbox-label">
+            <input type="checkbox" id="selectAllCb" onchange="toggleSelectAll(this.checked)">
+            <span>Select all on this page</span>
+          </label>
+        </div>
+        <div id="flavoursList" class="fm-list"></div>
+        <div id="flavoursPagination" class="fm-pagination"></div>
       </section>
     </div>
     {% endif %}
@@ -298,6 +317,13 @@ const ICON_PATHS = {
   receipt: '<path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/>',
   download: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
   "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  "trash-2": '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+  "chevron-left": '<path d="m15 18-6-6 6-6"/>',
+  "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+  "rotate-ccw": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
 };
 function icon(name, cls) {
   return `<svg class="icon${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
@@ -1569,7 +1595,16 @@ let priceRegionLabels = {};
 let expandedFlavour = null;
 let flavourSearchQuery = "";
 let flavoursPage = 1;
-const FLAVOURS_PAGE_SIZE = 15;
+const FLAVOURS_PAGE_SIZE = 12;
+let selectedFlavourIds = new Set();
+
+function fmToast(msg, isError) {
+  const el = document.createElement("div");
+  el.className = "fm-toast" + (isError ? " error" : "");
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
 
 async function loadFlavours() {
   const box = document.getElementById("flavoursList");
@@ -1583,10 +1618,12 @@ async function loadFlavours() {
   packFormatsData = data.pack_formats || [];
   priceRegions = data.price_regions || [];
   priceRegionLabels = data.price_region_labels || {};
+  selectedFlavourIds.clear();
   renderFlavours();
 }
 
-function toggleFlavour(id) {
+function toggleFlavour(id, ev) {
+  if (ev) ev.stopPropagation();
   expandedFlavour = expandedFlavour === id ? null : id;
   renderFlavours();
 }
@@ -1602,19 +1639,83 @@ function goToFlavoursPage(p) {
   renderFlavours();
 }
 
+function toggleFlavourSelect(id, ev) {
+  ev.stopPropagation();
+  if (selectedFlavourIds.has(id)) selectedFlavourIds.delete(id);
+  else selectedFlavourIds.add(id);
+  updateBulkUI();
+}
+
+function toggleSelectAll(checked) {
+  const q = flavourSearchQuery;
+  const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
+  const pageStart = (flavoursPage - 1) * FLAVOURS_PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
+  pageItems.forEach(f => { if (checked) selectedFlavourIds.add(f.id); else selectedFlavourIds.delete(f.id); });
+  updateBulkUI();
+}
+
+function updateBulkUI() {
+  const btn = document.getElementById("bulkDeleteBtn");
+  const n = selectedFlavourIds.size;
+  btn.style.display = n ? "" : "none";
+  btn.innerHTML = `${icon("trash-2")} Delete (${n})`;
+  document.querySelectorAll(".fm-card").forEach(card => {
+    const id = parseInt(card.dataset.fid);
+    card.classList.toggle("fm-card-selected", selectedFlavourIds.has(id));
+    const cb = card.querySelector(".fm-card-cb input");
+    if (cb) cb.checked = selectedFlavourIds.has(id);
+  });
+  const selectAllCb = document.getElementById("selectAllCb");
+  if (selectAllCb) {
+    const q = flavourSearchQuery;
+    const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
+    const pageStart = (flavoursPage - 1) * FLAVOURS_PAGE_SIZE;
+    const pageItems = filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
+    selectAllCb.checked = pageItems.length > 0 && pageItems.every(f => selectedFlavourIds.has(f.id));
+  }
+}
+
+async function bulkDeleteFlavours() {
+  const n = selectedFlavourIds.size;
+  if (!n) return;
+  if (!confirm(`Discontinue ${n} flavour${n > 1 ? "s" : ""}? Their SKUs will also be discontinued. Past orders are kept.`)) return;
+  const res = await fetch("/api/admin/flavours/bulk-delete", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ids: [...selectedFlavourIds]}),
+  }).then(r => r.json());
+  if (!res.ok) { fmToast(res.error || "Could not delete", true); return; }
+  fmToast(`${res.deleted} flavour${res.deleted > 1 ? "s" : ""} discontinued`);
+  loadFlavours();
+}
+
 function renderFlavours() {
   const box = document.getElementById("flavoursList");
   const pagBox = document.getElementById("flavoursPagination");
+  const countEl = document.getElementById("flavourCount");
+  const selectAllRow = document.getElementById("selectAllRow");
+
   if (!flavoursData.length) {
-    box.innerHTML = `<div class="opt-muted">No flavours found</div>`;
+    box.innerHTML = `<div class="fm-empty">
+      <div class="fm-empty-icon">${icon("package")}</div>
+      <div class="fm-empty-text">No flavours yet</div>
+      <div class="fm-empty-sub">Add your first flavour to get started</div>
+    </div>`;
     pagBox.innerHTML = "";
+    if (countEl) countEl.textContent = "";
+    if (selectAllRow) selectAllRow.style.display = "none";
     return;
   }
   const q = flavourSearchQuery;
   const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
   if (!filtered.length) {
-    box.innerHTML = `<div class="opt-muted">No flavours match "${flavourSearchQuery}"</div>`;
+    box.innerHTML = `<div class="fm-empty">
+      <div class="fm-empty-icon">${icon("search")}</div>
+      <div class="fm-empty-text">No matches for "${flavourSearchQuery}"</div>
+    </div>`;
     pagBox.innerHTML = "";
+    if (countEl) countEl.textContent = "";
+    if (selectAllRow) selectAllRow.style.display = "none";
     return;
   }
 
@@ -1623,89 +1724,113 @@ function renderFlavours() {
   const pageStart = (flavoursPage - 1) * FLAVOURS_PAGE_SIZE;
   const pageItems = filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
 
-  const rows = pageItems.map(f => {
+  const activeCount = flavoursData.filter(f => f.status === "active").length;
+  if (countEl) countEl.textContent = `${activeCount} active / ${flavoursData.length} total`;
+  if (selectAllRow) selectAllRow.style.display = "";
+
+  const cards = pageItems.map(f => {
     const isOpen = expandedFlavour === f.id;
+    const isSelected = selectedFlavourIds.has(f.id);
+    const badgeClass = f.status === "active" ? "badge-green" : f.status === "inactive" ? "badge-gray" : "badge-red";
+    const activeSku = f.skus.filter(s => s.status === "active").length;
 
-    const pricingCell = f.skus.length ? `
-      <div class="sku-price-list">
-        ${f.skus.map(s => {
-          const rp = s.region_prices || {};
-          return `
-          <div class="sku-price-block">
-            <div class="sku-price-header">
-              <span class="sku-fmt-name">${s.pack_format_name}${s.status !== "active" ? " (inactive)" : ""}</span>
-              ${s.status === "active"
-                ? `<button class="btn-option btn-sm" onclick="removeSku(${s.id})">Remove</button>`
-                : `<button class="btn-option btn-sm" onclick="reactivateSku(${s.id})">Reactivate</button>`}
-            </div>
-            <div class="sku-region-grid">
-              ${priceRegions.map(r => `
-                <div class="sku-region-cell">
-                  <label class="sku-region-label">${priceRegionLabels[r] || r}</label>
-                  <div class="sku-region-input-row">
-                    <input type="number" min="0" step="0.01" class="search-input sku-region-input"
-                           id="price-${s.id}-${r}" value="${rp[r] !== "" && rp[r] !== undefined ? rp[r] : ""}"
-                           placeholder="${s.price || '—'}">
-                    <button class="btn-option btn-sm" onclick="submitSkuPrice(${s.id},'${r}')">Save</button>
-                  </div>
-                </div>`).join("")}
-            </div>
-          </div>`;
-        }).join("")}
-      </div>` : `<span class="opt-muted">No SKUs yet</span>`;
-
-    let body = "";
+    let bodyHtml = "";
     if (isOpen) {
       const usedFormatIds = new Set(f.skus.map(s => s.pack_format_id));
       const availableFormats = packFormatsData.filter(pf => !usedFormatIds.has(pf.id));
       const addSkuRow = availableFormats.length ? `
-        <div class="btn-group mt8">
-          <select id="newskufmt-${f.id}" class="search-input" style="max-width:220px">
-            ${availableFormats.map(pf => `<option value="${pf.id}">${pf.name}</option>`).join("")}
-          </select>
-          <button class="btn-option btn-sm" onclick="submitAddSku(${f.id})">+ Add SKU</button>
+        <div class="fm-edit-section">
+          <div class="fm-edit-label">Add SKU</div>
+          <div class="fm-edit-row">
+            <select id="newskufmt-${f.id}" class="fm-select">${availableFormats.map(pf => `<option value="${pf.id}">${pf.name}</option>`).join("")}</select>
+            <button class="fm-btn fm-btn-ghost fm-btn-sm" onclick="submitAddSku(${f.id})">${icon("plus")} Add</button>
+          </div>
         </div>` : "";
-      body = `
-        <div class="register-form mt8">
-          <input id="fname-${f.id}" class="search-input" value="${f.name}">
-          <select id="fstatus-${f.id}" class="search-input mt8">
-            <option value="active"${f.status === "active" ? " selected" : ""}>Active</option>
-            <option value="inactive"${f.status === "inactive" ? " selected" : ""}>Inactive</option>
-            <option value="discontinued"${f.status === "discontinued" ? " selected" : ""}>Discontinued</option>
-          </select>
-          <div id="ferror-${f.id}" class="opt-error mt8"></div>
-          <button class="btn-option btn-sm mt8" onclick="submitFlavourEdit(${f.id})">Save flavour name/status</button>
-        </div>
-        ${addSkuRow}`;
+
+      const skuCards = f.skus.length ? f.skus.map(s => {
+        const rp = s.region_prices || {};
+        const inact = s.status !== "active";
+        return `
+          <div class="fm-sku-card ${inact ? "fm-sku-inactive" : ""}">
+            <div class="fm-sku-header">
+              <span class="fm-sku-name">${s.pack_format_name}${inact ? " (inactive)" : ""}</span>
+              ${inact
+                ? `<button class="fm-btn fm-btn-ghost fm-btn-sm" onclick="reactivateSku(${s.id})">${icon("rotate-ccw")} Reactivate</button>`
+                : `<button class="fm-btn fm-btn-danger fm-btn-sm" onclick="removeSku(${s.id})">${icon("x")} Remove</button>`}
+            </div>
+            <div class="fm-region-grid">
+              ${priceRegions.map(r => `
+                <div class="fm-region-cell">
+                  <span class="fm-region-label">${priceRegionLabels[r] || r}</span>
+                  <div class="fm-region-input-row">
+                    <input type="number" min="0" step="0.01" class="fm-region-input"
+                           id="price-${s.id}-${r}" value="${rp[r] !== "" && rp[r] !== undefined ? rp[r] : ""}"
+                           placeholder="${s.price || '—'}">
+                    <button class="fm-region-save" onclick="submitSkuPrice(${s.id},'${r}')">Save</button>
+                  </div>
+                </div>`).join("")}
+            </div>
+          </div>`;
+      }).join("") : `<div class="opt-muted" style="padding:8px 0">No SKUs added yet</div>`;
+
+      bodyHtml = `
+        <div class="fm-card-body">
+          <div class="fm-edit-section">
+            <div class="fm-edit-label">Flavour details</div>
+            <div class="fm-edit-row">
+              <input id="fname-${f.id}" class="fm-input" value="${f.name}" placeholder="Name">
+              <select id="fstatus-${f.id}" class="fm-select">
+                <option value="active"${f.status === "active" ? " selected" : ""}>Active</option>
+                <option value="inactive"${f.status === "inactive" ? " selected" : ""}>Inactive</option>
+                <option value="discontinued"${f.status === "discontinued" ? " selected" : ""}>Discontinued</option>
+              </select>
+              <button class="fm-btn fm-btn-primary fm-btn-sm" onclick="submitFlavourEdit(${f.id})">Save</button>
+            </div>
+            <div id="ferror-${f.id}" class="opt-error mt8"></div>
+          </div>
+          ${addSkuRow}
+          <div class="fm-edit-section" style="margin-bottom:0">
+            <div class="fm-edit-label">SKUs & Pricing</div>
+            <div class="fm-sku-list">${skuCards}</div>
+          </div>
+        </div>`;
     }
+
     return `
-      <tr>
-        <td>${f.name}</td>
-        <td><span class="badge ${f.status === "active" ? "badge-green" : f.status === "inactive" ? "badge-gray" : "badge-red"}">${f.status}</span></td>
-        <td class="num">${f.skus.length}</td>
-        <td>${pricingCell}</td>
-        <td><button type="button" class="btn-option btn-sm" onclick="toggleFlavour(${f.id})">${isOpen ? "▾ Edit" : "▸ Edit"}</button></td>
-      </tr>
-      ${isOpen ? `<tr><td colspan="5" class="flavour-detail">${body}</td></tr>` : ""}`;
+      <div class="fm-card ${isSelected ? "fm-card-selected" : ""}" data-fid="${f.id}">
+        <div class="fm-card-header" onclick="toggleFlavour(${f.id}, event)">
+          <label class="fm-card-cb" onclick="event.stopPropagation()">
+            <input type="checkbox" ${isSelected ? "checked" : ""} onchange="toggleFlavourSelect(${f.id}, event)">
+          </label>
+          <span class="fm-card-name">${f.name}</span>
+          <div class="fm-card-meta">
+            <span class="badge ${badgeClass}">${f.status}</span>
+            <span class="fm-card-sku-count">${activeSku} SKU${activeSku !== 1 ? "s" : ""}</span>
+            <span class="fm-card-chevron ${isOpen ? "open" : ""}">${icon("chevron-down")}</span>
+          </div>
+        </div>
+        ${bodyHtml}
+      </div>`;
   }).join("");
-  box.innerHTML = `
-    <div style="overflow-x:auto">
-      <table class="summary-table">
-        <thead><tr><th>Flavour</th><th>Status</th><th class="num">SKUs</th><th>Pricing</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+
+  box.innerHTML = cards;
 
   if (totalPages > 1) {
-    pagBox.innerHTML = `
-      <div class="pagination-row">
-        <button class="btn-option btn-sm" ${flavoursPage <= 1 ? "disabled" : ""} onclick="goToFlavoursPage(${flavoursPage - 1})">‹ Prev</button>
-        <span>Page ${flavoursPage} of ${totalPages}</span>
-        <button class="btn-option btn-sm" ${flavoursPage >= totalPages ? "disabled" : ""} onclick="goToFlavoursPage(${flavoursPage + 1})">Next ›</button>
-      </div>`;
+    let pages = "";
+    pages += `<button class="fm-page-btn" ${flavoursPage <= 1 ? "disabled" : ""} onclick="goToFlavoursPage(${flavoursPage - 1})">${icon("chevron-left")}</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      if (totalPages > 7 && i > 2 && i < totalPages - 1 && Math.abs(i - flavoursPage) > 1) {
+        if (i === 3 || i === totalPages - 2) pages += `<span class="fm-page-info">…</span>`;
+        continue;
+      }
+      pages += `<button class="fm-page-btn ${i === flavoursPage ? "active" : ""}" onclick="goToFlavoursPage(${i})">${i}</button>`;
+    }
+    pages += `<button class="fm-page-btn" ${flavoursPage >= totalPages ? "disabled" : ""} onclick="goToFlavoursPage(${flavoursPage + 1})">${icon("chevron-right")}</button>`;
+    pagBox.innerHTML = pages;
   } else {
     pagBox.innerHTML = "";
   }
+  updateBulkUI();
 }
 
 async function submitFlavourEdit(flavourId) {
@@ -1719,24 +1844,23 @@ async function submitFlavourEdit(flavourId) {
     body: JSON.stringify(payload),
   }).then(r => r.json());
   if (!res.ok) {
-    errBox.textContent = res.error || "Could not update flavour";
+    if (errBox) errBox.textContent = res.error || "Could not update flavour";
     return;
   }
+  fmToast("Flavour updated");
   loadFlavours();
 }
 
 async function submitSkuPrice(skuId, region) {
   const input = document.getElementById(`price-${skuId}-${region}`);
   const price = parseFloat(input.value);
-  if (isNaN(price) || price < 0) { alert("Enter a valid price"); return; }
+  if (isNaN(price) || price < 0) { fmToast("Enter a valid price", true); return; }
   const res = await fetch(`/api/admin/skus/${skuId}/price`, {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({price, region}),
   }).then(r => r.json());
-  if (!res.ok) {
-    alert(res.error || "Could not update price");
-    return;
-  }
+  if (!res.ok) { fmToast(res.error || "Could not update price", true); return; }
+  fmToast("Price saved");
   loadFlavours();
 }
 
@@ -1746,10 +1870,8 @@ async function submitAddSku(flavourId) {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({pack_format_id}),
   }).then(r => r.json());
-  if (!res.ok) {
-    alert(res.error || "Could not add SKU");
-    return;
-  }
+  if (!res.ok) { fmToast(res.error || "Could not add SKU", true); return; }
+  fmToast("SKU added");
   loadFlavours();
 }
 
@@ -1758,10 +1880,7 @@ async function setSkuStatus(skuId, status) {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({status}),
   }).then(r => r.json());
-  if (!res.ok) {
-    alert(res.error || "Could not update SKU");
-    return;
-  }
+  if (!res.ok) { fmToast(res.error || "Could not update SKU", true); return; }
   loadFlavours();
 }
 
@@ -1776,21 +1895,29 @@ function reactivateSku(skuId) {
 
 function showAddFlavourForm() {
   const box = document.getElementById("flavoursList");
+  const existing = document.getElementById("addFlavourForm");
+  if (existing) { existing.remove(); return; }
   const formatCheckboxes = packFormatsData.map(pf => `
-    <label style="display:flex;align-items:center;gap:8px;padding:8px 0">
+    <label class="fm-checkbox-label" style="padding:6px 0">
       <input type="checkbox" value="${pf.id}" class="af-format-cb"> ${pf.name}
     </label>`).join("");
   box.insertAdjacentHTML("afterbegin", `
-    <div class="register-form mt8" id="addFlavourForm">
-      <input id="afName" class="search-input" placeholder="Flavour name *">
-      <div class="opt-muted mt8">Pack formats *</div>
-      ${formatCheckboxes}
-      <div id="afError" class="opt-error mt8"></div>
-      <div class="btn-group mt8">
-        <button class="btn-primary" onclick="submitAddFlavour()">Add Flavour</button>
-        <button class="btn-ghost" onclick="renderFlavours()">Cancel</button>
+    <div class="fm-add-form" id="addFlavourForm">
+      <div class="fm-edit-section">
+        <div class="fm-edit-label">Flavour name</div>
+        <input id="afName" class="fm-input" placeholder="e.g. Belgian Chocolate" style="width:100%">
+      </div>
+      <div class="fm-edit-section">
+        <div class="fm-edit-label">Pack formats</div>
+        ${formatCheckboxes}
+      </div>
+      <div id="afError" class="opt-error"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="fm-btn fm-btn-primary" onclick="submitAddFlavour()">${icon("plus")} Add Flavour</button>
+        <button class="fm-btn fm-btn-ghost" onclick="document.getElementById('addFlavourForm').remove()">Cancel</button>
       </div>
     </div>`);
+  document.getElementById("afName").focus();
 }
 
 async function submitAddFlavour() {
@@ -1809,6 +1936,7 @@ async function submitAddFlavour() {
     errBox.textContent = res.error || "Could not add flavour";
     return;
   }
+  fmToast("Flavour added");
   loadFlavours();
 }
 
