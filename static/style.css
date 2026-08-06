@@ -679,6 +679,39 @@ body {
 .confirm-extras { margin: 16px 0; display: flex; flex-direction: column; gap: 12px; }
 .confirm-row { display: flex; align-items: center; gap: 8px; }
 .confirm-label { font-size: 13px; font-weight: 700; color: var(--slate-700); min-width: 80px; }
+
+.disc-chip-row {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;
+}
+.disc-chip {
+  padding: 6px 16px; border-radius: 22px; border: 1.5px solid var(--slate-200);
+  background: var(--white); color: var(--slate-700); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .15s ease; white-space: nowrap;
+}
+.disc-chip:active { transform: scale(.96); }
+.disc-chip.active {
+  background: var(--brand-soft); border-color: var(--brand); color: var(--brand);
+}
+.disc-chip-sub {
+  display: block; font-size: 10px; font-weight: 500; color: var(--slate-400);
+  line-height: 1; margin-top: 1px;
+}
+.disc-chip.active .disc-chip-sub { color: var(--brand); opacity: .7; }
+.disc-custom-wrap {
+  display: flex; align-items: center; gap: 6px; margin-top: 6px;
+}
+.disc-advance-note {
+  margin-top: 4px; font-size: 12px; color: var(--brand); font-weight: 600;
+  padding: 6px 10px; background: var(--brand-soft); border-radius: 8px;
+}
+.disc-summary {
+  margin-top: 8px; padding: 8px 12px; border-radius: 10px;
+  background: var(--slate-50); border: 1px solid var(--slate-100);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; color: var(--slate-600);
+}
+.disc-summary-total { font-size: 14px; color: var(--slate-800); }
+
 .modal-actions {
   display: flex; flex-direction: column; gap: 8px; margin-top: 16px;
 }

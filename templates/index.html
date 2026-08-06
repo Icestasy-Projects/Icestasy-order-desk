@@ -118,10 +118,26 @@
       </div>
 
       <div class="confirm-extras">
-        <div class="confirm-row">
-          <label class="confirm-label" for="discountPct">Discount %</label>
-          <input id="discountPct" class="search-input" type="number" min="0" max="100" step="0.5" value="0" style="width:100px;text-align:center" oninput="updateDiscountPreview()">
-          <span id="discountPreview" class="opt-sub" style="margin-left:8px"></span>
+        <div class="confirm-row" style="flex-direction:column;align-items:stretch">
+          <label class="confirm-label">Discount</label>
+          <div class="disc-chip-row" id="discChips">
+            <button class="disc-chip active" onclick="pickDiscount(0,this)">None</button>
+            <button class="disc-chip" onclick="pickDiscount(5,this)">5% <span class="disc-chip-sub">Nashik</span></button>
+            <button class="disc-chip" onclick="pickDiscount(15,this)">15%</button>
+            <button class="disc-chip" onclick="pickDiscount(16,this)">16%</button>
+            <button class="disc-chip" onclick="pickDiscount(16.5,this)">16.5%</button>
+            <button class="disc-chip" onclick="showCustomDisc(this)">Custom</button>
+          </div>
+          <div class="disc-custom-wrap hidden" id="discCustomWrap">
+            <input id="discountPct" class="search-input" type="number" min="0" max="100" step="0.5" value="0" style="width:90px;text-align:center" oninput="updateDiscountPreview()">
+            <span style="font-weight:700;color:var(--slate-500)">%</span>
+            <span id="discountPreview" class="opt-sub" style="margin-left:6px"></span>
+          </div>
+          <div class="disc-advance-note hidden" id="discAdvanceNote">+2.5% advance payment discount applied automatically</div>
+          <div id="discSummary" class="disc-summary hidden">
+            <span>Discount <strong id="discSumPct">0%</strong>: −<strong id="discSumAmt">₹0</strong></span>
+            <span class="disc-summary-total">After discount: <strong id="discSumTotal">₹0</strong></span>
+          </div>
         </div>
         <div class="confirm-row" style="flex-direction:column;align-items:stretch">
           <label class="confirm-label" for="orderComment">Comments</label>
@@ -420,6 +436,7 @@ function selectPayment(mode) {
   document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
   document.querySelectorAll("#paymentBtns .btn-option")
     .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
+  if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
   hide("step-payment");
   show("step-client");
   if (document.getElementById("clientSearch").value.length >= 2) {
@@ -677,10 +694,17 @@ async function showConfirm() {
     <div class="summary-total">Subtotal <strong>${fmt(state._subtotal)}</strong></div>
     <div class="summary-total" id="discountTotalRow" style="display:none">After Discount <strong id="discountTotalAmt"></strong></div>`;
 
+  _baseDiscPct = 0;
+  document.querySelectorAll("#discChips .disc-chip").forEach(b => b.classList.remove("active"));
+  document.querySelector("#discChips .disc-chip").classList.add("active");
+  document.getElementById("discCustomWrap").classList.add("hidden");
   document.getElementById("discountPct").value = "0";
   document.getElementById("discountPreview").textContent = "";
   document.getElementById("discountTotalRow").style.display = "none";
+  document.getElementById("discSummary").classList.add("hidden");
+  document.getElementById("discAdvanceNote").classList.toggle("hidden", state.payment !== "advance");
   document.getElementById("orderComment").value = "";
+  updateDiscountPreview();
 
   // Check hold status
   const holdEl = document.getElementById("holdWarning");
@@ -698,8 +722,37 @@ async function showConfirm() {
   show("step-confirm");
 }
 
+let _baseDiscPct = 0;
+function pickDiscount(pct, btn) {
+  _baseDiscPct = pct;
+  document.querySelectorAll("#discChips .disc-chip").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("discCustomWrap").classList.add("hidden");
+  _syncDiscountInput();
+}
+function showCustomDisc(btn) {
+  document.querySelectorAll("#discChips .disc-chip").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("discCustomWrap").classList.remove("hidden");
+  document.getElementById("discountPct").focus();
+  _baseDiscPct = parseFloat(document.getElementById("discountPct").value) || 0;
+  _syncDiscountInput();
+}
+function _syncDiscountInput() {
+  document.getElementById("discountPct").value = _baseDiscPct || "";
+  updateDiscountPreview();
+}
+function _effectiveDiscPct() {
+  let pct = _baseDiscPct;
+  if (state.payment === "advance") pct += 2.5;
+  return pct;
+}
 function updateDiscountPreview() {
-  const pct = parseFloat(document.getElementById("discountPct").value) || 0;
+  _baseDiscPct = parseFloat(document.getElementById("discountPct").value) || 0;
+  const pct = _effectiveDiscPct();
+  const advNote = document.getElementById("discAdvanceNote");
+  advNote.classList.toggle("hidden", state.payment !== "advance");
+  const summary = document.getElementById("discSummary");
   const preview = document.getElementById("discountPreview");
   const totalRow = document.getElementById("discountTotalRow");
   const totalAmt = document.getElementById("discountTotalAmt");
@@ -708,9 +761,14 @@ function updateDiscountPreview() {
     preview.textContent = `−${fmt(disc)}`;
     totalAmt.textContent = fmt(state._subtotal - disc);
     totalRow.style.display = "";
+    document.getElementById("discSumPct").textContent = pct + "%";
+    document.getElementById("discSumAmt").textContent = fmt(disc);
+    document.getElementById("discSumTotal").textContent = fmt(state._subtotal - disc);
+    summary.classList.remove("hidden");
   } else {
     preview.textContent = "";
     totalRow.style.display = "none";
+    summary.classList.add("hidden");
   }
 }
 
@@ -788,7 +846,7 @@ async function submitNewOrder() {
   const btn = document.querySelector("#step-confirm .btn-green");
   btn.disabled = true; btn.textContent = "Placing…";
 
-  const discountPct = parseFloat(document.getElementById("discountPct").value) || 0;
+  const discountPct = _effectiveDiscPct();
   const comment = document.getElementById("orderComment").value.trim();
 
   const lines = state.items.filter(i => !i.not_found && i.resolved_sku).map(i => ({
