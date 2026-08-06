@@ -258,10 +258,18 @@
               Add flavour</button>
           </div>
         </div>
-        <div class="fm-search-row">
-          <span class="fm-search-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
-          <input id="flavourSearch" class="fm-search" type="text"
-                 placeholder="Search flavours…" oninput="handleFlavourSearchInput(this.value)">
+        <div class="fm-filter-row">
+          <div class="fm-search-row" style="flex:1">
+            <span class="fm-search-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+            <input id="flavourSearch" class="fm-search" type="text"
+                   placeholder="Search flavours…" oninput="handleFlavourSearchInput(this.value)">
+          </div>
+          <div class="fm-status-filters" id="fmStatusFilters">
+            <button class="fm-filter-chip active" data-status="all" onclick="setFlavourStatusFilter('all', this)">All</button>
+            <button class="fm-filter-chip" data-status="active" onclick="setFlavourStatusFilter('active', this)">Active</button>
+            <button class="fm-filter-chip" data-status="inactive" onclick="setFlavourStatusFilter('inactive', this)">Inactive</button>
+            <button class="fm-filter-chip" data-status="discontinued" onclick="setFlavourStatusFilter('discontinued', this)">Discontinued</button>
+          </div>
         </div>
         <div class="fm-select-all-row" id="selectAllRow" style="display:none">
           <label class="fm-checkbox-label">
@@ -1628,6 +1636,15 @@ function toggleFlavour(id, ev) {
   renderFlavours();
 }
 
+let flavourStatusFilter = "all";
+
+function setFlavourStatusFilter(status, btn) {
+  flavourStatusFilter = status;
+  document.querySelectorAll(".fm-filter-chip").forEach(c => c.classList.toggle("active", c.dataset.status === status));
+  flavoursPage = 1;
+  renderFlavours();
+}
+
 function handleFlavourSearchInput(val) {
   flavourSearchQuery = val.trim().toLowerCase();
   flavoursPage = 1;
@@ -1707,11 +1724,15 @@ function renderFlavours() {
     return;
   }
   const q = flavourSearchQuery;
-  const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
+  const sf = flavourStatusFilter;
+  let filtered = flavoursData;
+  if (sf !== "all") filtered = filtered.filter(f => f.status === sf);
+  if (q) filtered = filtered.filter(f => f.name.toLowerCase().includes(q));
   if (!filtered.length) {
+    const label = sf !== "all" ? `No ${sf} flavours` + (q ? ` matching "${q}"` : "") : `No matches for "${q}"`;
     box.innerHTML = `<div class="fm-empty">
       <div class="fm-empty-icon">${icon("search")}</div>
-      <div class="fm-empty-text">No matches for "${flavourSearchQuery}"</div>
+      <div class="fm-empty-text">${label}</div>
     </div>`;
     pagBox.innerHTML = "";
     if (countEl) countEl.textContent = "";
