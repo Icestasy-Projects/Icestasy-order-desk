@@ -1,5 +1,6 @@
 import os
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from sku_data import MOCK_PRICES, ACTIVE_SKUS
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -146,6 +147,7 @@ def _state_code_for(state_name: str) -> str:
     return INDIA_STATE_CODES.get(state_name.strip().lower(), "00")
 
 
+@lru_cache(maxsize=1)
 def _sb():
     key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
     if not SUPABASE_URL or not key:
@@ -291,22 +293,66 @@ def price_region_for_city(city: str) -> str:
 
 def get_sku_price(sku_id: int, pack_format_id: int, region: str = "default") -> float:
     try:
-        sb = _sb()
-        today = date.today().isoformat()
-        result = (
-            sb.schema("sales").from_("sku_prices").select("price")
-            .eq("sku_id", sku_id).eq("region", region)
-            .lte("effective_from", today)
-            .or_(f"effective_to.is.null,effective_to.gte.{today}")
-            .order("effective_from", desc=True).limit(1).execute()
-        )
-        if result.data:
-            return float(result.data[0]["price"])
-        if region != "default":
-            return get_sku_price(sku_id, pack_format_id, "default")
+        prices = get_sku_prices([(sku_id, pack_format_id)], region=region)
+        if sku_id in prices:
+            return prices[sku_id]
     except Exception:
         pass
     return MOCK_PRICES.get(pack_format_id, 0.0)
+
+
+def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
+    """Return currently effective prices for many SKUs in one database round-trip.
+
+    `sku_refs` accepts either `(sku_id, pack_format_id)` tuples or dicts with
+    `id`/`sku_id` and `pack_format_id`, and falls back to local mock prices.
+    """
+    normalized = []
+    for ref in sku_refs:
+        if isinstance(ref, dict):
+            sku_id = ref.get("sku_id", ref.get("id"))
+            pack_format_id = ref.get("pack_format_id", 0)
+        else:
+            sku_id, pack_format_id = ref
+        if sku_id is not None:
+            normalized.append((int(sku_id), int(pack_format_id or 0)))
+    if not normalized:
+        return {}
+
+    fallback = {sku_id: float(MOCK_PRICES.get(pack_format_id, 0.0)) for sku_id, pack_format_id in normalized}
+    try:
+        sb = _sb()
+        today = date.today().isoformat()
+        sku_ids = list(fallback.keys())
+        wanted_regions = [region]
+        if region != "default":
+            wanted_regions.append("default")
+        rows = (
+            sb.schema("sales").from_("sku_prices").select("sku_id,price,region,effective_from")
+            .in_("sku_id", sku_ids)
+            .in_("region", wanted_regions)
+            .lte("effective_from", today)
+            .or_(f"effective_to.is.null,effective_to.gte.{today}")
+            .order("effective_from", desc=True)
+            .execute().data
+        )
+        current_by_region = {}
+        for row in rows:
+            sku_id = row["sku_id"]
+            row_region = row.get("region") or "default"
+            key = (sku_id, row_region)
+            if key in current_by_region:
+                continue
+            current_by_region[key] = float(row["price"])
+        prices = fallback.copy()
+        for sku_id in prices:
+            if (sku_id, region) in current_by_region:
+                prices[sku_id] = current_by_region[(sku_id, region)]
+            elif region != "default" and (sku_id, "default") in current_by_region:
+                prices[sku_id] = current_by_region[(sku_id, "default")]
+        return prices
+    except Exception:
+        return fallback
 
 
 def _next_order_no(sb, city_code: str) -> str:

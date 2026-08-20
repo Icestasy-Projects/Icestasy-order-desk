@@ -369,8 +369,17 @@ def _get_price(sku):
         return MOCK_PRICES.get(sku["pack_format_id"], 0.0)
 
 
+def _get_prices(skus):
+    try:
+        from order_engine import get_sku_prices
+        return get_sku_prices(skus)
+    except Exception:
+        return {s["id"]: MOCK_PRICES.get(s["pack_format_id"], 0.0) for s in skus}
+
+
 def _enrich(raw_items):
-    result = []
+    pending = []
+    sku_refs = {}
     for item in raw_items:
         flavour_id = item.get("flavour_id")
         format_id = item.get("format_id")
@@ -393,7 +402,7 @@ def _enrich(raw_items):
             if len(siblings) > 1:
                 candidates = siblings
         if not candidates:
-            result.append({
+            pending.append({
                 "qty": item.get("qty", 1),
                 "flavour_id": item.get("flavour_id"),
                 "format_id": item.get("format_id"),
@@ -405,19 +414,31 @@ def _enrich(raw_items):
             })
             continue
         ambiguous = len(candidates) > 1 or flavour_id is None
-        for c in candidates:
-            c["unit_price"] = _get_price(c)
-        result.append({
+        candidate_copies = [dict(c) for c in candidates]
+        for c in candidate_copies:
+            sku_refs[c["id"]] = c
+        pending.append({
             "qty": item.get("qty", 1),
             "flavour_id": flavour_id,
             "format_id": format_id,
-            "candidates": candidates,
+            "candidates": candidate_copies,
             "ambiguous": ambiguous,
-            "resolved_sku": candidates[0] if not ambiguous else None,
-            "unit_price": candidates[0]["unit_price"] if not ambiguous else None,
+            "resolved_sku": candidate_copies[0] if not ambiguous else None,
+            "unit_price": None,
             "not_found": False,
         })
-    return result
+
+    prices = _get_prices(list(sku_refs.values()))
+    for item in pending:
+        for c in item["candidates"]:
+            c["unit_price"] = prices.get(c["id"], MOCK_PRICES.get(c["pack_format_id"], 0.0))
+        if item["resolved_sku"]:
+            item["resolved_sku"]["unit_price"] = prices.get(
+                item["resolved_sku"]["id"],
+                MOCK_PRICES.get(item["resolved_sku"]["pack_format_id"], 0.0),
+            )
+            item["unit_price"] = item["resolved_sku"]["unit_price"]
+    return pending
 
 
 # ── Public API ───────────────────────────────────────────────────────────────

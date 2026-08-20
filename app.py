@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import date
-from functools import wraps
+from functools import lru_cache, wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 
 try:
@@ -44,6 +44,7 @@ BROAD_VIEW_ROLES = {ADMIN_ROLE, *REGION_HEAD_ROLES}
 ROLE_LABELS_JSON = json.dumps(ROLE_LABELS)
 
 
+@lru_cache(maxsize=1)
 def _auth_client():
     from supabase import create_client
     url = os.environ.get("SUPABASE_URL")
@@ -116,9 +117,14 @@ def add_no_cache_headers(response):
     # Prevent the browser's back/forward cache from showing a stale login or
     # authenticated page after a login/logout state change — always re-check
     # with the server instead of rendering a cached snapshot.
-    if not request.path.startswith("/static/"):
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    else:
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
     return response
 
 
@@ -191,11 +197,22 @@ def api_reprice():
     city = (body.get("city") or "").strip()
     items = body.get("items") or []
     region = price_region_for_city(city) if city else "default"
+    price_map = {}
+    try:
+        from order_engine import get_sku_prices
+        price_map = get_sku_prices(
+            [(item.get("sku_id"), item.get("pack_format_id", 0)) for item in items],
+            region=region,
+        )
+    except Exception:
+        price_map = {}
     out = []
     for item in items:
         sku_id = item.get("sku_id")
         pack_format_id = item.get("pack_format_id", 0)
-        price = get_sku_price(sku_id, pack_format_id, region)
+        price = price_map.get(sku_id)
+        if price is None:
+            price = get_sku_price(sku_id, pack_format_id, region)
         out.append({"sku_id": sku_id, "price": price})
     return jsonify({"prices": out, "region": region})
 
