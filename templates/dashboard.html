@@ -1574,6 +1574,7 @@ function renderInsights() {
 // ── SKU Stock (admin) ────────────────────────────────────────────────────────
 let stockData = [];
 let stockSearchQuery = "";
+let expandedStockType = null;
 
 const STOCK_STATUS_LABELS = { ok: "OK", low: "Low", critical: "Critical", not_tracked: "Not tracked" };
 const STOCK_STATUS_CLASS = { ok: "badge-green", low: "badge-amber", critical: "badge-red", not_tracked: "badge-gray" };
@@ -1595,6 +1596,23 @@ function handleStockSearchInput(val) {
   renderStock();
 }
 
+function stockRowHtml(s) {
+  return `
+    <div class="dash-order-row">
+      <div class="dash-order-main">
+        <span class="dash-order-no">${s.flavour_name}</span>
+        <span class="dash-order-client">${s.pack_format_name} · ${s.sku_code}</span>
+      </div>
+      <div class="dash-order-side">
+        <span class="badge ${STOCK_STATUS_CLASS[s.stock_status] || "badge-gray"}">${STOCK_STATUS_LABELS[s.stock_status] || s.stock_status}</span>
+        <span class="ci-price">${s.qty_on_hand === null ? "—" : s.qty_on_hand}</span>
+      </div>
+    </div>`;
+}
+
+// Grouped by pack format ("SKU type") for scanability — finished-goods stock
+// is a single central inventory (no per-city warehouse split in the
+// production system), so pack format is the only meaningful grouping axis.
 function renderStock() {
   const box = document.getElementById("stockList");
   if (!stockData.length) {
@@ -1608,17 +1626,27 @@ function renderStock() {
     box.innerHTML = `<div class="opt-muted">No SKUs match "${stockSearchQuery}"</div>`;
     return;
   }
-  box.innerHTML = filtered.map(s => `
-    <div class="dash-order-row">
-      <div class="dash-order-main">
-        <span class="dash-order-no">${s.flavour_name}</span>
-        <span class="dash-order-client">${s.pack_format_name} · ${s.sku_code}</span>
-      </div>
-      <div class="dash-order-side">
-        <span class="badge ${STOCK_STATUS_CLASS[s.stock_status] || "badge-gray"}">${STOCK_STATUS_LABELS[s.stock_status] || s.stock_status}</span>
-        <span class="ci-price">${s.qty_on_hand === null ? "—" : s.qty_on_hand}</span>
-      </div>
-    </div>`).join("");
+  const groups = {};
+  filtered.forEach(s => (groups[s.pack_format_name] = groups[s.pack_format_name] || []).push(s));
+  const searching = !!q;
+  box.innerHTML = Object.entries(groups).map(([type, items]) => {
+    const isOpen = searching || expandedStockType === type;
+    const critical = items.filter(s => s.stock_status === "critical").length;
+    const safeType = JSON.stringify(type).replace(/'/g, "&#39;");
+    return `
+      <div class="dash-group">
+        <button type="button" class="dash-group-header" onclick='toggleStockType(${safeType})'>
+          <span>${isOpen ? "▾" : "▸"} ${type}</span>
+          <span class="opt-sub">${items.length} SKU${items.length === 1 ? "" : "s"}${critical ? ` · ${critical} critical` : ""}</span>
+        </button>
+        ${isOpen ? items.map(stockRowHtml).join("") : ""}
+      </div>`;
+  }).join("");
+}
+
+function toggleStockType(type) {
+  expandedStockType = expandedStockType === type ? null : type;
+  renderStock();
 }
 
 // ── Flavour management (admin) ───────────────────────────────────────────────
