@@ -288,7 +288,11 @@ def addr_label(addr: dict) -> str:
 
 
 def price_region_for_city(city: str) -> str:
-    return _CITY_TO_PRICE_REGION.get(city, "roi")
+    # Addresses store locality-precision city values (e.g. "Dadar West"), but
+    # _CITY_TO_PRICE_REGION is keyed by resolved macro city ("Mumbai") — must
+    # roll up through city_for_place() first or every lookup misses and
+    # silently falls back to "roi" pricing, regardless of the real city.
+    return _CITY_TO_PRICE_REGION.get(city_for_place(city), "roi")
 
 
 def get_sku_price(sku_id: int, pack_format_id: int, region: str = "default") -> float:
@@ -324,13 +328,22 @@ def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
         sb = _sb()
         today = date.today().isoformat()
         sku_ids = list(fallback.keys())
-        wanted_regions = [region]
+        # Fallback chain when a region has no price of its own configured yet
+        # (e.g. a newly-opened city like Bangalore before admin sets its
+        # prices): try the region, then "default", then "roi" — all of which
+        # are real per-SKU prices — before ever touching the flat,
+        # flavour-blind MOCK_PRICES constant. MOCK_PRICES prices by pack
+        # format only, so it quotes the same number for every flavour in
+        # that format and must never be preferred over real configured data.
+        region_priority = [region]
         if region != "default":
-            wanted_regions.append("default")
+            region_priority.append("default")
+        if region != "roi":
+            region_priority.append("roi")
         rows = (
             sb.schema("sales").from_("sku_prices").select("sku_id,price,region,effective_from")
             .in_("sku_id", sku_ids)
-            .in_("region", wanted_regions)
+            .in_("region", region_priority)
             .lte("effective_from", today)
             .or_(f"effective_to.is.null,effective_to.gte.{today}")
             .order("effective_from", desc=True)
@@ -346,10 +359,10 @@ def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
             current_by_region[key] = float(row["price"])
         prices = fallback.copy()
         for sku_id in prices:
-            if (sku_id, region) in current_by_region:
-                prices[sku_id] = current_by_region[(sku_id, region)]
-            elif region != "default" and (sku_id, "default") in current_by_region:
-                prices[sku_id] = current_by_region[(sku_id, "default")]
+            for candidate_region in region_priority:
+                if (sku_id, candidate_region) in current_by_region:
+                    prices[sku_id] = current_by_region[(sku_id, candidate_region)]
+                    break
         return prices
     except Exception:
         return fallback

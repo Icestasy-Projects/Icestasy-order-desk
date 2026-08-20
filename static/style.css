@@ -63,12 +63,12 @@ body {
 .brand-text strong { font-size: 16px; font-weight: 800; letter-spacing: .3px; }
 .brand-text small { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; opacity: .75; }
 .btn-ghost {
-  background: rgba(255,255,255,.15); border: none; color: #fff;
+  background: var(--slate-100); border: 1.5px solid var(--slate-300); color: var(--slate-700);
   padding: 9px 18px; border-radius: 20px; cursor: pointer; font-size: 13px;
-  font-weight: 700; transition: background .15s, transform .1s;
+  font-weight: 700; transition: background .15s, border-color .15s, transform .1s;
   min-height: 38px; white-space: nowrap;
 }
-.btn-ghost:hover { background: rgba(255,255,255,.25); }
+.btn-ghost:hover { background: var(--slate-200); border-color: var(--slate-500); }
 .btn-ghost:active { transform: scale(.96); }
 
 .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

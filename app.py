@@ -157,8 +157,13 @@ def change_password():
     return redirect(url_for("index"))
 
 
-@app.route("/")
-def index():
+# Each dashboard tab gets its own bookmarkable/shareable URL, all rendering
+# the same SPA-style template — dashboard.html reads initial_page to open
+# the right tab and pushes further tab switches into the URL client-side.
+DASHBOARD_TABS = ("orders", "clients", "team", "insights", "stock", "flavours")
+
+
+def _render_dashboard(initial_page):
     role = session.get("role")
     return render_template("dashboard.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=role,
@@ -167,7 +172,18 @@ def index():
                             can_view_team=role in BROAD_VIEW_ROLES,
                             role_labels_json=ROLE_LABELS_JSON,
                             region_options_json=json.dumps(list(REGION_HEAD_ROLES.values())),
-                            region_head_roles_json=json.dumps(REGION_HEAD_ROLES))
+                            region_head_roles_json=json.dumps(REGION_HEAD_ROLES),
+                            initial_page=initial_page)
+
+
+@app.route("/")
+def index():
+    return _render_dashboard("orders")
+
+
+for _tab in DASHBOARD_TABS:
+    app.add_url_rule(f"/{_tab}", endpoint=f"page_{_tab}",
+                      view_func=lambda tab=_tab: _render_dashboard(tab))
 
 
 @app.route("/new-order")
