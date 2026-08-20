@@ -345,6 +345,7 @@ const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
 const ROLE_LABELS = {{ role_labels_json | safe }};
 const REGION_OPTIONS = {{ region_options_json | safe }};
 const REGION_HEAD_ROLE_TO_REGION = {{ region_head_roles_json | safe }};
+const INITIAL_PAGE = {{ initial_page | tojson }};
 let allOrders = [];
 let grouping = "none";
 let expandedGroup = null;
@@ -396,9 +397,22 @@ function filteredOrders() {
     (o.salesperson_name || "").toLowerCase().includes(searchQuery));
 }
 
-function switchPage(page, btn) {
+// Each tab has its own URL (/, /clients, /team, /stock, /flavours, /insights)
+// so it's bookmarkable/shareable and the browser back/forward buttons work.
+// switchPage() (tab-bar clicks) pushes a new URL; popstate (back/forward)
+// re-activates a page without pushing again.
+const DASHBOARD_PAGES = ["orders", "clients", "team", "insights", "stock", "flavours"];
+
+function _pageFromPath(path) {
+  const seg = path.replace(/^\/+|\/+$/g, "");
+  return DASHBOARD_PAGES.includes(seg) ? seg : "orders";
+}
+
+function activatePage(page, pushState) {
+  if (!DASHBOARD_PAGES.includes(page)) page = "orders";
   document.querySelectorAll(".tab-bar .tab-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
+  const btn = document.getElementById("page-tab-" + page) || document.getElementById("page-tab-orders");
+  if (btn) btn.classList.add("active");
   document.getElementById("page-orders").classList.toggle("hidden", page !== "orders");
   document.getElementById("page-clients").classList.toggle("hidden", page !== "clients");
   const teamPage = document.getElementById("page-team");
@@ -413,7 +427,17 @@ function switchPage(page, btn) {
   if (page === "stock" && !stockData.length) loadStock();
   if (page === "flavours" && !flavoursData.length) loadFlavours();
   if (page === "insights" && !flavourSalesLines.length) loadFlavourSales();
+  if (pushState) {
+    const path = page === "orders" ? "/" : "/" + page;
+    if (location.pathname !== path) history.pushState({page}, "", path);
+  }
 }
+
+function switchPage(page) {
+  activatePage(page, true);
+}
+
+window.addEventListener("popstate", () => activatePage(_pageFromPath(location.pathname), false));
 
 // ── Header menu + greeting ─────────────────────────────────────────────────
 function toggleMenu() {
@@ -2017,6 +2041,7 @@ async function submitAddFlavour() {
 
 loadOrders();
 loadTeam();
+if (INITIAL_PAGE !== "orders") activatePage(INITIAL_PAGE, false);
 </script>
 </body>
 </html>
