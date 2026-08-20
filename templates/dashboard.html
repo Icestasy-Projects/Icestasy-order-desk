@@ -1288,11 +1288,12 @@ async function loadTeam() {
 }
 
 function teamMemberRow(t) {
+  const phone = t.phone ? " · " + t.phone : "";
   return `
     <div class="option-btn" style="cursor:default">
       <div>
         <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
-        <span class="opt-sub">${ROLE_LABELS[t.role] || t.role}${t.region ? " · " + t.region : ""} · ${t.email}</span>
+        <span class="opt-sub">${ROLE_LABELS[t.role] || t.role}${t.region ? " · " + t.region : ""} · ${t.email}${phone}</span>
       </div>
       ${IS_ADMIN ? `<button class="btn-ghost" onclick="showEditTeamForm(${t.id})">Edit</button>` : ""}
     </div>`;
@@ -1377,7 +1378,9 @@ function showEditTeamForm(staffId) {
   const box = document.getElementById("teamList");
   box.innerHTML = `
     <div class="register-form mt8" id="editTeamForm">
-      <div class="opt-name mt8">${t.full_name} · ${t.email}</div>
+      <div class="opt-name mt8">${t.email}</div>
+      <input id="etName" class="search-input mt8" placeholder="Full name *" value="${t.full_name || ""}">
+      <input id="etPhone" class="search-input mt8" placeholder="Phone (optional)" value="${t.phone || ""}">
       <select id="etRole" class="search-input mt8" onchange="syncRegionForRole('etRole','etRegion')">${roleOptionsHtml(t.role)}</select>
       <select id="etRegion" class="search-input mt8">${regionOptionsHtml(t.region)}</select>
       <select id="etActive" class="search-input mt8">
@@ -1387,6 +1390,7 @@ function showEditTeamForm(staffId) {
       <div id="etError" class="opt-error mt8"></div>
       <div class="btn-group mt8">
         <button class="btn-primary" onclick="submitEditTeamMember(${staffId})">Save</button>
+        <button class="btn-option btn-sm" style="color:var(--red)" onclick="deleteTeamMember(${staffId})">Deactivate</button>
         <button class="btn-ghost" onclick="renderTeam()">Cancel</button>
       </div>
     </div>`;
@@ -1396,16 +1400,35 @@ function showEditTeamForm(staffId) {
 async function submitEditTeamMember(staffId) {
   const errBox = document.getElementById("etError");
   const payload = {
+    full_name: document.getElementById("etName").value.trim(),
+    phone: document.getElementById("etPhone").value.trim(),
     role: document.getElementById("etRole").value,
     region: document.getElementById("etRegion").value,
     is_active: document.getElementById("etActive").value === "true",
   };
+  if (!payload.full_name) {
+    errBox.textContent = "Full name is required";
+    return;
+  }
   const res = await fetch(`/api/team/${staffId}`, {
     method: "PATCH", headers: {"Content-Type": "application/json"},
     body: JSON.stringify(payload),
   }).then(r => r.json());
   if (!res.ok) {
     errBox.textContent = res.error || "Could not update sales person";
+    return;
+  }
+  loadTeam();
+}
+
+async function deleteTeamMember(staffId) {
+  const t = teamData.find(m => m.id === staffId);
+  if (!confirm(`Deactivate ${t ? t.full_name : "this team member"}? They will no longer be able to use the app.`)) return;
+  const res = await fetch(`/api/team/${staffId}`, {method: "DELETE"}).then(r => r.json());
+  if (!res.ok) {
+    const errBox = document.getElementById("etError");
+    if (errBox) errBox.textContent = res.error || "Could not deactivate team member";
+    else alert(res.error || "Could not deactivate team member");
     return;
   }
   loadTeam();

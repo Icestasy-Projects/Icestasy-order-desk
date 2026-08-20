@@ -15,7 +15,7 @@ from order_engine import (
     search_clients, get_client_addresses, addr_label, create_order,
     register_client, create_address, get_staff_by_email,
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
-    update_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
+    update_team_member, delete_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
     set_user_password, mark_password_changed,
     approve_order, reject_order, list_clients,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
@@ -25,6 +25,7 @@ from order_engine import (
     fetch_report_order_lines, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
     check_pending_orders, cancel_order, should_auto_hold, release_hold,
+    check_stock_for_order,
 )
 from invoicing import build_invoice_pdf
 from reports import build_orders_workbook, build_flavour_sales_workbook, build_clients_workbook
@@ -337,8 +338,18 @@ def api_orders():
             notes=body.get("notes"),
             collateral=body.get("collateral"),
             discount_pct=float(body.get("discount_pct") or 0),
+            force_hold_reason=body.get("force_hold_reason"),
         )
         return jsonify({"ok": True, "order": order})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/orders/stock-check", methods=["POST"])
+def api_stock_check():
+    body = request.get_json(force=True)
+    try:
+        return jsonify({"ok": True, **check_stock_for_order(body.get("lines") or [])})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -480,6 +491,18 @@ def api_update_team_member(staff_id):
     body = request.get_json(force=True)
     try:
         member = update_team_member(staff_id, body)
+        return jsonify({"ok": True, "member": member})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/team/<int:staff_id>", methods=["DELETE"])
+@admin_required
+def api_delete_team_member(staff_id):
+    try:
+        member = delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409

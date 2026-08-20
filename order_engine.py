@@ -462,7 +462,7 @@ def release_hold(order_id: int) -> dict:
     return res.data[0]
 
 
-def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0):
+def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0, force_hold_reason=None):
     sb = _sb()
     payment_mode = payment_mode or "advance"
     subtotal = sum(l["quantity"] * l["unit_price"] for l in lines)
@@ -480,7 +480,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
                 city_code = _order_city_code(place)
 
     hold_check = should_auto_hold(client_id)
-    status = "hold" if hold_check["hold"] else "draft"
+    hold_reason = force_hold_reason or hold_check.get("reason", "")
+    status = "hold" if force_hold_reason or hold_check["hold"] else "draft"
 
     order_no = _next_order_no(sb, city_code)
     order_row = {
@@ -519,7 +520,7 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     result = {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
             "discount_pct": discount_pct,
             "on_hold": status == "hold",
-            "hold_reason": hold_check.get("reason", ""),
+            "hold_reason": hold_reason,
             "lines": [{"sku_code": l["sku_code"], "flavour_name": l["flavour_name"],
                        "format_name": l["format_name"], "quantity": l["quantity"],
                        "unit_price": l["unit_price"],
@@ -949,7 +950,7 @@ def list_team(region: str | None = None) -> list:
     sb = _sb()
     q = (
         sb.schema("sales").from_("users")
-        .select("id,full_name,role,email,is_active,created_at,region")
+        .select("id,full_name,role,email,phone,is_active,created_at,region")
         .order("full_name")
     )
     if region:
@@ -1006,6 +1007,13 @@ def mark_password_changed(staff_id: int) -> None:
 def update_team_member(staff_id: int, data: dict) -> dict:
     sb = _sb()
     updates = {}
+    if "full_name" in data:
+        full_name = (data.get("full_name") or "").strip()
+        if not full_name:
+            raise ValueError("Full name is required")
+        updates["full_name"] = full_name
+    if "phone" in data:
+        updates["phone"] = (data.get("phone") or "").strip() or None
     if "role" in data:
         role = data["role"]
         if role not in VALID_STAFF_ROLES:
@@ -1024,10 +1032,19 @@ def update_team_member(staff_id: int, data: dict) -> dict:
     return res.data[0]
 
 
+def delete_team_member(staff_id: int) -> dict:
+    """Soft-delete a staff member by deactivating them.
+
+    Historical orders and payment/audit records can reference sales.users, so
+    physical deletes are intentionally avoided.
+    """
+    return update_team_member(staff_id, {"is_active": False})
+
+
 # ── Admin: SKU stock (sourced from the production schema, no inventory
 #    tracking lives in sales) ────────────────────────────────────────────────
 
-def list_sku_stock() -> list:
+def _stock_rows_by_sku() -> dict:
     sb = _sb()
     fg_rows = (
         sb.schema("production").from_("v_fg_stock")
@@ -1037,11 +1054,19 @@ def list_sku_stock() -> list:
     # No FK between schemas — production.v_fg_stock only has free-text
     # product_name/unit, so match against sales SKUs by (flavour, format) name.
     stock_by_key = {(r["product_name"].strip().lower(), r["unit"].strip().lower()): r for r in fg_rows}
+    return {
+        s["id"]: stock_by_key.get((s["flavour_name"].strip().lower(), s["pack_format_name"].strip().lower()))
+        for s in ACTIVE_SKUS
+    }
+
+
+def list_sku_stock() -> list:
+    stock_by_sku = _stock_rows_by_sku()
     out = []
     for s in ACTIVE_SKUS:
-        key = (s["flavour_name"].strip().lower(), s["pack_format_name"].strip().lower())
-        fg = stock_by_key.get(key)
+        fg = stock_by_sku.get(s["id"])
         out.append({
+            "sku_id": s["id"],
             "sku_code": s["sku_code"], "flavour_name": s["flavour_name"],
             "pack_format_name": s["pack_format_name"],
             "qty_on_hand": float(fg["qty_on_hand"]) if fg else None,
@@ -1049,6 +1074,37 @@ def list_sku_stock() -> list:
         })
     out.sort(key=lambda r: (r["flavour_name"], r["pack_format_name"]))
     return out
+
+
+def check_stock_for_order(lines: list) -> dict:
+    stock_by_sku = _stock_rows_by_sku()
+    items = []
+    for line in lines:
+        sku_id = int(line["sku_id"])
+        requested = float(line.get("quantity") or 0)
+        stock = stock_by_sku.get(sku_id)
+        qty_on_hand = float(stock["qty_on_hand"]) if stock and stock.get("qty_on_hand") is not None else None
+        available = qty_on_hand is not None and qty_on_hand >= requested
+        items.append({
+            "sku_id": sku_id,
+            "sku_code": line.get("sku_code"),
+            "flavour_name": line.get("flavour_name"),
+            "format_name": line.get("format_name"),
+            "quantity": requested,
+            "qty_on_hand": qty_on_hand,
+            "stock_status": stock.get("status") if stock else "not_tracked",
+            "available": available,
+            "reason": "" if available else "Insufficient stock",
+        })
+    available_items = [i for i in items if i["available"]]
+    unavailable_items = [i for i in items if not i["available"]]
+    if not items or not unavailable_items:
+        status = "available"
+    elif not available_items:
+        status = "unavailable"
+    else:
+        status = "partial"
+    return {"status": status, "items": items, "available": available_items, "unavailable": unavailable_items}
 
 
 # ── Admin: flavour + SKU pricing management ─────────────────────────────────

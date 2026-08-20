@@ -179,6 +179,22 @@
   </div>
 </div>
 
+<!-- Stock availability modal -->
+<div class="modal-overlay hidden" id="stockModal">
+  <div class="modal-card">
+    <div class="modal-title" style="color:var(--brand)">
+      <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      Partial Stock Available
+    </div>
+    <div id="stockModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" style="background:var(--red)" id="stockHoldBtn">Keep Whole Order On Hold</button>
+      <button class="btn-primary" id="stockSplitBtn">Split Order</button>
+      <button class="btn-ghost" onclick="closeStockModal()">Go Back</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Icons (inline Lucide SVGs — no external dependency) ─────────────────────
 const ICON_PATHS = {
@@ -851,13 +867,11 @@ function closePendingModal() {
 }
 
 async function submitNewOrder() {
-  const btn = document.querySelector("#step-confirm .btn-green");
-  btn.disabled = true; btn.textContent = "Placing…";
+  return submitOrderWithOptions({});
+}
 
-  const discountPct = _effectiveDiscPct();
-  const comment = document.getElementById("orderComment").value.trim();
-
-  const lines = state.items.filter(i => !i.not_found && i.resolved_sku).map(i => ({
+function buildOrderLines(sourceItems) {
+  return sourceItems.filter(i => !i.not_found && i.resolved_sku).map(i => ({
     sku_id: i.resolved_sku.id,
     sku_code: i.resolved_sku.sku_code,
     flavour_name: i.resolved_sku.flavour_name,
@@ -866,6 +880,130 @@ async function submitNewOrder() {
     unit_price: i.unit_price,
     line_discount: 0,
   }));
+}
+
+function stockItemList(items) {
+  return items.map(i =>
+    `<div class="pending-order-row">
+      <strong>${i.flavour_name} ${i.format_name}</strong>
+      <span>Needed ${i.quantity}; available ${i.qty_on_hand === null ? "not tracked" : i.qty_on_hand}</span>
+    </div>`).join("");
+}
+
+async function checkStock(lines) {
+  if (!lines.length) return {ok: true, status: "available", available: [], unavailable: []};
+  return fetch("/api/orders/stock-check", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({lines}),
+  }).then(r => r.json());
+}
+
+function closeStockModal() {
+  document.getElementById("stockModal").classList.add("hidden");
+}
+
+function showStockSplitModal(stock) {
+  const availableList = stockItemList(stock.available || []);
+  const unavailableList = stockItemList(stock.unavailable || []);
+  document.getElementById("stockModalBody").innerHTML = `
+    <p style="margin:8px 0 12px;color:var(--slate-700)">
+      Some items are available and some are short. Choose whether to hold everything together,
+      or create two orders: available items proceed now and unavailable items go on hold.
+    </p>
+    <div class="step-label mt8">Available</div>
+    ${availableList || `<div class="opt-muted">No available items</div>`}
+    <div class="step-label mt16">Out of stock</div>
+    ${unavailableList || `<div class="opt-muted">No unavailable items</div>`}`;
+
+  const holdBtn = document.getElementById("stockHoldBtn");
+  const splitBtn = document.getElementById("stockSplitBtn");
+  const newHoldBtn = holdBtn.cloneNode(true);
+  holdBtn.parentNode.replaceChild(newHoldBtn, holdBtn);
+  newHoldBtn.id = "stockHoldBtn";
+  const newSplitBtn = splitBtn.cloneNode(true);
+  splitBtn.parentNode.replaceChild(newSplitBtn, splitBtn);
+  newSplitBtn.id = "stockSplitBtn";
+
+  newHoldBtn.onclick = async () => {
+    closeStockModal();
+    await submitOrderWithOptions({
+      stockMode: "skip",
+      forceHoldReason: "Stock unavailable for one or more items",
+      extraNote: "Admin chose to keep the full order on hold because stock is partially unavailable.",
+    });
+  };
+  newSplitBtn.onclick = async () => {
+    closeStockModal();
+    await submitSplitOrders(stock);
+  };
+
+  document.getElementById("stockModal").classList.remove("hidden");
+}
+
+function itemsForStockSet(stockItems) {
+  const ids = new Set((stockItems || []).map(i => i.sku_id));
+  return state.items.filter(i => i.resolved_sku && ids.has(i.resolved_sku.id));
+}
+
+async function submitSplitOrders(stock) {
+  const availableItems = itemsForStockSet(stock.available);
+  const unavailableItems = itemsForStockSet(stock.unavailable);
+  const orders = [];
+  const first = await submitOrderWithOptions({
+    stockMode: "skip",
+    sourceItems: availableItems,
+    collateral: state.collateral,
+    extraNote: "Split order: in-stock items proceeded separately.",
+    suppressDone: true,
+  });
+  if (!first?.ok) return;
+  orders.push(first.order);
+  const second = await submitOrderWithOptions({
+    stockMode: "skip",
+    sourceItems: unavailableItems,
+    collateral: [],
+    forceHoldReason: "Stock unavailable for one or more items",
+    extraNote: "Split order: out-of-stock items placed on hold.",
+    suppressDone: true,
+  });
+  if (!second?.ok) return;
+  orders.push(second.order);
+  renderDoneOrders(orders, "Order Split");
+}
+
+async function submitOrderWithOptions(options) {
+  const btn = document.querySelector("#step-confirm .btn-green");
+  btn.disabled = true; btn.textContent = "Placing…";
+
+  const discountPct = _effectiveDiscPct();
+  const comment = document.getElementById("orderComment").value.trim();
+  const sourceItems = options.sourceItems || state.items;
+  const lines = buildOrderLines(sourceItems);
+
+  if ((options.stockMode || "check") === "check" && lines.length) {
+    btn.textContent = "Checking stock…";
+    const stock = await checkStock(lines);
+    btn.disabled = false; btn.innerHTML = `${icon("check")} Confirm &amp; Place Order`;
+    if (!stock.ok) {
+      alert(stock.error || "Could not check stock");
+      return {ok: false};
+    }
+    if (stock.status === "unavailable") {
+      return submitOrderWithOptions({
+        ...options,
+        stockMode: "skip",
+        forceHoldReason: "Stock unavailable for one or more items",
+        extraNote: "Order placed on hold because stock is unavailable.",
+      });
+    }
+    if (stock.status === "partial") {
+      showStockSplitModal(stock);
+      return {ok: false, waiting: true};
+    }
+    btn.disabled = true; btn.textContent = "Placing…";
+  }
+
+  const notes = [comment, options.extraNote].filter(Boolean).join("\n");
 
   const res = await fetch("/api/orders", {
     method: "POST", headers: {"Content-Type":"application/json"},
@@ -875,29 +1013,39 @@ async function submitNewOrder() {
       lines,
       shipping_address_id: state.address_id,
       billing_address_id: state.address_id,
-      collateral: state.collateral,
+      collateral: options.collateral !== undefined ? options.collateral : state.collateral,
       discount_pct: discountPct,
-      notes: comment || null,
+      notes: notes || null,
+      force_hold_reason: options.forceHoldReason || null,
     }),
   }).then(r => r.json());
 
   btn.disabled = false; btn.innerHTML = `${icon("check")} Confirm &amp; Place Order`;
-  hide("step-confirm");
 
-  if (res.ok) {
-    const order = res.order;
+  if (res.ok && !options.suppressDone) {
+    renderDoneOrders([res.order], res.order.on_hold ? "Order On Hold" : "Order Confirmed");
+  } else if (!res.ok) {
+    alert("Order failed: " + (res.error || "Unknown error"));
+  }
+  return res;
+}
+
+function renderDoneOrders(orders, title) {
+  hide("step-confirm");
+  const cards = orders.map(order => {
     const total = fmt(order.total);
     const discLine = order.discount_pct ? `<div class="done-meta" style="color:var(--green)">Discount: ${order.discount_pct}% (−${fmt(order.discount)})</div>` : "";
     const holdBanner = order.on_hold
-      ? `<div class="hold-banner">${icon("alert-triangle")} Order placed ON HOLD — ${order.hold_reason || "admin review required"}</div>`
+      ? `<div class="hold-banner">${icon("triangle-alert")} Order placed ON HOLD — ${order.hold_reason || "admin review required"}</div>`
       : "";
     const linesList = (order.lines || []).map(l =>
       `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
     ).join("") + (order.collateral || []).map(c =>
       `<li>${c.quantity} × ${c.type}${c.notes ? " — " + c.notes : ""}</li>`
     ).join("");
-    document.getElementById("doneBox").innerHTML = `
-      <div class="done-icon" style="color:${order.on_hold ? "var(--red)" : "var(--green)"}">${icon(order.on_hold ? "alert-triangle" : "circle-check-big")}</div>
+    return `
+      <div class="done-order-card">
+      <div class="done-icon" style="color:${order.on_hold ? "var(--red)" : "var(--green)"}">${icon(order.on_hold ? "triangle-alert" : "circle-check-big")}</div>
       <div class="done-title">${order.on_hold ? "Order On Hold" : "Order Confirmed"}</div>
       <div class="done-no">${order.order_no}</div>
       <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
@@ -905,12 +1053,13 @@ async function submitNewOrder() {
       ${discLine}
       <ul class="done-lines">${linesList}</ul>
       <div class="done-total">Total: <strong>${total}</strong></div>
-      <button class="btn-primary mt16" onclick="resetAll()">New Order</button>`;
-    show("step-done");
-  } else {
-    alert("Order failed: " + (res.error || "Unknown error"));
-    show("step-confirm");
-  }
+      </div>`;
+  }).join("");
+  document.getElementById("doneBox").innerHTML = `
+    <div class="done-title">${title}</div>
+    ${cards}
+    <button class="btn-primary mt16" onclick="resetAll()">New Order</button>`;
+  show("step-done");
 }
 </script>
 </body>
