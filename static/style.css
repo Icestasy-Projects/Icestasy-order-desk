@@ -456,6 +456,12 @@ body {
 .dash-subgroup { margin: 0 0 10px 16px; padding-left: 10px; border-left: 2px solid var(--slate-200); }
 .dash-subgroup-header { font-size: 12px; font-weight: 700; color: var(--slate-700); }
 
+.type-label {
+  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--slate-500); margin: 14px 0 2px;
+}
+.type-label:first-child { margin-top: 4px; }
+
 .dash-order-row {
   display: flex; flex-direction: column; gap: 10px;
   padding: 12px; border: 1.5px solid var(--slate-200); border-radius: var(--radius-sm);
