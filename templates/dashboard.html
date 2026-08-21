@@ -505,6 +505,8 @@ const PAY_LABELS = { received: "Payment Completed", pending: "Payment Pending", 
 const PAY_CLASS = { received: "badge-green", pending: "badge-amber", failed: "badge-red", refunded: "badge-red", not_recorded: "badge-gray" };
 
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+// Order comments are free text typed by staff — escape before rendering to avoid stored XSS.
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 async function loadOrders() {
   const box = document.getElementById("ordersBox");
@@ -738,6 +740,7 @@ function orderRow(o) {
         ${invoiceAction}
       </div>
       ${isOpen ? orderLinesHtml(o.id) : ""}
+      ${isOpen && o.notes ? `<div class="order-comment mt8"><strong>Comments:</strong> ${escapeHtml(o.notes)}</div>` : ""}
     </div>`;
 }
 
@@ -2039,7 +2042,19 @@ async function submitAddFlavour() {
   loadFlavours();
 }
 
-loadOrders();
+// Deep link from the "Order Confirmed" screen (/orders?order=<id>) — expand
+// that order's line items and scroll it into view once orders have loaded.
+function _openDeepLinkedOrder() {
+  const orderId = parseInt(new URLSearchParams(location.search).get("order"), 10);
+  if (!orderId || !allOrders.some(o => o.id === orderId)) return;
+  toggleOrderLines(orderId);
+  setTimeout(() => {
+    document.querySelector(`[onclick="toggleOrderLines(${orderId})"]`)
+      ?.scrollIntoView({behavior: "smooth", block: "center"});
+  }, 200);
+}
+
+loadOrders().then(_openDeepLinkedOrder);
 loadTeam();
 if (INITIAL_PAGE !== "orders") activatePage(INITIAL_PAGE, false);
 </script>

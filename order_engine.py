@@ -549,7 +549,8 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
     def build_query(start, end):
         q = (
             sb.schema("sales").from_("orders")
-            .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, shipping_address_id")
+            .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, "
+                    "shipping_address_id, notes")
             .order("created_at", desc=True)
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
@@ -619,6 +620,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
             "salesperson_name": sp.get("full_name", "—"),
             "payment_status": payment["status"] if payment else "not_recorded",
             "has_lines": o["id"] in ids_with_lines,
+            "notes": o.get("notes") or "",
         })
 
     if role in REGION_HEAD_ROLES:
