@@ -88,7 +88,7 @@ body {
   background: none; border: none; padding: 14px 18px; font-size: 14px; font-weight: 700;
   color: var(--slate-500); cursor: pointer; border-bottom: 2.5px solid transparent;
   transition: color .15s, border-color .15s; min-height: 44px;
-  white-space: nowrap; flex-shrink: 0;
+  white-space: nowrap; flex-shrink: 0; text-decoration: none;
   display: inline-flex; align-items: center; gap: 6px;
 }
 .tab-btn:hover { color: var(--slate-900); }
@@ -204,7 +204,7 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   border: 1.5px solid var(--slate-200); border-radius: var(--radius-sm); padding: 14px 16px;
   background: var(--white); cursor: pointer; transition: all .15s; text-align: left;
-  min-height: 48px;
+  min-height: 48px; user-select: none;
 }
 .option-btn:hover { border-color: var(--brand); background: var(--brand-soft); }
 .option-btn:active { transform: scale(.99); }
