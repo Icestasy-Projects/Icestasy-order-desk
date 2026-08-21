@@ -550,6 +550,20 @@ const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigit
 // Order comments are free text typed by staff — escape before rendering to avoid stored XSS.
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+// ── Avatar initials — colored circle, deterministic color per name ──────────
+const AVATAR_COLORS = ["avatar-blue", "avatar-green", "avatar-purple", "avatar-amber", "avatar-pink", "avatar-teal"];
+function initialsFor(name) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return (parts.length === 1 ? parts[0][0] : parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function avatarHtml(name) {
+  let hash = 0;
+  for (let i = 0; i < (name || "").length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  const cls = AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  return `<div class="avatar-circle ${cls}">${escapeHtml(initialsFor(name))}</div>`;
+}
+
 async function loadOrders() {
   const box = document.getElementById("ordersBox");
   box.innerHTML = `<div class="searching">Loading…</div>`;
@@ -1101,12 +1115,17 @@ function clientRowHtml(c) {
       <button class="btn-option btn-sm mt8" onclick="showAddAddressForm(${c.id})">+ Add address</button>
       <div id="newaddr-${c.id}"></div>`;
   }
+  const typeLabel = c.client_type ? c.client_type[0].toUpperCase() + c.client_type.slice(1) : "";
   return `
     <div class="option-btn" style="cursor:${IS_ADMIN ? "pointer" : "default"}" ${IS_ADMIN ? `onclick="toggleClient(${c.id})"` : ""}>
-      <div>
-        <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name}</span>
-        <span class="opt-sub">${c.client_type || ""}${c.primary_contact_name ? " · " + c.primary_contact_name : ""}${c.primary_contact_phone ? " · " + c.primary_contact_phone : ""}${c.place && c.place !== "—" ? " · " + c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
+      <div class="person-row-left">
+        ${avatarHtml(c.business_name)}
+        <div class="person-row-info">
+          <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name}</span>
+          <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
+        </div>
       </div>
+      ${typeLabel ? `<span class="badge ${c.client_type === "distributor" ? "badge-blue" : "badge-green"}">${typeLabel}</span>` : ""}
     </div>
     ${isOpen ? `<div class="mt8">${body}</div>` : ""}`;
 }
@@ -1356,15 +1375,27 @@ async function loadTeam() {
   renderTeam();
 }
 
+function roleBadgeClass(role) {
+  if (role === "admin") return "badge-purple";
+  if ((role || "").endsWith("_head")) return "badge-blue";
+  return "badge-green";
+}
+
 function teamMemberRow(t) {
   const phone = t.phone ? " · " + t.phone : "";
   return `
     <div class="option-btn" style="cursor:default">
-      <div>
-        <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
-        <span class="opt-sub">${ROLE_LABELS[t.role] || t.role}${t.region ? " · " + t.region : ""} · ${t.email}${phone}</span>
+      <div class="person-row-left">
+        ${avatarHtml(t.full_name)}
+        <div class="person-row-info">
+          <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
+          <span class="opt-sub">${t.region ? t.region + " · " : ""}${t.email}${phone}</span>
+        </div>
       </div>
-      ${IS_ADMIN ? `<button class="btn-ghost" onclick="showEditTeamForm(${t.id})">Edit</button>` : ""}
+      <div class="person-row-right">
+        <span class="badge ${roleBadgeClass(t.role)}">${ROLE_LABELS[t.role] || t.role}</span>
+        ${IS_ADMIN ? `<button class="btn-ghost" onclick="showEditTeamForm(${t.id})">Edit</button>` : ""}
+      </div>
     </div>`;
 }
 
