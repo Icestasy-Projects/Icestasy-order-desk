@@ -63,12 +63,15 @@ body {
 .brand-text strong { font-size: 16px; font-weight: 800; letter-spacing: .3px; }
 .brand-text small { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; opacity: .75; }
 .btn-ghost {
-  background: var(--slate-100); border: 1.5px solid var(--slate-300); color: var(--slate-700);
+  /* Solid dark treatment, not a pale tint: this sits inside .option-btn rows,
+     whose :hover background is a light blue (--brand-soft) close enough in
+     lightness to a pale ghost button that the two nearly blended together. */
+  background: var(--slate-700); border: 1.5px solid var(--slate-700); color: #fff;
   padding: 9px 18px; border-radius: 20px; cursor: pointer; font-size: 13px;
   font-weight: 700; transition: background .15s, border-color .15s, transform .1s;
   min-height: 38px; white-space: nowrap;
 }
-.btn-ghost:hover { background: var(--slate-200); border-color: var(--slate-500); }
+.btn-ghost:hover { background: var(--slate-900); border-color: var(--slate-900); }
 .btn-ghost:active { transform: scale(.96); }
 
 .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
