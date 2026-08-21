@@ -2208,26 +2208,40 @@ function renderFlavours() {
 
       const skuCards = f.skus.length ? f.skus.map(s => {
         const rp = s.region_prices || {};
+        const ep = s.effective_prices || {};
         const inact = s.status !== "active";
         return `
           <div class="fm-sku-card ${inact ? "fm-sku-inactive" : ""}">
             <div class="fm-sku-header">
-              <span class="fm-sku-name">${s.pack_format_name}${inact ? " (inactive)" : ""}</span>
+              <div class="fm-sku-heading">
+                <span class="fm-sku-name">${s.pack_format_name}${inact ? " (inactive)" : ""}</span>
+                <span class="fm-sku-meta">${s.sku_code} · GST ${s.gst_rate}%</span>
+              </div>
               ${inact
                 ? `<button class="fm-btn fm-btn-ghost fm-btn-sm" onclick="reactivateSku(${s.id})">${icon("rotate-ccw")} Reactivate</button>`
                 : `<button class="fm-btn fm-btn-danger fm-btn-sm" onclick="removeSku(${s.id})">${icon("x")} Remove</button>`}
             </div>
             <div class="fm-region-grid">
-              ${priceRegions.map(r => `
-                <div class="fm-region-cell">
-                  <span class="fm-region-label">${priceRegionLabels[r] || r}</span>
+              ${priceRegions.map(r => {
+                const hasOverride = rp[r] !== "" && rp[r] !== undefined;
+                const effective = ep[r];
+                const label = priceRegionLabels[r] || r;
+                return `
+                <div class="fm-region-cell ${hasOverride ? "fm-region-custom" : "fm-region-inherited"}">
+                  <div class="fm-region-toprow">
+                    <label class="fm-region-label" for="price-${s.id}-${r}">${label}</label>
+                    <span class="fm-region-tag" title="${hasOverride ? "A price has been set specifically for this region" : "No region price set — falling back to the default/ROI price"}">${hasOverride ? "Custom" : "Default"}</span>
+                  </div>
+                  <div class="fm-region-price">${effective !== undefined && effective !== null ? "₹" + Number(effective).toLocaleString("en-IN") : "—"}</div>
                   <div class="fm-region-input-row">
                     <input type="number" min="0" step="0.01" class="fm-region-input"
-                           id="price-${s.id}-${r}" value="${rp[r] !== "" && rp[r] !== undefined ? rp[r] : ""}"
-                           placeholder="${s.price || '—'}">
-                    <button class="fm-region-save" onclick="submitSkuPrice(${s.id},'${r}')">Save</button>
+                           id="price-${s.id}-${r}" value="${hasOverride ? rp[r] : ""}"
+                           aria-label="Set custom price for ${label}"
+                           placeholder="Set custom price">
+                    <button class="fm-region-save" onclick="submitSkuPrice(${s.id},'${r}')" aria-label="Save price for ${label}">Save</button>
                   </div>
-                </div>`).join("")}
+                </div>`;
+              }).join("")}
             </div>
           </div>`;
       }).join("") : `<div class="opt-muted" style="padding:8px 0">No SKUs added yet</div>`;
@@ -2250,6 +2264,7 @@ function renderFlavours() {
           ${addSkuRow}
           <div class="fm-edit-section" style="margin-bottom:0">
             <div class="fm-edit-label">SKUs & Pricing</div>
+            <p class="fm-sku-list-hint">Each region shows the price it's currently charged. <span class="fm-region-tag fm-region-tag-inline">Default</span> means no region-specific price is set, so it inherits the default/ROI price — enter a value and save to override just that region.</p>
             <div class="fm-sku-list">${skuCards}</div>
           </div>
         </div>`;

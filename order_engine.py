@@ -1372,15 +1372,22 @@ def list_flavours_admin() -> list:
     by_flavour = {}
     for s in skus:
         sku_prices = prices.get(s["id"], {})
-        default_price = sku_prices.get("default", MOCK_PRICES.get(s["pack_format_id"], 0.0))
+        mock_price = MOCK_PRICES.get(s["pack_format_id"], 0.0)
+        fallback_price = sku_prices.get("default", sku_prices.get("roi", mock_price))
         region_prices = {r: sku_prices.get(r, "") for r in PRICE_REGIONS}
+        # What a customer in each region actually pays right now, following the
+        # same region -> default -> roi -> flat-fallback chain get_sku_prices()
+        # uses at order time. Lets the UI show "inherited" prices as real
+        # numbers instead of implying every blank region shares one flat price.
+        effective_prices = {r: sku_prices.get(r, fallback_price) for r in PRICE_REGIONS}
         by_flavour.setdefault(s["flavour_id"], []).append({
             "id": s["id"], "sku_code": s["sku_code"],
             "pack_format_id": s["pack_format_id"],
             "pack_format_name": s["pack_formats"]["name"] if s.get("pack_formats") else "",
             "status": s["status"],
-            "price": default_price,
+            "price": fallback_price,
             "region_prices": region_prices,
+            "effective_prices": effective_prices,
             "hsn_code": s.get("hsn_code") or "",
             "gst_rate": float(s["gst_rate"]) if s.get("gst_rate") is not None else 5.0,
         })
