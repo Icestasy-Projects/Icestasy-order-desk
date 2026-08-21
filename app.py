@@ -194,7 +194,8 @@ def new_order():
     role = session.get("role")
     return render_template("index.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=role,
-                            is_admin=role == ADMIN_ROLE)
+                            is_admin=role == ADMIN_ROLE,
+                            can_view_team=role in BROAD_VIEW_ROLES)
 
 
 @app.route("/api/parse", methods=["POST"])
