@@ -1777,19 +1777,30 @@ async function loadCityStock() {
   renderCityStock();
 }
 
-function cityStockRowHtml(s) {
-  const availClass = s.available <= 0 ? "badge-red" : (s.available < s.dispatched * 0.2 ? "badge-amber" : "badge-green");
+function cityStockAvailBadge(s) {
+  const cls = s.available <= 0 ? "badge-red" : (s.available < s.dispatched * 0.2 ? "badge-amber" : "badge-green");
+  return `<span class="badge ${cls}">${s.available}</span>`;
+}
+
+// Tabular, grouped by SKU type (pack format) within each city — mirrors the
+// Factory Stock tab's grouping so the two views scan the same way.
+function cityStockTypeTableHtml(type, items) {
+  const sorted = [...items].sort((a, b) => a.flavour_name.localeCompare(b.flavour_name));
   return `
-    <div class="dash-order-row">
-      <div class="dash-order-main">
-        <span class="dash-order-no">${s.flavour_name}</span>
-        <span class="dash-order-client">${s.pack_format_name} · ${s.sku_code}</span>
-      </div>
-      <div class="dash-order-side">
-        <span class="opt-sub">Sent ${s.dispatched} · Used ${s.used}</span>
-        <span class="badge ${availClass}">${s.available} available</span>
-      </div>
-    </div>`;
+    <div class="type-label">${type}</div>
+    <table class="summary-table">
+      <thead><tr><th>Flavour</th><th>SKU</th><th class="num">Sent</th><th class="num">Used</th><th class="num">Available</th></tr></thead>
+      <tbody>
+        ${sorted.map(s => `
+          <tr>
+            <td>${s.flavour_name}</td>
+            <td>${s.sku_code}</td>
+            <td class="num">${s.dispatched}</td>
+            <td class="num">${s.used}</td>
+            <td class="num">${cityStockAvailBadge(s)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
 }
 
 function renderCityStock() {
@@ -1804,13 +1815,20 @@ function renderCityStock() {
     const isOpen = expandedCityStockGroup === city;
     const totalAvailable = items.reduce((s, i) => s + i.available, 0);
     const safeCity = JSON.stringify(city).replace(/'/g, "&#39;");
+    let body = "";
+    if (isOpen) {
+      const typeGroups = {};
+      items.forEach(s => (typeGroups[s.pack_format_name] = typeGroups[s.pack_format_name] || []).push(s));
+      body = Object.keys(typeGroups).sort()
+        .map(type => cityStockTypeTableHtml(type, typeGroups[type])).join("");
+    }
     return `
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleCityStockGroup(${safeCity})'>
           <span>${isOpen ? "▾" : "▸"} ${city}</span>
           <span class="opt-sub">${items.length} SKU${items.length === 1 ? "" : "s"} · ${totalAvailable} total available</span>
         </button>
-        ${isOpen ? items.map(cityStockRowHtml).join("") : ""}
+        ${body}
       </div>`;
   }).join("");
 }
