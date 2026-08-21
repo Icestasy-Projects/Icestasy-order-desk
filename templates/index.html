@@ -427,8 +427,11 @@ function renderCart() {
 
   const proceedable = state.items.every(i => i.not_found || (!i.ambiguous && i.resolved_sku));
   if (proceedable) {
-    const sub = state.items.filter(i => !i.not_found && i.resolved_sku).reduce((s,i) => s + i.qty * i.unit_price, 0);
-    box.innerHTML += `<div class="subtotal-row">Subtotal <strong>${fmt(sub)}</strong></div>`;
+    // No subtotal shown here — prices are region/city-specific and the
+    // client/address (hence city) isn't known yet at this step, so any
+    // total shown now would likely be wrong and get silently corrected
+    // once reprice() runs after address selection. The real, accurate
+    // subtotal is shown in Order Summary once the address is picked.
     renderNextAfterCart();
   }
 }
