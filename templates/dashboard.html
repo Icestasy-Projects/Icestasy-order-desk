@@ -69,11 +69,13 @@
         Insights
       </button>
       {% endif %}
-      {% if is_admin %}
+      {% if can_view_team %}
       <button class="tab-btn" id="page-tab-stock" onclick="switchPage('stock', this)">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
         Stock
       </button>
+      {% endif %}
+      {% if is_admin %}
       <button class="tab-btn" id="page-tab-flavours" onclick="switchPage('flavours', this)">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17c5 0 8-2.69 8-6H4c0 3.31 3 6 8 6m-4 4h8m-4-3v3M5.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M12.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M15.5 6.5a3.5 3.5 0 1 0-7 0"/></svg>
         Flavours
@@ -240,17 +242,48 @@
     </div>
     {% endif %}
 
-    {% if is_admin %}
+    {% if can_view_team %}
     <div id="page-stock" class="hidden">
       <section class="step">
-        <div class="step-label">SKU Stock</div>
-        <div class="opt-muted mt8" style="margin-bottom:12px">Live finished-goods stock from the production system.</div>
-        <input id="stockSearch" class="search-input" type="text"
-               placeholder="Search by flavour or format…" oninput="handleStockSearchInput(this.value)">
-        <div id="stockList" class="mt16"></div>
+        <div class="dash-title-row">
+          <div class="step-label" style="margin-bottom:0">Stock</div>
+          <button class="btn-option btn-sm" onclick="openStockRequestForm()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Request Stock
+          </button>
+        </div>
+        <div class="tab-bar-flat" id="stockViewTabs">
+          <button class="tab-btn-flat active" id="stock-view-tab-city" onclick="setStockView('city', this)">City Stock</button>
+          <button class="tab-btn-flat" id="stock-view-tab-requests" onclick="setStockView('requests', this)">Requests</button>
+          {% if is_admin %}<button class="tab-btn-flat" id="stock-view-tab-factory" onclick="setStockView('factory', this)">Factory Stock</button>{% endif %}
+        </div>
+
+        <div id="stockRequestFormBox"></div>
+
+        <div id="cityStockView">
+          <div class="opt-muted mt8" style="margin-bottom:12px">
+            Dispatched to city (approved stock requests) minus quantity used by invoiced/delivered orders.
+          </div>
+          <div id="cityStockBox" class="mt16"></div>
+        </div>
+
+        <div id="requestsStockView" class="hidden">
+          <div id="stockRequestsBox" class="mt16"></div>
+        </div>
+
+        {% if is_admin %}
+        <div id="factoryStockView" class="hidden">
+          <div class="opt-muted mt8" style="margin-bottom:12px">Live finished-goods stock from the production system.</div>
+          <input id="stockSearch" class="search-input" type="text"
+                 placeholder="Search by flavour or format…" oninput="handleStockSearchInput(this.value)">
+          <div id="stockList" class="mt16"></div>
+        </div>
+        {% endif %}
       </section>
     </div>
+    {% endif %}
 
+    {% if is_admin %}
     <div id="page-flavours" class="hidden">
       <section class="step flavour-mgmt">
         <div class="fm-toolbar">
@@ -352,6 +385,8 @@ const ROLE_LABELS = {{ role_labels_json | safe }};
 const REGION_OPTIONS = {{ region_options_json | safe }};
 const REGION_HEAD_ROLE_TO_REGION = {{ region_head_roles_json | safe }};
 const INITIAL_PAGE = {{ initial_page | tojson }};
+const USER_ROLE = {{ role | tojson }};
+const OWN_CITY = REGION_HEAD_ROLE_TO_REGION[USER_ROLE] || null;
 let allOrders = [];
 let grouping = "none";
 let expandedGroup = null;
@@ -430,7 +465,7 @@ function activatePage(page, pushState) {
   const insightsPage = document.getElementById("page-insights");
   if (insightsPage) insightsPage.classList.toggle("hidden", page !== "insights");
   if (page === "clients" && !clientsData.length) loadClients();
-  if (page === "stock" && !stockData.length) loadStock();
+  if (page === "stock" && !cityStockData.length) loadCityStock();
   if (page === "flavours" && !flavoursData.length) loadFlavours();
   if (page === "insights" && !flavourSalesLines.length) loadFlavourSales();
   if (pushState) {
@@ -1681,6 +1716,272 @@ function renderStock() {
 function toggleStockType(type) {
   expandedStockType = expandedStockType === type ? null : type;
   renderStock();
+}
+
+// ── Stock view tabs (City Stock / Requests / Factory Stock) ─────────────────
+function setStockView(view, btn) {
+  document.querySelectorAll("#stockViewTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("cityStockView").classList.toggle("hidden", view !== "city");
+  document.getElementById("requestsStockView").classList.toggle("hidden", view !== "requests");
+  const factoryView = document.getElementById("factoryStockView");
+  if (factoryView) factoryView.classList.toggle("hidden", view !== "factory");
+  if (view === "requests" && !stockRequestsData.length) loadStockRequests();
+  if (view === "factory" && !stockData.length) loadStock();
+}
+
+// ── City Stock (dispatched-to-city minus used-by-invoiced/delivered orders) ─
+let cityStockData = [];
+let expandedCityStockGroup = null;
+
+async function loadCityStock() {
+  const box = document.getElementById("cityStockBox");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/city-stock").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
+    return;
+  }
+  cityStockData = data.stock || [];
+  renderCityStock();
+}
+
+function cityStockRowHtml(s) {
+  const availClass = s.available <= 0 ? "badge-red" : (s.available < s.dispatched * 0.2 ? "badge-amber" : "badge-green");
+  return `
+    <div class="dash-order-row">
+      <div class="dash-order-main">
+        <span class="dash-order-no">${s.flavour_name}</span>
+        <span class="dash-order-client">${s.pack_format_name} · ${s.sku_code}</span>
+      </div>
+      <div class="dash-order-side">
+        <span class="opt-sub">Sent ${s.dispatched} · Used ${s.used}</span>
+        <span class="badge ${availClass}">${s.available} available</span>
+      </div>
+    </div>`;
+}
+
+function renderCityStock() {
+  const box = document.getElementById("cityStockBox");
+  if (!cityStockData.length) {
+    box.innerHTML = `<div class="opt-muted">No dispatched stock recorded yet — use "Request Stock" to send stock to a city.</div>`;
+    return;
+  }
+  const groups = {};
+  cityStockData.forEach(s => (groups[s.city] = groups[s.city] || []).push(s));
+  box.innerHTML = Object.entries(groups).map(([city, items]) => {
+    const isOpen = expandedCityStockGroup === city;
+    const totalAvailable = items.reduce((s, i) => s + i.available, 0);
+    const safeCity = JSON.stringify(city).replace(/'/g, "&#39;");
+    return `
+      <div class="dash-group">
+        <button type="button" class="dash-group-header" onclick='toggleCityStockGroup(${safeCity})'>
+          <span>${isOpen ? "▾" : "▸"} ${city}</span>
+          <span class="opt-sub">${items.length} SKU${items.length === 1 ? "" : "s"} · ${totalAvailable} total available</span>
+        </button>
+        ${isOpen ? items.map(cityStockRowHtml).join("") : ""}
+      </div>`;
+  }).join("");
+}
+
+function toggleCityStockGroup(city) {
+  expandedCityStockGroup = expandedCityStockGroup === city ? null : city;
+  renderCityStock();
+}
+
+// ── Request Stock form ───────────────────────────────────────────────────────
+let skusCatalog = [];
+let requestFormLines = [];
+
+async function ensureSkusCatalog() {
+  if (skusCatalog.length) return;
+  const data = await fetch("/api/skus").then(r => r.json());
+  skusCatalog = data.skus || [];
+}
+
+async function openStockRequestForm() {
+  await ensureSkusCatalog();
+  requestFormLines = [{sku_id: skusCatalog[0]?.id, quantity: ""}];
+  renderStockRequestForm();
+}
+
+function closeStockRequestForm() {
+  document.getElementById("stockRequestFormBox").innerHTML = "";
+}
+
+function skuOptionsHtml(selectedId) {
+  return skusCatalog.map(s =>
+    `<option value="${s.id}"${s.id === selectedId ? " selected" : ""}>${s.flavour_name} — ${s.pack_format_name} (${s.sku_code})</option>`
+  ).join("");
+}
+
+function renderStockRequestForm() {
+  const box = document.getElementById("stockRequestFormBox");
+  const cityField = OWN_CITY
+    ? `<input type="hidden" id="reqCity" value="${OWN_CITY}"><div class="confirm-row"><span>City</span><strong>${OWN_CITY}</strong></div>`
+    : `<select id="reqCity" class="search-input mt8">${REGION_OPTIONS.map(c => `<option value="${c}">${c}</option>`).join("")}</select>`;
+  box.innerHTML = `
+    <div class="step" style="margin-top:16px">
+      <div class="step-label">Request Stock</div>
+      ${cityField}
+      <div id="reqLines" class="mt8"></div>
+      <button class="btn-option btn-sm mt8" onclick="addStockRequestLine()">+ Add SKU</button>
+      <textarea id="reqNotes" class="paste-box mt8" rows="2" placeholder="Notes (optional)"></textarea>
+      <div id="reqError" class="opt-error mt8"></div>
+      <div class="btn-group mt8">
+        <button class="btn-primary" onclick="submitStockRequest()">Submit Request</button>
+        <button class="btn-ghost" onclick="closeStockRequestForm()">Cancel</button>
+      </div>
+    </div>`;
+  renderStockRequestLines();
+}
+
+function renderStockRequestLines() {
+  const box = document.getElementById("reqLines");
+  box.innerHTML = requestFormLines.map((line, idx) => `
+    <div class="cart-item-card">
+      <select class="search-input" style="flex:1" onchange="requestFormLines[${idx}].sku_id = parseInt(this.value)">
+        ${skuOptionsHtml(line.sku_id)}
+      </select>
+      <input type="number" min="1" class="search-input" style="max-width:100px" placeholder="Qty"
+             value="${line.quantity}" oninput="requestFormLines[${idx}].quantity = this.value">
+      ${requestFormLines.length > 1 ? `<button class="qty-btn" onclick="removeStockRequestLine(${idx})">${icon("x")}</button>` : ""}
+    </div>`).join("");
+}
+
+function addStockRequestLine() {
+  requestFormLines.push({sku_id: skusCatalog[0]?.id, quantity: ""});
+  renderStockRequestLines();
+}
+
+function removeStockRequestLine(idx) {
+  requestFormLines.splice(idx, 1);
+  renderStockRequestLines();
+}
+
+async function submitStockRequest() {
+  const errBox = document.getElementById("reqError");
+  errBox.textContent = "";
+  const city = document.getElementById("reqCity").value;
+  const lines = requestFormLines
+    .filter(l => l.sku_id && Number(l.quantity) > 0)
+    .map(l => ({sku_id: l.sku_id, quantity: Number(l.quantity)}));
+  if (!lines.length) {
+    errBox.textContent = "Add at least one SKU with a quantity.";
+    return;
+  }
+  const res = await fetch("/api/stock-requests", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({city, lines, notes: document.getElementById("reqNotes").value}),
+  }).then(r => r.json());
+  if (!res.ok) {
+    errBox.textContent = res.error || "Could not submit request";
+    return;
+  }
+  closeStockRequestForm();
+  stockRequestsData = [];
+  setStockView("requests", document.getElementById("stock-view-tab-requests"));
+}
+
+// ── Stock request list + admin approve/reject ────────────────────────────────
+let stockRequestsData = [];
+let expandedStockRequest = null;
+const STOCK_REQUEST_STATUS_CLASS = { pending: "badge-amber", approved: "badge-green", rejected: "badge-red" };
+
+async function loadStockRequests() {
+  const box = document.getElementById("stockRequestsBox");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/stock-requests").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
+    return;
+  }
+  stockRequestsData = data.requests || [];
+  renderStockRequests();
+}
+
+function requestLineEditRow(reqId, line) {
+  const defaultQty = line.approved_qty !== null ? line.approved_qty : line.requested_qty;
+  return `
+    <tr>
+      <td>${line.flavour_name} — ${line.pack_format_name}</td>
+      <td>${line.requested_qty}</td>
+      <td class="num">
+        <input type="number" min="0" class="search-input" style="max-width:90px;display:inline-block"
+               id="approve-line-${line.id}" value="${defaultQty}">
+      </td>
+    </tr>`;
+}
+
+function renderStockRequests() {
+  const box = document.getElementById("stockRequestsBox");
+  if (!stockRequestsData.length) {
+    box.innerHTML = `<div class="opt-muted">No stock requests yet</div>`;
+    return;
+  }
+  box.innerHTML = stockRequestsData.map(r => {
+    const isOpen = expandedStockRequest === r.id;
+    const totalQty = r.lines.reduce((s, l) => s + (l.approved_qty !== null ? l.approved_qty : l.requested_qty), 0);
+    let body = "";
+    if (isOpen) {
+      const canApprove = IS_ADMIN && r.status === "pending";
+      body = canApprove ? `
+        <table class="summary-table mt8">
+          <thead><tr><th>SKU</th><th>Requested</th><th class="num">Approve Qty</th></tr></thead>
+          <tbody>${r.lines.map(l => requestLineEditRow(r.id, l)).join("")}</tbody>
+        </table>
+        <div class="btn-group mt8">
+          <button class="btn-option btn-sm" onclick="submitApproveStockRequest(${r.id})">${icon("check")} Approve</button>
+          <button class="btn-option btn-sm" onclick="submitRejectStockRequest(${r.id})">${icon("x")} Reject</button>
+        </div>` : `
+        <table class="summary-table mt8">
+          <thead><tr><th>SKU</th><th>Requested</th><th class="num">${r.status === "approved" ? "Approved" : "Qty"}</th></tr></thead>
+          <tbody>${r.lines.map(l => `
+            <tr><td>${l.flavour_name} — ${l.pack_format_name}</td><td>${l.requested_qty}</td>
+            <td class="num">${l.approved_qty !== null ? l.approved_qty : "—"}</td></tr>`).join("")}</tbody>
+        </table>`;
+      if (r.notes) body += `<div class="order-comment mt8"><strong>Notes:</strong> ${escapeHtml(r.notes)}</div>`;
+    }
+    return `
+      <div class="dash-order-row">
+        <div class="dash-order-main" onclick="toggleStockRequest(${r.id})" style="cursor:pointer">
+          <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${r.city}</span>
+          <span class="dash-order-client">${r.lines.length} SKU${r.lines.length === 1 ? "" : "s"} · ${totalQty} units</span>
+          <span class="opt-sub">Requested by ${r.requested_by_name}${r.approved_by_name ? ` · ${r.status === "rejected" ? "Rejected" : "Approved"} by ${r.approved_by_name}` : ""}</span>
+        </div>
+        <div class="dash-order-side">
+          <span class="badge ${STOCK_REQUEST_STATUS_CLASS[r.status] || "badge-gray"}">${r.status[0].toUpperCase() + r.status.slice(1)}</span>
+        </div>
+        ${body}
+      </div>`;
+  }).join("");
+}
+
+function toggleStockRequest(id) {
+  expandedStockRequest = expandedStockRequest === id ? null : id;
+  renderStockRequests();
+}
+
+async function submitApproveStockRequest(requestId) {
+  const req = stockRequestsData.find(r => r.id === requestId);
+  const lines = {};
+  req.lines.forEach(l => {
+    const input = document.getElementById(`approve-line-${l.id}`);
+    if (input) lines[l.id] = Number(input.value);
+  });
+  const res = await fetch(`/api/stock-requests/${requestId}/approve`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({lines}),
+  }).then(r => r.json());
+  if (!res.ok) { alert(res.error || "Could not approve request"); return; }
+  cityStockData = [];
+  loadStockRequests();
+}
+
+async function submitRejectStockRequest(requestId) {
+  if (!confirm("Reject this stock request?")) return;
+  const res = await fetch(`/api/stock-requests/${requestId}/reject`, {method: "POST"}).then(r => r.json());
+  if (!res.ok) { alert(res.error || "Could not reject request"); return; }
+  loadStockRequests();
 }
 
 // ── Flavour management (admin) ───────────────────────────────────────────────

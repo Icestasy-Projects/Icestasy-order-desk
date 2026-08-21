@@ -204,7 +204,7 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   border: 1.5px solid var(--slate-200); border-radius: var(--radius-sm); padding: 14px 16px;
   background: var(--white); cursor: pointer; transition: all .15s; text-align: left;
-  min-height: 48px;
+  min-height: 48px; user-select: none;
 }
 .option-btn:hover { border-color: var(--brand); background: var(--brand-soft); }
 .option-btn:active { transform: scale(.99); }

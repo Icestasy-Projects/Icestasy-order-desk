@@ -26,6 +26,8 @@ from order_engine import (
     get_sku_price, price_region_for_city,
     check_pending_orders, cancel_order, should_auto_hold, release_hold,
     check_stock_for_order,
+    STOCK_REQUEST_CITIES, create_stock_request, list_stock_requests,
+    approve_stock_request, reject_stock_request, city_stock_summary,
 )
 # invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
 # imports that only the invoice-download and Excel-export routes need. Kept as
@@ -532,6 +534,14 @@ def api_delete_team_member(staff_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/skus")
+@broad_view_required
+def api_skus():
+    from sku_data import ACTIVE_SKUS
+    return jsonify({"skus": [{"id": s["id"], "sku_code": s["sku_code"], "flavour_name": s["flavour_name"],
+                               "pack_format_name": s["pack_format_name"]} for s in ACTIVE_SKUS]})
+
+
 @app.route("/api/admin/sku-stock")
 @admin_required
 def api_sku_stock():
@@ -539,6 +549,77 @@ def api_sku_stock():
         return jsonify({"stock": list_sku_stock()})
     except Exception as e:
         return jsonify({"stock": [], "error": str(e)}), 200
+
+
+@app.route("/api/city-stock")
+@broad_view_required
+def api_city_stock():
+    try:
+        rows = city_stock_summary()
+        role = session["role"]
+        if role in REGION_HEAD_ROLES:
+            rows = [r for r in rows if r["city"] == REGION_HEAD_ROLES[role]]
+        return jsonify({"stock": rows, "cities": STOCK_REQUEST_CITIES})
+    except Exception as e:
+        return jsonify({"stock": [], "cities": STOCK_REQUEST_CITIES, "error": str(e)}), 200
+
+
+@app.route("/api/stock-requests")
+@broad_view_required
+def api_list_stock_requests():
+    try:
+        role = session["role"]
+        city = REGION_HEAD_ROLES.get(role)  # None for admin — sees every city
+        status = request.args.get("status") or None
+        return jsonify({"requests": list_stock_requests(city=city, status=status),
+                         "cities": STOCK_REQUEST_CITIES})
+    except Exception as e:
+        return jsonify({"requests": [], "cities": STOCK_REQUEST_CITIES, "error": str(e)}), 200
+
+
+@app.route("/api/stock-requests", methods=["POST"])
+@broad_view_required
+def api_create_stock_request():
+    body = request.get_json(force=True)
+    role = session["role"]
+    city = body.get("city")
+    own_city = REGION_HEAD_ROLES.get(role)
+    if own_city and city != own_city:
+        return jsonify({"ok": False, "error": f"You can only request stock for {own_city}"}), 403
+    try:
+        req = create_stock_request(city=city, lines=body.get("lines") or [],
+                                    requested_by=session["user_id"], notes=body.get("notes"))
+        return jsonify({"ok": True, "request": req})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/stock-requests/<int:request_id>/approve", methods=["POST"])
+@admin_required
+def api_approve_stock_request(request_id):
+    body = request.get_json(force=True)
+    try:
+        req = approve_stock_request(request_id, line_approvals=body.get("lines") or {},
+                                     approved_by=session["user_id"])
+        return jsonify({"ok": True, "request": req})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/stock-requests/<int:request_id>/reject", methods=["POST"])
+@admin_required
+def api_reject_stock_request(request_id):
+    try:
+        req = reject_stock_request(request_id, rejected_by=session["user_id"])
+        return jsonify({"ok": True, "request": req})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/admin/flavours")

@@ -1092,6 +1092,210 @@ def list_sku_stock() -> list:
     return out
 
 
+# ── City-wise stock (requisition + dispatch tracking) ───────────────────────
+# production.v_fg_stock has no location dimension — it's one central number
+# per SKU (the factory's total finished-goods stock, shown above). City-wise
+# numbers are built here instead: an admin or regional head requests stock
+# for their city, an admin approves it (editing quantities to match actual
+# factory availability), and approved quantities are the "sent to city" side
+# of the ledger. The "used" side comes from order_lines on orders that have
+# reached invoiced/delivered status.
+STOCK_REQUEST_CITIES = list(REGION_HEAD_ROLES.values())
+_CITY_USED_ORDER_STATUSES = {"invoiced", "delivered"}
+
+
+def city_for_stock_request(place: str) -> str:
+    city = city_for_place(place) if place else None
+    return city if city in STOCK_REQUEST_CITIES else "Rest of India"
+
+
+def create_stock_request(city: str, lines: list, requested_by: int, notes: str = None) -> dict:
+    if city not in STOCK_REQUEST_CITIES:
+        raise ValueError(f"Unknown city: {city}")
+    clean_lines = [{"sku_id": int(l["sku_id"]), "quantity": float(l["quantity"])}
+                   for l in lines if float(l.get("quantity") or 0) > 0]
+    if not clean_lines:
+        raise ValueError("At least one SKU line with a positive quantity is required")
+    sb = _sb()
+    req_res = (
+        sb.schema("sales").from_("stock_requests")
+        .insert({"city": city, "requested_by": requested_by, "notes": (notes or "").strip() or None})
+        .execute()
+    )
+    request_id = req_res.data[0]["id"]
+    line_rows = [{"request_id": request_id, "sku_id": l["sku_id"], "requested_qty": l["quantity"]}
+                 for l in clean_lines]
+    sb.schema("sales").from_("stock_request_lines").insert(line_rows).execute()
+    return {"id": request_id, "city": city, "status": "pending"}
+
+
+def list_stock_requests(city: str = None, status: str = None) -> list:
+    sb = _sb()
+    q = (
+        sb.schema("sales").from_("stock_requests")
+        .select("id, city, status, notes, created_at, approved_at, requested_by, approved_by")
+        .order("created_at", desc=True)
+    )
+    if city:
+        q = q.eq("city", city)
+    if status:
+        q = q.eq("status", status)
+    requests = q.execute().data
+    if not requests:
+        return []
+
+    request_ids = [r["id"] for r in requests]
+    lines = (
+        sb.schema("sales").from_("stock_request_lines")
+        .select("id, request_id, sku_id, requested_qty, approved_qty")
+        .in_("request_id", request_ids).execute().data
+    )
+    sku_by_id = {s["id"]: s for s in ACTIVE_SKUS}
+    lines_by_request = {}
+    for l in lines:
+        sku = sku_by_id.get(l["sku_id"], {})
+        lines_by_request.setdefault(l["request_id"], []).append({
+            "id": l["id"], "sku_id": l["sku_id"],
+            "flavour_name": sku.get("flavour_name", "—"),
+            "pack_format_name": sku.get("pack_format_name", "—"),
+            "sku_code": sku.get("sku_code", "—"),
+            "requested_qty": float(l["requested_qty"]),
+            "approved_qty": float(l["approved_qty"]) if l.get("approved_qty") is not None else None,
+        })
+
+    user_ids = {r["requested_by"] for r in requests if r.get("requested_by")}
+    user_ids |= {r["approved_by"] for r in requests if r.get("approved_by")}
+    users = {u["id"]: u["full_name"] for u in (
+        sb.schema("sales").from_("users").select("id,full_name").in_("id", list(user_ids)).execute().data
+        if user_ids else [])}
+
+    out = []
+    for r in requests:
+        out.append({
+            "id": r["id"], "city": r["city"], "status": r["status"], "notes": r.get("notes"),
+            "created_at": r["created_at"], "approved_at": r.get("approved_at"),
+            "requested_by_name": users.get(r.get("requested_by"), "—"),
+            "approved_by_name": users.get(r["approved_by"]) if r.get("approved_by") else None,
+            "lines": lines_by_request.get(r["id"], []),
+        })
+    return out
+
+
+def approve_stock_request(request_id: int, line_approvals: dict, approved_by: int) -> dict:
+    """line_approvals: {line_id: approved_qty} — any line not present defaults
+    to its requested_qty (admin only needs to touch lines that actually
+    differ from what was asked for)."""
+    sb = _sb()
+    req = sb.schema("sales").from_("stock_requests").select("id,status").eq("id", request_id).limit(1).execute()
+    if not req.data:
+        raise ValueError("Stock request not found")
+    if req.data[0]["status"] != "pending":
+        raise ValueError(f"Request is already {req.data[0]['status']}")
+
+    lines = (
+        sb.schema("sales").from_("stock_request_lines")
+        .select("id, requested_qty").eq("request_id", request_id).execute().data
+    )
+    overrides = {int(k): float(v) for k, v in (line_approvals or {}).items()}
+    for l in lines:
+        approved_qty = overrides.get(l["id"], float(l["requested_qty"]))
+        sb.schema("sales").from_("stock_request_lines").update({"approved_qty": approved_qty}).eq("id", l["id"]).execute()
+
+    res = (
+        sb.schema("sales").from_("stock_requests")
+        .update({"status": "approved", "approved_by": approved_by,
+                  "approved_at": datetime.now(timezone.utc).isoformat()})
+        .eq("id", request_id).execute()
+    )
+    return res.data[0]
+
+
+def reject_stock_request(request_id: int, rejected_by: int) -> dict:
+    sb = _sb()
+    req = sb.schema("sales").from_("stock_requests").select("id,status").eq("id", request_id).limit(1).execute()
+    if not req.data:
+        raise ValueError("Stock request not found")
+    if req.data[0]["status"] != "pending":
+        raise ValueError(f"Request is already {req.data[0]['status']}")
+    res = (
+        sb.schema("sales").from_("stock_requests")
+        .update({"status": "rejected", "approved_by": rejected_by,
+                  "approved_at": datetime.now(timezone.utc).isoformat()})
+        .eq("id", request_id).execute()
+    )
+    return res.data[0]
+
+
+def city_stock_summary() -> list:
+    """One row per (city, SKU) that has ever been dispatched or used, with
+    dispatched (approved stock-request qty), used (invoiced/delivered order
+    qty), and available (dispatched - used)."""
+    sb = _sb()
+    approved = (
+        sb.schema("sales").from_("stock_requests")
+        .select("city, stock_request_lines(sku_id, approved_qty)")
+        .eq("status", "approved").execute().data
+    )
+    dispatched = {}
+    for r in approved:
+        city = r["city"]
+        for l in (r.get("stock_request_lines") or []):
+            if l.get("approved_qty") is None:
+                continue
+            key = (city, l["sku_id"])
+            dispatched[key] = dispatched.get(key, 0.0) + float(l["approved_qty"])
+
+    orders = _fetch_all_pages(lambda start, end: (
+        sb.schema("sales").from_("orders").select("id, shipping_address_id")
+        .in_("status", list(_CITY_USED_ORDER_STATUSES)).range(start, end)
+    ))
+    used = {}
+    if orders:
+        addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
+        addrs = {a["id"]: a for a in (
+            sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", addr_ids).execute().data
+            if addr_ids else [])}
+        orders_by_id = {o["id"]: o for o in orders}
+        order_ids = list(orders_by_id.keys())
+        CHUNK = 600
+        lines = []
+        for i in range(0, len(order_ids), CHUNK):
+            chunk_ids = order_ids[i:i + CHUNK]
+
+            def build_lines_query(start, end, chunk_ids=chunk_ids):
+                return (
+                    sb.schema("sales").from_("order_lines").select("order_id, sku_id, quantity")
+                    .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+                )
+
+            lines.extend(_fetch_all_pages(build_lines_query))
+        for l in lines:
+            o = orders_by_id.get(l["order_id"])
+            if not o:
+                continue
+            addr = addrs.get(o.get("shipping_address_id")) or {}
+            place = addr.get("locality") or addr.get("city")
+            city = city_for_stock_request(place)
+            key = (city, l["sku_id"])
+            used[key] = used.get(key, 0.0) + float(l["quantity"])
+
+    sku_by_id = {s["id"]: s for s in ACTIVE_SKUS}
+    out = []
+    for city, sku_id in set(dispatched) | set(used):
+        sku = sku_by_id.get(sku_id)
+        if not sku:
+            continue
+        d = dispatched.get((city, sku_id), 0.0)
+        u = used.get((city, sku_id), 0.0)
+        out.append({
+            "city": city, "sku_id": sku_id, "sku_code": sku["sku_code"],
+            "flavour_name": sku["flavour_name"], "pack_format_name": sku["pack_format_name"],
+            "dispatched": d, "used": u, "available": d - u,
+        })
+    out.sort(key=lambda r: (r["city"], r["flavour_name"], r["pack_format_name"]))
+    return out
+
+
 def check_stock_for_order(lines: list) -> dict:
     stock_by_sku = _stock_rows_by_sku()
     items = []
