@@ -212,6 +212,11 @@ body {
 .opt-sub  { font-size: 12px; color: var(--slate-500); }
 .opt-error { color: var(--red); font-size: 13px; font-weight: 600; }
 .opt-muted { color: var(--slate-500); font-size: 13px; }
+.order-comment {
+  background: var(--slate-100); border-radius: var(--radius-sm);
+  padding: 10px 12px; font-size: 13px; color: var(--slate-700);
+}
+.order-comment strong { color: var(--slate-900); }
 .searching { color: var(--slate-500); font-size: 13px; }
 .selected-pill {
   display: inline-flex; align-items: center; gap: 10px;

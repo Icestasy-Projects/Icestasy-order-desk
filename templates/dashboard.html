@@ -223,7 +223,13 @@
 
     <div id="page-insights" class="hidden">
       <section class="step">
-        <div class="step-label">Flavour Sales Insights</div>
+        <div class="dash-title-row">
+          <div class="step-label" style="margin-bottom:0">Flavour Sales Insights</div>
+          <button class="btn-option btn-sm" onclick="openReportModal('flavour')">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+            Download Excel
+          </button>
+        </div>
         <div class="tab-bar-flat" id="insightsGroupTabs">
           <button class="tab-btn-flat active" onclick="setInsightsGrouping('city', this)">By City</button>
           <button class="tab-btn-flat" onclick="setInsightsGrouping('month', this)">By Month</button>
@@ -453,12 +459,13 @@ document.addEventListener("click", (e) => {
 });
 
 // ── Report export modal ────────────────────────────────────────────────────
-function openReportModal() {
+function openReportModal(presetType) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 13); // default: last 14 days, inclusive
   document.getElementById("reportFrom").value = from.toISOString().slice(0, 10);
   document.getElementById("reportTo").value = to.toISOString().slice(0, 10);
+  if (presetType) document.getElementById("reportType").value = presetType;
   onReportTypeChange();
   document.getElementById("reportModalBackdrop").classList.add("open");
   document.getElementById("reportModal").classList.add("open");
@@ -505,6 +512,8 @@ const PAY_LABELS = { received: "Payment Completed", pending: "Payment Pending", 
 const PAY_CLASS = { received: "badge-green", pending: "badge-amber", failed: "badge-red", refunded: "badge-red", not_recorded: "badge-gray" };
 
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+// Order comments are free text typed by staff — escape before rendering to avoid stored XSS.
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 async function loadOrders() {
   const box = document.getElementById("ordersBox");
@@ -738,6 +747,7 @@ function orderRow(o) {
         ${invoiceAction}
       </div>
       ${isOpen ? orderLinesHtml(o.id) : ""}
+      ${isOpen && o.notes ? `<div class="order-comment mt8"><strong>Comments:</strong> ${escapeHtml(o.notes)}</div>` : ""}
     </div>`;
 }
 
@@ -2039,7 +2049,19 @@ async function submitAddFlavour() {
   loadFlavours();
 }
 
-loadOrders();
+// Deep link from the "Order Confirmed" screen (/orders?order=<id>) — expand
+// that order's line items and scroll it into view once orders have loaded.
+function _openDeepLinkedOrder() {
+  const orderId = parseInt(new URLSearchParams(location.search).get("order"), 10);
+  if (!orderId || !allOrders.some(o => o.id === orderId)) return;
+  toggleOrderLines(orderId);
+  setTimeout(() => {
+    document.querySelector(`[onclick="toggleOrderLines(${orderId})"]`)
+      ?.scrollIntoView({behavior: "smooth", block: "center"});
+  }, 200);
+}
+
+loadOrders().then(_openDeepLinkedOrder);
 loadTeam();
 if (INITIAL_PAGE !== "orders") activatePage(INITIAL_PAGE, false);
 </script>

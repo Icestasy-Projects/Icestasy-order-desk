@@ -369,9 +369,10 @@ def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
 
 
 def _next_order_no(sb, city_code: str) -> str:
-    """{CITY}{MM}/{FY}/{SEQ:04d}, e.g. MU05/26-27/1843 — sequence is scoped
+    """{CITY}{MM}/{FY}/I{SEQ:04d}, e.g. MU05/26-27/I1843 — sequence is scoped
     per city per financial year (Indian FY, April-March), so it resets when
-    a new FY starts and each city counts independently.
+    a new FY starts and each city counts independently. The "I" prefix marks
+    the sequence segment as the invoice number.
 
     The sequence itself lives in sales.order_sequences and is incremented via
     the sales.next_order_seq() RPC, which does an atomic INSERT ... ON
@@ -385,7 +386,7 @@ def _next_order_no(sb, city_code: str) -> str:
     fy = _financial_year(today)
     mm = f"{today.month:02d}"
     seq = sb.schema("sales").rpc("next_order_seq", {"p_city_code": city_code, "p_fy": fy}).execute().data
-    return f"{city_code}{mm}/{fy}/{seq:04d}"
+    return f"{city_code}{mm}/{fy}/I{seq:04d}"
 
 
 def add_order_collateral(sb, order_id: int, collateral: list) -> list:
@@ -549,7 +550,8 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
     def build_query(start, end):
         q = (
             sb.schema("sales").from_("orders")
-            .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, shipping_address_id")
+            .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, "
+                    "shipping_address_id, notes")
             .order("created_at", desc=True)
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
@@ -619,6 +621,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
             "salesperson_name": sp.get("full_name", "—"),
             "payment_status": payment["status"] if payment else "not_recorded",
             "has_lines": o["id"] in ids_with_lines,
+            "notes": o.get("notes") or "",
         })
 
     if role in REGION_HEAD_ROLES:

@@ -27,8 +27,11 @@ from order_engine import (
     check_pending_orders, cancel_order, should_auto_hold, release_hold,
     check_stock_for_order,
 )
-from invoicing import build_invoice_pdf
-from reports import build_orders_workbook, build_flavour_sales_workbook, build_clients_workbook
+# invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
+# imports that only the invoice-download and Excel-export routes need. Kept as
+# local imports inside those routes (below) instead of module-level so every
+# other request (login, dashboard, orders...) isn't paying that import cost
+# on cold serverless starts.
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
@@ -258,6 +261,7 @@ def api_clients_list():
 
 @app.route("/api/clients/export")
 def api_clients_export():
+    from reports import build_clients_workbook
     clients = list_clients()
     buf = build_clients_workbook(clients)
     filename = f"icestasy-clients-{date.today().isoformat()}.xlsx"
@@ -381,6 +385,7 @@ def api_dashboard_orders():
 
 @app.route("/api/dashboard/export")
 def api_dashboard_export():
+    from reports import build_orders_workbook, build_flavour_sales_workbook
     role = session["role"]
     report_type = request.args.get("type", "all")
     date_from = request.args.get("from") or None
@@ -657,6 +662,7 @@ def api_update_address(address_id):
 @app.route("/api/dashboard/orders/<int:order_id>/invoice")
 @broad_view_required
 def api_order_invoice(order_id):
+    from invoicing import build_invoice_pdf
     try:
         buf, filename = build_invoice_pdf(order_id)
     except ValueError as e:

@@ -304,15 +304,18 @@ function removeCollateral(idx) {
 }
 
 function proceedFromCollateral() {
-  if (state.collateral.length === 0) {
-    if (state.collateralOnly) {
-      alert("Add at least one marketing collateral item to proceed.");
-      return;
-    }
-    if (!confirm("Are you sure you want to proceed without adding marketing collateral?")) return;
+  if (state.collateral.length === 0 && state.collateralOnly) {
+    alert("Add at least one marketing collateral item to proceed.");
+    return;
   }
   hide("step-collateral");
+  _afterCollateralStep();
+}
 
+// Shared continuation after the collateral step — also used by
+// renderNextAfterCart() to skip that step entirely in the main order flow
+// (deferred for now, will come back once collateral tracking is ready).
+function _afterCollateralStep() {
   if (state.collateralOnly) {
     state.payment = null;
     show("step-client");
@@ -424,8 +427,11 @@ function renderCart() {
 
   const proceedable = state.items.every(i => i.not_found || (!i.ambiguous && i.resolved_sku));
   if (proceedable) {
-    const sub = state.items.filter(i => !i.not_found && i.resolved_sku).reduce((s,i) => s + i.qty * i.unit_price, 0);
-    box.innerHTML += `<div class="subtotal-row">Subtotal <strong>${fmt(sub)}</strong></div>`;
+    // No subtotal shown here — prices are region/city-specific and the
+    // client/address (hence city) isn't known yet at this step, so any
+    // total shown now would likely be wrong and get silently corrected
+    // once reprice() runs after address selection. The real, accurate
+    // subtotal is shown in Order Summary once the address is picked.
     renderNextAfterCart();
   }
 }
@@ -445,8 +451,8 @@ function resolveSku(itemIdx, candidateIdx) {
 }
 
 function renderNextAfterCart() {
-  show("step-collateral");
-  renderCollateralList();
+  // Marketing collateral is deferred for now — skip straight to payment.
+  _afterCollateralStep();
 }
 
 // ── STEP 2: Payment ──────────────────────────────────────────────────────────
@@ -1047,7 +1053,7 @@ function renderDoneOrders(orders, title) {
       <div class="done-order-card">
       <div class="done-icon" style="color:${order.on_hold ? "var(--red)" : "var(--green)"}">${icon(order.on_hold ? "triangle-alert" : "circle-check-big")}</div>
       <div class="done-title">${order.on_hold ? "Order On Hold" : "Order Confirmed"}</div>
-      <div class="done-no">${order.order_no}</div>
+      <a class="done-no" href="/orders?order=${order.id}" style="text-decoration:none">${order.order_no}</a>
       <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
       ${holdBanner}
       ${discLine}
