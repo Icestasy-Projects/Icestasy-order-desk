@@ -204,7 +204,8 @@ body {
 .register-form { display: flex; flex-direction: column; }
 .register-form select.search-input { background: var(--white); }
 .option-btn {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 8px 12px;
   border: 1.5px solid var(--slate-200); border-radius: var(--radius-sm); padding: 14px 16px;
   background: var(--white); cursor: pointer; transition: all .15s; text-align: left;
   min-height: 48px; user-select: none;
@@ -475,6 +476,25 @@ body {
 .badge-green { background: #DCFCE7; color: #15803D; }
 .badge-red   { background: #FEE2E2; color: #B91C1C; }
 .badge-gray  { background: var(--slate-100); color: var(--slate-500); }
+
+/* Avatar initials — colored circle, same hue pairs as the badges above */
+.avatar-circle {
+  width: 40px; height: 40px; min-width: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; flex-shrink: 0;
+}
+.avatar-blue   { background: #DBEAFE; color: #1D4ED8; }
+.avatar-green  { background: #DCFCE7; color: #15803D; }
+.avatar-purple { background: #EDE9FE; color: #6D28D9; }
+.avatar-amber  { background: #FEF3C7; color: #92400E; }
+.avatar-pink   { background: #FCE7F3; color: #BE185D; }
+.avatar-teal   { background: #CCFBF1; color: #0F766E; }
+
+/* Person-row layout: avatar + name/details on the left, badges/actions on
+   the right — used for Team and Client rows. */
+.person-row-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.person-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.person-row-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
 /* Mobile fine-tuning */
 @media (max-width: 480px) {
