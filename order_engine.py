@@ -1,6 +1,7 @@
 import os
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
+from postgrest.exceptions import APIError
 from sku_data import MOCK_PRICES, ACTIVE_SKUS
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -1055,6 +1056,29 @@ def delete_team_member(staff_id: int) -> dict:
     physical deletes are intentionally avoided.
     """
     return update_team_member(staff_id, {"is_active": False})
+
+
+def hard_delete_team_member(staff_id: int) -> dict:
+    """Permanently remove a staff member who has no historical activity.
+
+    orders/payments/clients/stock_requests/etc reference sales.users with
+    ON DELETE NO ACTION, so Postgres refuses the delete for anyone with real
+    history — that FK violation (23503) is caught here and turned into a
+    clear error pointing back at deactivation instead.
+    """
+    sb = _sb()
+    existing = sb.schema("sales").from_("users").select("id,full_name").eq("id", staff_id).execute().data
+    if not existing:
+        raise ValueError("Staff member not found")
+    try:
+        sb.schema("sales").from_("users").delete().eq("id", staff_id).execute()
+    except APIError as e:
+        if e.code == "23503":
+            raise ValueError(
+                "Can't permanently delete — this person has orders, payments, or other history on file. Deactivate them instead."
+            )
+        raise
+    return existing[0]
 
 
 # ── Admin: SKU stock (sourced from the production schema, no inventory

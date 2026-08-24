@@ -219,10 +219,12 @@
     <div id="page-team" class="hidden">
       <section class="step">
         <div class="step-label">Sales Team</div>
-        <div id="teamList" class="option-list"></div>
         {% if is_admin %}
-        <button id="addTeamBtn" class="btn-option btn-sm mt8" onclick="showAddTeamForm()">+ Add sales person</button>
+        <button id="addTeamBtn" type="button" class="btn-option btn-sm mt16" onclick="showAddTeamForm()">+ Add sales person</button>
+        <div id="addTeamFormBox"></div>
+        <div id="editTeamBox" class="hidden"></div>
         {% endif %}
+        <div id="teamList" class="option-list mt16"></div>
       </section>
     </div>
 
@@ -481,7 +483,11 @@ function switchPage(page) {
   activatePage(page, true);
 }
 
-window.addEventListener("popstate", () => activatePage(_pageFromPath(location.pathname), false));
+window.addEventListener("popstate", () => {
+  const page = _pageFromPath(location.pathname);
+  activatePage(page, false);
+  if (page === "team" && teamData.length) _syncTeamViewFromUrl();
+});
 
 // ── Header menu + greeting ─────────────────────────────────────────────────
 function toggleMenu() {
@@ -1375,7 +1381,17 @@ async function loadTeam() {
   box.innerHTML = `<div class="searching">Loading…</div>`;
   const data = await fetch("/api/team").then(r => r.json());
   teamData = data.team || [];
-  renderTeam();
+  _syncTeamViewFromUrl();
+}
+
+// Editing a team member gets its own URL (/team?edit=<id>) instead of just
+// swapping HTML in place, so it's bookmarkable/shareable and the browser
+// back button returns cleanly to the list.
+function _syncTeamViewFromUrl() {
+  if (_pageFromPath(location.pathname) !== "team") { renderTeam(); return; }
+  const editId = parseInt(new URLSearchParams(location.search).get("edit"), 10);
+  if (editId && teamData.some(m => m.id === editId)) showEditTeamForm(editId, false);
+  else { closeEditTeamForm(false); renderTeam(); }
 }
 
 function roleBadgeClass(role) {
@@ -1404,6 +1420,7 @@ function teamMemberRow(t) {
 
 function renderTeam() {
   const box = document.getElementById("teamList");
+  box.classList.remove("hidden");
   const addBtn = document.getElementById("addTeamBtn");
   if (addBtn) addBtn.classList.remove("hidden");
   if (!teamData.length) {
@@ -1431,10 +1448,10 @@ function renderTeam() {
 }
 
 function showAddTeamForm() {
-  if (document.getElementById("teamForm")) return;
+  const box = document.getElementById("addTeamFormBox");
+  if (box.innerHTML) return;
   document.getElementById("addTeamBtn").classList.add("hidden");
-  const box = document.getElementById("teamList");
-  box.insertAdjacentHTML("beforeend", `
+  box.innerHTML = `
     <div class="register-form mt8" id="teamForm">
       <input id="tmName" class="search-input" placeholder="Full name *">
       <input id="tmEmail" class="search-input mt8" type="email" placeholder="Email *">
@@ -1445,10 +1462,15 @@ function showAddTeamForm() {
       <div id="tmError" class="opt-error mt8"></div>
       <div class="btn-group mt8">
         <button class="btn-primary" onclick="submitTeamMember()">Add Sales Person</button>
-        <button class="btn-ghost" onclick="renderTeam()">Cancel</button>
+        <button class="btn-ghost" onclick="cancelAddTeamForm()">Cancel</button>
       </div>
-    </div>`);
+    </div>`;
   syncRegionForRole("tmRole", "tmRegion");
+}
+
+function cancelAddTeamForm() {
+  document.getElementById("addTeamFormBox").innerHTML = "";
+  document.getElementById("addTeamBtn").classList.remove("hidden");
 }
 
 async function submitTeamMember() {
@@ -1472,15 +1494,25 @@ async function submitTeamMember() {
     errBox.textContent = res.error || "Could not add sales person";
     return;
   }
+  cancelAddTeamForm();
   loadTeam();
 }
 
-function showEditTeamForm(staffId) {
+// pushState defaults to true (a real click on "Edit"); it's passed false when
+// this is called to sync the view from a URL that already has ?edit=<id>
+// (initial page load, or the user hitting the browser back/forward button).
+function showEditTeamForm(staffId, pushState = true) {
   const t = teamData.find(m => m.id === staffId);
-  if (!t) return;
-  const box = document.getElementById("teamList");
+  if (!t) { closeEditTeamForm(pushState); return; }
+  if (pushState) history.pushState({page: "team", editStaffId: staffId}, "", `/team?edit=${staffId}`);
+  cancelAddTeamForm();
+  document.getElementById("teamList").classList.add("hidden");
+  document.getElementById("addTeamBtn").classList.add("hidden");
+  const box = document.getElementById("editTeamBox");
+  box.classList.remove("hidden");
   box.innerHTML = `
-    <div class="register-form mt8" id="editTeamForm">
+    <button type="button" class="btn-ghost btn-sm" onclick="closeEditTeamForm()">${icon("chevron-left")} Back to Team</button>
+    <div class="register-form mt16" id="editTeamForm">
       <div class="opt-name mt8">${t.email}</div>
       <input id="etName" class="search-input mt8" placeholder="Full name *" value="${t.full_name || ""}">
       <input id="etPhone" class="search-input mt8" placeholder="Phone (optional)" value="${t.phone || ""}">
@@ -1493,11 +1525,25 @@ function showEditTeamForm(staffId) {
       <div id="etError" class="opt-error mt8"></div>
       <div class="btn-group mt8">
         <button class="btn-primary" onclick="submitEditTeamMember(${staffId})">Save</button>
+      </div>
+      <div class="btn-group mt8">
         <button class="btn-option btn-sm" style="color:var(--red)" onclick="deleteTeamMember(${staffId})">Deactivate</button>
-        <button class="btn-ghost" onclick="renderTeam()">Cancel</button>
+        <button class="btn-option btn-sm" style="color:var(--red)" onclick="hardDeleteTeamMember(${staffId})">Delete Permanently</button>
       </div>
     </div>`;
   syncRegionForRole("etRole", "etRegion");
+}
+
+function closeEditTeamForm(pushState = true) {
+  const box = document.getElementById("editTeamBox");
+  if (box) { box.classList.add("hidden"); box.innerHTML = ""; }
+  const list = document.getElementById("teamList");
+  if (list) list.classList.remove("hidden");
+  const addBtn = document.getElementById("addTeamBtn");
+  if (addBtn) addBtn.classList.remove("hidden");
+  if (pushState && _pageFromPath(location.pathname) === "team" && location.search) {
+    history.pushState({page: "team"}, "", "/team");
+  }
 }
 
 async function submitEditTeamMember(staffId) {
@@ -1521,6 +1567,7 @@ async function submitEditTeamMember(staffId) {
     errBox.textContent = res.error || "Could not update sales person";
     return;
   }
+  closeEditTeamForm();
   loadTeam();
 }
 
@@ -1534,6 +1581,21 @@ async function deleteTeamMember(staffId) {
     else alert(res.error || "Could not deactivate team member");
     return;
   }
+  closeEditTeamForm();
+  loadTeam();
+}
+
+async function hardDeleteTeamMember(staffId) {
+  const t = teamData.find(m => m.id === staffId);
+  if (!confirm(`Permanently delete ${t ? t.full_name : "this team member"}? This cannot be undone. It only works if they have no orders, payments, or other history — otherwise deactivate them instead.`)) return;
+  const res = await fetch(`/api/team/${staffId}/permanent`, {method: "DELETE"}).then(r => r.json());
+  if (!res.ok) {
+    const errBox = document.getElementById("etError");
+    if (errBox) errBox.textContent = res.error || "Could not permanently delete team member";
+    else alert(res.error || "Could not permanently delete team member");
+    return;
+  }
+  closeEditTeamForm();
   loadTeam();
 }
 
