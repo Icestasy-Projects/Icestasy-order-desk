@@ -257,7 +257,7 @@ def api_clients():
 @app.route("/api/clients")
 def api_clients_list():
     try:
-        return jsonify({"clients": list_clients()})
+        return jsonify({"clients": list_clients(role=session.get("role"))})
     except Exception as e:
         return jsonify({"clients": [], "error": str(e)}), 200
 
@@ -265,7 +265,7 @@ def api_clients_list():
 @app.route("/api/clients/export")
 def api_clients_export():
     from reports import build_clients_workbook
-    clients = list_clients()
+    clients = list_clients(role=session.get("role"))
     buf = build_clients_workbook(clients)
     filename = f"icestasy-clients-{date.today().isoformat()}.xlsx"
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
