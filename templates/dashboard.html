@@ -224,6 +224,10 @@
         <div id="addTeamFormBox"></div>
         <div id="editTeamBox" class="hidden"></div>
         {% endif %}
+        <label class="fm-checkbox-label {{ 'mt8' if is_admin else 'mt16' }}">
+          <input type="checkbox" id="showInactiveTeam" onchange="renderTeam()">
+          Show inactive members<span id="inactiveTeamCount"></span>
+        </label>
         <div id="teamList" class="option-list mt16"></div>
       </section>
     </div>
@@ -1423,12 +1427,25 @@ function renderTeam() {
   box.classList.remove("hidden");
   const addBtn = document.getElementById("addTeamBtn");
   if (addBtn) addBtn.classList.remove("hidden");
+
+  const inactiveCount = teamData.filter(t => !t.is_active).length;
+  const countEl = document.getElementById("inactiveTeamCount");
+  if (countEl) countEl.textContent = inactiveCount ? ` (${inactiveCount})` : "";
+
   if (!teamData.length) {
     box.innerHTML = `<div class="opt-muted">No team members yet</div>`;
     return;
   }
+  // Deactivated staff are kept for their order/payment history but clutter
+  // the roster by default — hidden unless "Show inactive members" is checked.
+  const showInactive = document.getElementById("showInactiveTeam")?.checked;
+  const visibleTeam = showInactive ? teamData : teamData.filter(t => t.is_active);
+  if (!visibleTeam.length) {
+    box.innerHTML = `<div class="opt-muted">No active team members${inactiveCount ? ` — ${inactiveCount} inactive hidden` : ""}</div>`;
+    return;
+  }
   const groups = {};
-  teamData.forEach(t => {
+  visibleTeam.forEach(t => {
     const k = t.region || "Unassigned";
     (groups[k] = groups[k] || []).push(t);
   });
