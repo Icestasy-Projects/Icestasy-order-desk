@@ -905,7 +905,7 @@ def reject_order(order_id: int, rejected_by: int) -> dict:
     return res.data[0]
 
 
-def list_clients() -> list:
+def list_clients(role: str | None = None) -> list:
     sb = _sb()
     clients = (
         sb.schema("sales").from_("clients")
@@ -921,6 +921,8 @@ def list_clients() -> list:
         raw_city = addr.get("city")
         c["city"] = raw_city or (city_for_place(c["place"]) if c["place"] != "—" else "Unassigned")
         c["state"] = addr.get("state") or ""
+    if role in REGION_HEAD_ROLES:
+        clients = [c for c in clients if c["city"] == REGION_HEAD_ROLES[role]]
     return clients
 
 
