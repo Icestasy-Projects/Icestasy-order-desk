@@ -51,7 +51,7 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   flex-wrap: wrap; gap: 8px 12px;
 }
-.brand { color: #fff; font-weight: 800; font-size: 18px; letter-spacing: -.3px;
+.brand { color: #fff; font-weight: 700; font-size: 18px; letter-spacing: -.3px;
          display: flex; align-items: center; gap: 10px; white-space: nowrap;
          background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
          text-decoration: none; }
@@ -60,7 +60,7 @@ body {
   object-fit: contain; padding: 3px; flex-shrink: 0;
 }
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
-.brand-text strong { font-size: 16px; font-weight: 800; letter-spacing: .3px; }
+.brand-text strong { font-size: 16px; font-weight: 700; letter-spacing: .3px; }
 .brand-text small { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; opacity: .75; }
 .btn-ghost {
   /* Solid dark treatment, not a pale tint: this sits inside .option-btn rows,
@@ -111,7 +111,7 @@ body {
 }
 .hidden { display: none; }
 .step-label {
-  font-size: 11px; font-weight: 800; letter-spacing: .08em;
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
   text-transform: uppercase; color: var(--slate-500); margin-bottom: 16px;
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -174,7 +174,7 @@ body {
 .ci-name { font-weight: 700; font-size: 14.5px; }
 .ci-fmt  { font-size: 12px; color: var(--slate-500); }
 .ci-right { display: flex; align-items: center; gap: 14px; }
-.ci-price { font-weight: 800; color: var(--brand); font-size: 14.5px; min-width: 64px; text-align: right; }
+.ci-price { font-weight: 700; color: var(--brand); font-size: 14.5px; min-width: 64px; text-align: right; }
 .qty-ctrl { display: flex; align-items: center; gap: 8px; background: var(--white);
             border-radius: 18px; padding: 4px; }
 .qty-btn {
@@ -184,7 +184,7 @@ body {
 }
 .qty-btn:hover { background: #BFDBFE; }
 .qty-btn:active { transform: scale(.92); }
-.qty-val { min-width: 24px; text-align: center; font-weight: 800; }
+.qty-val { min-width: 24px; text-align: center; font-weight: 700; }
 .ambig-label { font-size: 13.5px; font-weight: 700; color: var(--red); margin-bottom: 10px; }
 .subtotal-row {
   text-align: right; font-size: 14.5px; color: var(--slate-700);
@@ -418,7 +418,7 @@ body {
   text-align: right; font-size: 15px; color: var(--slate-700);
   padding-top: 14px; margin-bottom: 4px;
 }
-.summary-total strong { color: var(--brand); font-size: 20px; font-weight: 800; }
+.summary-total strong { color: var(--brand); font-size: 20px; font-weight: 700; }
 
 /* Done */
 .done-box { text-align: center; padding: 16px 0; }
@@ -430,7 +430,7 @@ body {
 }
 .done-icon  { margin-bottom: 14px; }
 .done-icon .icon { width: 56px; height: 56px; vertical-align: baseline; }
-.done-title { font-size: 23px; font-weight: 800; margin-bottom: 4px; }
+.done-title { font-size: 23px; font-weight: 700; margin-bottom: 4px; }
 .done-no    { font-size: 14.5px; color: var(--brand); font-weight: 700; margin-bottom: 4px; }
 .done-meta  { font-size: 13px; color: var(--slate-500); margin-bottom: 22px; }
 .done-lines {
@@ -450,7 +450,7 @@ body {
 .dash-stats { display: flex; gap: 18px; }
 .dash-export-btn { display: inline-block; margin-top: 10px; font-size: 12px; padding: 7px 14px; min-height: 32px; }
 .dash-stat { display: flex; flex-direction: column; align-items: flex-end; }
-.dash-stat-num { font-size: 20px; font-weight: 800; color: var(--brand); }
+.dash-stat-num { font-size: 20px; font-weight: 700; color: var(--brand); }
 .dash-stat-label { font-size: 11px; color: var(--slate-500); text-transform: uppercase; letter-spacing: .04em; }
 
 .tab-bar-flat { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1.5px solid var(--slate-200); padding-bottom: 12px; }
@@ -465,7 +465,7 @@ body {
 .dash-group { margin-top: 18px; }
 .dash-group-header {
   width: 100%; display: flex; justify-content: space-between; align-items: baseline;
-  font-weight: 800; font-size: 13.5px; padding: 4px 0 8px;
+  font-weight: 700; font-size: 13.5px; padding: 4px 0 8px;
   border: none; border-bottom: 1.5px dashed var(--slate-300); margin-bottom: 8px;
   background: none; font-family: inherit; color: var(--slate-900); cursor: pointer;
   text-align: left; min-height: 36px; transition: color .15s;
@@ -476,7 +476,7 @@ body {
 .dash-subgroup-header { font-size: 12px; font-weight: 700; color: var(--slate-700); }
 
 .type-label {
-  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
   color: var(--slate-500); margin: 14px 0 2px;
 }
 .type-label:first-child { margin-top: 4px; }
@@ -506,7 +506,7 @@ body {
 .avatar-circle {
   width: 40px; height: 40px; min-width: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 800; flex-shrink: 0;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
 }
 .avatar-blue   { background: #DBEAFE; color: #1D4ED8; }
 .avatar-green  { background: #DCFCE7; color: #15803D; }
@@ -568,7 +568,7 @@ body {
 }
 
 /* Greeting header */
-.greeting-title { font-size: 23px; font-weight: 800; letter-spacing: -.3px; margin-bottom: 4px; color: var(--slate-900); }
+.greeting-title { font-size: 23px; font-weight: 700; letter-spacing: -.3px; margin-bottom: 4px; color: var(--slate-900); }
 .greeting-sub { font-size: 14px; color: var(--slate-500); }
 
 /* Overview stat cards */
@@ -581,10 +581,10 @@ body {
 .overview-icon { font-size: 22px; margin-bottom: 8px; color: var(--brand); }
 .overview-icon .icon { stroke: var(--brand); }
 .overview-label {
-  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
   color: var(--slate-500); margin-bottom: 6px;
 }
-.overview-value { font-size: 19px; font-weight: 800; color: var(--brand); }
+.overview-value { font-size: 19px; font-weight: 700; color: var(--brand); }
 
 /* Sales breakdown bar charts */
 .breakdown-row { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -593,7 +593,7 @@ body {
   box-shadow: var(--shadow); padding: 18px 18px 14px; border: 1px solid var(--slate-200);
 }
 .breakdown-title {
-  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
   color: var(--slate-500); margin-bottom: 12px;
 }
 .bar-row { margin-bottom: 10px; }
@@ -608,7 +608,7 @@ body {
   box-shadow: var(--shadow); padding: 18px 18px 14px; border: 1px solid var(--slate-200);
 }
 .trend-summary { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.trend-latest { font-size: 22px; font-weight: 800; color: var(--slate-900); }
+.trend-latest { font-size: 22px; font-weight: 700; color: var(--slate-900); }
 .trend-change { font-size: 12.5px; font-weight: 700; }
 .trend-up { color: var(--green); }
 .trend-down { color: var(--red); }
@@ -627,7 +627,7 @@ body {
 
 /* Quick-action list rows */
 .section-label {
-  font-size: 13.5px; font-weight: 800; color: var(--slate-900);
+  font-size: 13.5px; font-weight: 700; color: var(--slate-900);
   margin: 4px 0 10px 2px;
 }
 .ops-list { display: flex; flex-direction: column; gap: 10px; }
@@ -695,7 +695,7 @@ body {
   z-index: 75; display: none; flex-direction: column;
 }
 .modal-box.open { display: flex; }
-.modal-title { font-size: 17px; font-weight: 800; margin-bottom: 6px; }
+.modal-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
 
 /* Pending-order warning modal */
 .modal-overlay {
@@ -709,7 +709,7 @@ body {
   padding: 24px; width: min(420px, 100%); max-height: 80vh; overflow-y: auto;
 }
 .modal-card .modal-title {
-  display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; margin-bottom: 8px;
 }
 .pending-order-row {
   display: flex; justify-content: space-between; align-items: center;
@@ -792,7 +792,7 @@ body {
   color: var(--brand);
 }
 .login-badge .icon { width: 28px; height: 28px; }
-.login-title { font-size: 21px; font-weight: 800; letter-spacing: -.3px; margin-bottom: 4px; }
+.login-title { font-size: 21px; font-weight: 700; letter-spacing: -.3px; margin-bottom: 4px; }
 .login-sub { font-size: 13.5px; color: var(--slate-500); margin-bottom: 20px; }
 .login-error { margin-bottom: 14px; text-align: left; }
 .login-form { text-align: left; display: flex; flex-direction: column; }
