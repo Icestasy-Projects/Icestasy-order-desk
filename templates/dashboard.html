@@ -71,6 +71,10 @@
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
         Insights
       </button>
+      <button class="tab-btn" id="page-tab-dues" onclick="switchPage('dues', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Dues
+      </button>
       {% endif %}
       {% if can_view_team %}
       <button class="tab-btn" id="page-tab-stock" onclick="switchPage('stock', this)">
@@ -247,6 +251,14 @@
         </div>
         <div id="insightsGapNote" class="opt-muted mt8" style="font-size:12px"></div>
         <div id="insightsBox" class="mt16"></div>
+      </section>
+    </div>
+
+    <div id="page-dues" class="hidden">
+      <section class="step">
+        <div class="step-label">Client Dues</div>
+        <div class="opt-muted mt8" style="font-size:12px">Clients with an outstanding balance, highest first.</div>
+        <div id="duesList" class="option-list mt16"></div>
       </section>
     </div>
     {% endif %}
@@ -451,7 +463,7 @@ function filteredOrders() {
 // so it's bookmarkable/shareable and the browser back/forward buttons work.
 // switchPage() (tab-bar clicks) pushes a new URL; popstate (back/forward)
 // re-activates a page without pushing again.
-const DASHBOARD_PAGES = ["orders", "clients", "team", "insights", "stock", "flavours"];
+const DASHBOARD_PAGES = ["orders", "clients", "team", "insights", "dues", "stock", "flavours"];
 
 function _pageFromPath(path) {
   const seg = path.replace(/^\/+|\/+$/g, "");
@@ -473,10 +485,13 @@ function activatePage(page, pushState) {
   if (flavoursPage) flavoursPage.classList.toggle("hidden", page !== "flavours");
   const insightsPage = document.getElementById("page-insights");
   if (insightsPage) insightsPage.classList.toggle("hidden", page !== "insights");
+  const duesPage = document.getElementById("page-dues");
+  if (duesPage) duesPage.classList.toggle("hidden", page !== "dues");
   if (page === "clients" && !clientsData.length) loadClients();
   if (page === "stock" && !cityStockData.length) loadCityStock();
   if (page === "flavours" && !flavoursData.length) loadFlavours();
   if (page === "insights" && !flavourSalesLines.length) loadFlavourSales();
+  if (page === "dues") loadDues();
   if (pushState) {
     const path = page === "orders" ? "/" : "/" + page;
     if (location.pathname !== path) history.pushState({page}, "", path);
@@ -993,6 +1008,32 @@ async function loadClients() {
   }
   clientsData = data.clients || [];
   renderClients();
+}
+
+async function loadDues() {
+  const box = document.getElementById("duesList");
+  box.innerHTML = `<div class="searching">Loading…</div>`;
+  const data = await fetch("/api/clients/dues").then(r => r.json());
+  if (data.error) {
+    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
+    return;
+  }
+  const dues = data.clients || [];
+  if (!dues.length) {
+    box.innerHTML = `<div class="opt-muted">No clients have an outstanding balance</div>`;
+    return;
+  }
+  box.innerHTML = dues.map(d => `
+    <div class="option-btn" style="cursor:default">
+      <div class="person-row-left">
+        ${avatarHtml(d.business_name)}
+        <div class="person-row-info">
+          <span class="opt-name">${d.business_name}</span>
+          <span class="opt-sub">${d.primary_contact_phone ? d.primary_contact_phone + " · " : ""}${d.place && d.place !== "—" ? d.place : d.city}${d.last_payment_date ? " · Last paid " + new Date(d.last_payment_date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}) : " · No payments received"}</span>
+        </div>
+      </div>
+      <span class="badge badge-red">${fmt(d.balance)}</span>
+    </div>`).join("");
 }
 
 // Admin-only client onboarding — deliberately kept out of the New Order flow

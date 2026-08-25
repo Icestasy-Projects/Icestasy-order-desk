@@ -934,6 +934,71 @@ def list_clients(role: str | None = None) -> list:
     return clients
 
 
+_DUES_ORDER_STATUSES = {"invoiced", "delivered"}
+
+
+def client_dues(role: str | None = None) -> list:
+    """Per-client outstanding balance: (invoiced + delivered order totals) minus
+    payments received, for clients who still owe money."""
+    sb = _sb()
+    clients = (
+        sb.schema("sales").from_("clients")
+        .select("id, business_name, primary_contact_name, primary_contact_phone, "
+                "addresses(locality, city, is_default)")
+        .eq("status", "active").execute().data
+    )
+    orders = _fetch_all_pages(lambda start, end: (
+        sb.schema("sales").from_("orders").select("id, client_id, status, total_amount").range(start, end)
+    ))
+    order_client = {}
+    invoiced_by_client = {}
+    for o in orders:
+        order_client[o["id"]] = o["client_id"]
+        if o["status"] in _DUES_ORDER_STATUSES:
+            invoiced_by_client[o["client_id"]] = invoiced_by_client.get(o["client_id"], 0.0) + float(o["total_amount"])
+
+    payments = _fetch_all_pages(lambda start, end: (
+        sb.schema("sales").from_("payments").select("order_id, amount, received_at")
+        .eq("status", "received").range(start, end)
+    ))
+    paid_by_client = {}
+    last_payment_by_client = {}
+    for p in payments:
+        cid = order_client.get(p["order_id"])
+        if cid is None:
+            continue
+        paid_by_client[cid] = paid_by_client.get(cid, 0.0) + float(p["amount"])
+        received_at = p.get("received_at")
+        if received_at and received_at > last_payment_by_client.get(cid, ""):
+            last_payment_by_client[cid] = received_at
+
+    dues = []
+    for c in clients:
+        cid = c["id"]
+        balance = invoiced_by_client.get(cid, 0.0) - paid_by_client.get(cid, 0.0)
+        if balance <= 0.01:
+            continue
+        addrs = c.get("addresses") or []
+        default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
+        addr = default_addr or {}
+        place = addr.get("locality") or "—"
+        city = addr.get("city") or (city_for_place(place) if place != "—" else "Unassigned")
+        dues.append({
+            "id": cid,
+            "business_name": c["business_name"],
+            "primary_contact_name": c.get("primary_contact_name"),
+            "primary_contact_phone": c.get("primary_contact_phone"),
+            "place": place,
+            "city": city,
+            "balance": round(balance, 2),
+            "last_payment_date": last_payment_by_client.get(cid),
+        })
+    if role in REGION_HEAD_ROLES:
+        dues = [d for d in dues if d["city"] == REGION_HEAD_ROLES[role]]
+    dues.sort(key=lambda d: d["balance"], reverse=True)
+    return dues
+
+
 def update_client(client_id: int, data: dict) -> dict:
     sb = _sb()
     updates = {}
