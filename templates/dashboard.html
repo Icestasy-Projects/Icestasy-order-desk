@@ -908,9 +908,12 @@ function renderOrders() {
 // address city values are entered at neighbourhood precision (e.g. "Bandra West").
 function renderPlaceGroups(orders) {
   const places = {};
+  const placeLabels = {};
   orders.forEach(o => {
-    const k = o.place || "—";
+    const raw = o.place || "—";
+    const k = raw === "—" ? "—" : raw.trim().toLowerCase();
     (places[k] = places[k] || []).push(o);
+    placeLabels[k] = placeLabels[k] || raw;
   });
   return Object.entries(places).map(([place, placeOrders]) => {
     const placeTotal = placeOrders.reduce((s, o) => s + o.total_amount, 0);
@@ -919,7 +922,7 @@ function renderPlaceGroups(orders) {
     return `
       <div class="dash-subgroup">
         <button type="button" class="dash-group-header dash-subgroup-header" onclick='togglePlace(${safePlace})'>
-          <span>${isOpen ? "▾" : "▸"} ${place}</span>
+          <span>${isOpen ? "▾" : "▸"} ${placeLabels[place]}</span>
           <span class="opt-sub">${placeOrders.length} orders · ${fmt(placeTotal)}</span>
         </button>
         ${isOpen ? placeOrders.map(orderRow).join("") : ""}
@@ -1184,7 +1187,13 @@ function renderClients() {
     let cityBody = "";
     if (cityOpen) {
       const placeGroups = {};
-      cityClients.forEach(c => { (placeGroups[c.place || "—"] = placeGroups[c.place || "—"] || []).push(c); });
+      const placeLabels = {};
+      cityClients.forEach(c => {
+        const raw = c.place || "—";
+        const k = raw === "—" ? "—" : raw.trim().toLowerCase();
+        (placeGroups[k] = placeGroups[k] || []).push(c);
+        placeLabels[k] = placeLabels[k] || raw;
+      });
       const orderedPlaces = Object.keys(placeGroups).sort((a, b) =>
         a === "—" ? 1 : b === "—" ? -1 : a.localeCompare(b));
       const skipSubgroup = orderedPlaces.length === 1 && orderedPlaces[0] === "—";
@@ -1193,7 +1202,7 @@ function renderClients() {
         : orderedPlaces.map(place => {
         const placeClients = placeGroups[place];
         const placeOpen = searching || expandedClientPlace === place;
-        const label = place === "—" ? "Other" : place;
+        const label = place === "—" ? "Other" : placeLabels[place];
         return `
           <div class="dash-subgroup">
             <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${JSON.stringify(place)})'>
