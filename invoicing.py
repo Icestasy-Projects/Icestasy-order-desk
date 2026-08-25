@@ -82,7 +82,7 @@ def _client_ledger(sb, client_id: int, as_of_iso: str) -> dict:
     )
     total_invoiced = sum(
         float(o["total_amount"]) for o in orders
-        if o["status"] == "invoiced" and o["created_at"] <= as_of_iso
+        if o["status"] in ("invoiced", "delivered") and o["created_at"] <= as_of_iso
     )
     order_ids = [o["id"] for o in orders]
     payments = []
