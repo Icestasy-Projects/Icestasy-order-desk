@@ -914,6 +914,12 @@ def list_clients(role: str | None = None) -> list:
                 "gstin, fssai_no, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
         .eq("status", "active").order("business_name").execute().data
     )
+    order_counts = {}
+    orders = _fetch_all_pages(lambda start, end: (
+        sb.schema("sales").from_("orders").select("client_id").range(start, end)
+    ))
+    for o in orders:
+        order_counts[o["client_id"]] = order_counts.get(o["client_id"], 0) + 1
     for c in clients:
         addrs = c.get("addresses") or []
         default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
@@ -922,6 +928,7 @@ def list_clients(role: str | None = None) -> list:
         raw_city = addr.get("city")
         c["city"] = raw_city or (city_for_place(c["place"]) if c["place"] != "—" else "Unassigned")
         c["state"] = addr.get("state") or ""
+        c["order_count"] = order_counts.get(c["id"], 0)
     if role in REGION_HEAD_ROLES:
         clients = [c for c in clients if c["city"] == REGION_HEAD_ROLES[role]]
     return clients
