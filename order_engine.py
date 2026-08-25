@@ -911,7 +911,7 @@ def list_clients(role: str | None = None) -> list:
     clients = (
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, "
-                "gstin, fssai_no, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
+                "gstin, fssai_no, gst_status, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
         .eq("status", "active").order("business_name").execute().data
     )
     order_counts = {}
@@ -929,6 +929,7 @@ def list_clients(role: str | None = None) -> list:
         c["city"] = raw_city or (city_for_place(c["place"]) if c["place"] != "—" else "Unassigned")
         c["state"] = addr.get("state") or ""
         c["order_count"] = order_counts.get(c["id"], 0)
+        c["gst_status"] = "registered" if c.get("gstin") else (c.get("gst_status") or "unknown")
     if role in REGION_HEAD_ROLES:
         clients = [c for c in clients if c["city"] == REGION_HEAD_ROLES[role]]
     return clients

@@ -212,6 +212,7 @@
             Download List
           </button>
         </div>
+        <div class="tab-bar-flat mt8" id="clientGstFilterTabs"></div>
         {% if is_admin %}
         <div id="addClientFormBox"></div>
         {% endif %}
@@ -988,6 +989,7 @@ async function rejectOrder(orderId) {
 // ── Clients ──────────────────────────────────────────────────────────────────
 let clientsData = [];
 let clientSearchQuery = "";
+let clientGstFilter = "all";
 let expandedClient = null;
 let expandedClientCity = null;
 let expandedClientPlace = null;
@@ -1173,6 +1175,8 @@ function clientRowHtml(c) {
       <div id="newaddr-${c.id}"></div>`;
   }
   const typeLabel = c.client_type ? c.client_type[0].toUpperCase() + c.client_type.slice(1) : "";
+  const gstBadge = c.gst_status === "unregistered"
+    ? `<span class="badge badge-gray" title="Confirmed Unregistered/Consumer">Unregistered</span>` : "";
   return `
     <div class="option-btn" style="cursor:${IS_ADMIN ? "pointer" : "default"}" ${IS_ADMIN ? `onclick="toggleClient(${c.id})"` : ""}>
       <div class="person-row-left">
@@ -1182,19 +1186,44 @@ function clientRowHtml(c) {
           <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
         </div>
       </div>
-      ${typeLabel ? `<span class="badge ${c.client_type === "distributor" ? "badge-blue" : "badge-green"}">${typeLabel}</span>` : ""}
+      <div style="display:flex;gap:6px;align-items:center">
+        ${gstBadge}
+        ${typeLabel ? `<span class="badge ${c.client_type === "distributor" ? "badge-blue" : "badge-green"}">${typeLabel}</span>` : ""}
+      </div>
     </div>
     ${isOpen ? `<div class="mt8">${body}</div>` : ""}`;
 }
 
+function setClientGstFilter(value, btn) {
+  clientGstFilter = value;
+  renderClients();
+}
+
+function renderClientGstFilterTabs() {
+  const box = document.getElementById("clientGstFilterTabs");
+  if (!box) return;
+  const counts = { all: clientsData.length, registered: 0, unregistered: 0, unknown: 0 };
+  clientsData.forEach(c => { counts[c.gst_status === "registered" || c.gst_status === "unregistered" ? c.gst_status : "unknown"]++; });
+  const tabs = [
+    ["all", "All"], ["registered", "Has GST"], ["unregistered", "Unregistered"], ["unknown", "Unknown"],
+  ];
+  box.innerHTML = tabs.map(([value, label]) => `
+    <button type="button" class="tab-btn-flat ${clientGstFilter === value ? "active" : ""}"
+            onclick='setClientGstFilter(${JSON.stringify(value)}, this)'>${label} (${counts[value]})</button>
+  `).join("");
+}
+
 function renderClients() {
+  renderClientGstFilterTabs();
   const box = document.getElementById("clientsList");
   if (!clientsData.length) {
     box.innerHTML = `<div class="opt-muted">No clients yet</div>`;
     return;
   }
   const q = clientSearchQuery;
-  const filtered = !q ? clientsData : clientsData.filter(c =>
+  const byGst = clientGstFilter === "all" ? clientsData : clientsData.filter(c =>
+    (c.gst_status === "registered" || c.gst_status === "unregistered" ? c.gst_status : "unknown") === clientGstFilter);
+  const filtered = !q ? byGst : byGst.filter(c =>
     (c.business_name || "").toLowerCase().includes(q) ||
     (c.primary_contact_name || "").toLowerCase().includes(q) ||
     (c.primary_contact_phone || "").toLowerCase().includes(q) ||
@@ -1203,7 +1232,7 @@ function renderClients() {
     (c.place || "").toLowerCase().includes(q) ||
     (c.state || "").toLowerCase().includes(q));
   if (!filtered.length) {
-    box.innerHTML = `<div class="opt-muted">No clients match "${clientSearchQuery}"</div>`;
+    box.innerHTML = `<div class="opt-muted">No clients match this filter</div>`;
     return;
   }
 
