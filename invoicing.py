@@ -128,7 +128,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
     sb = _sb()
     order_res = (
         sb.schema("sales").from_("orders")
-        .select("id, order_no, created_at, approved_at, client_id, billing_address_id, "
+        .select("id, order_no, created_at, client_id, billing_address_id, "
                 "shipping_address_id, discount_amount, status")
         .eq("id", order_id).limit(1).execute()
     )
