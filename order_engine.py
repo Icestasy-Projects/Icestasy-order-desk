@@ -442,12 +442,17 @@ def cancel_order(order_id: int) -> dict:
 
 
 def _client_has_unpaid_orders(sb, client_id: int) -> bool:
-    """True if the client has any non-terminal order with no 'received' payment."""
+    """True if the client has any non-terminal order with no 'received' payment.
+
+    Excludes historical_import orders — old backdated invoices shouldn't
+    auto-hold a client based on today's date, especially for a client whose
+    only orders on record are a historical backfill."""
     orders = (
         sb.schema("sales").from_("orders")
         .select("id")
         .eq("client_id", client_id)
         .not_.in_("status", ["rejected", "cancelled"])
+        .neq("source", "historical_import")
         .execute()
     )
     if not orders.data:
@@ -886,11 +891,7 @@ def approve_order(order_id: int, approved_by: int) -> dict:
         raise ValueError("Order not found")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
-    row = {
-        "status": "invoiced", "approved_by": approved_by,
-        "approved_at": datetime.now(timezone.utc).isoformat(),
-    }
-    res = sb.schema("sales").from_("orders").update(row).eq("id", order_id).execute()
+    res = sb.schema("sales").from_("orders").update({"status": "invoiced"}).eq("id", order_id).execute()
     return res.data[0]
 
 
@@ -1280,9 +1281,13 @@ def city_stock_summary() -> list:
             key = (city, l["sku_id"])
             dispatched[key] = dispatched.get(key, 0.0) + float(l["approved_qty"])
 
+    # Excludes historical_import orders even once approved/invoiced — they're
+    # backdated records of stock already consumed in the past, not new demand
+    # against today's physical stock, so they must never subtract from it here.
     orders = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("orders").select("id, shipping_address_id")
-        .in_("status", list(_CITY_USED_ORDER_STATUSES)).range(start, end)
+        .in_("status", list(_CITY_USED_ORDER_STATUSES))
+        .neq("source", "historical_import").range(start, end)
     ))
     used = {}
     if orders:
