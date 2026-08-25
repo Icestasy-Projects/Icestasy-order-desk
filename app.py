@@ -17,7 +17,7 @@ from order_engine import (
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, delete_team_member, hard_delete_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
     set_user_password, mark_password_changed,
-    approve_order, reject_order, list_clients,
+    approve_order, reject_order, list_clients, client_dues,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
     update_client, update_address,
@@ -270,6 +270,17 @@ def api_clients_export():
     filename = f"icestasy-clients-{date.today().isoformat()}.xlsx"
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      as_attachment=True, download_name=filename)
+
+
+@app.route("/api/clients/dues")
+def api_client_dues():
+    role = session.get("role")
+    if role not in BROAD_VIEW_ROLES:
+        return jsonify({"clients": [], "error": "forbidden"}), 403
+    try:
+        return jsonify({"clients": client_dues(role=role)})
+    except Exception as e:
+        return jsonify({"clients": [], "error": str(e)}), 200
 
 
 @app.route("/api/clients", methods=["POST"])
