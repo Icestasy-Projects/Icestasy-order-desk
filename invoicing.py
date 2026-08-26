@@ -2,6 +2,7 @@
 (company block, consignee/buyer, HSN-coded line items, CGST/SGST or IGST
 depending on interstate vs intrastate, running client balance, UPI QR)."""
 import io
+import os
 from datetime import datetime, timezone
 
 import qrcode
@@ -11,6 +12,8 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+
+_LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "logo1_trimmed.png")
 
 from order_engine import _sb
 
@@ -220,14 +223,16 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
 
     story = [Paragraph("Tax Invoice", styles["title"]), Spacer(1, 4)]
 
-    # Company header
-    story.append(Table([[Paragraph(
+    # Company header — logo top-left, company details alongside
+    logo_cell = Image(_LOGO_PATH, width=24 * mm, height=24 * mm * 456 / 539) if os.path.exists(_LOGO_PATH) else ""
+    story.append(Table([[logo_cell, Paragraph(
         f"<b>{COMPANY['name']}</b><br/>{COMPANY['address']}, Mob : {COMPANY['mobile']}, "
         f"FSSAI No:{COMPANY['fssai']}, MSME (MICRO) :{COMPANY['msme'].split(' ')[0]}"
         f"<br/>GSTIN : {COMPANY['gstin']}",
-        styles["small"])]], colWidths=[190 * mm],
+        styles["small"])]], colWidths=[26 * mm, 164 * mm],
         style=TableStyle([("BOX", (0, 0), (-1, -1), 0.75, colors.black), ("TOPPADDING", (0, 0), (-1, -1), 6),
-                           ("BOTTOMPADDING", (0, 0), (-1, -1), 6), ("LEFTPADDING", (0, 0), (-1, -1), 8)])))
+                           ("BOTTOMPADDING", (0, 0), (-1, -1), 6), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                           ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (0, 0), "CENTER")])))
 
     # Consignee / Buyer / Invoice meta
     consignee = Paragraph(
@@ -294,12 +299,18 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
         if ledger["last_payment_date"] else "Last Payment Date : —<br/>"
     )
     balance_word = "Dr" if ledger["balance"] >= 0 else "Cr"
+    scan_pay_cell = [
+        Paragraph("<b>SCAN &amp; PAY</b>", ParagraphStyle("scanPay", fontName="Helvetica-Bold", fontSize=8.5,
+                                                            leading=11, alignment=TA_CENTER)),
+        Spacer(1, 4),
+        qr_img,
+    ]
     footer = Table([[
         Paragraph(f"MSME : <b>{COMPANY['msme']}</b><br/><br/><b>Bank Details</b><br/>"
                   f"Bank Name : {COMPANY['bank_name']} AC : {COMPANY['bank_account_no']}<br/>"
                   f"IFSC Code : {COMPANY['ifsc']}<br/>Branch : {COMPANY['branch']}<br/>"
                   f"UPI Id : {COMPANY['upi_id']}", styles["small"]),
-        Paragraph("<b>SCAN &amp; PAY</b>", styles["smallB"]),
+        scan_pay_cell,
         Paragraph(f"{last_pay_line}Current Balance : <b>{abs(ledger['balance']):,.2f} {balance_word}</b><br/>"
                   f"Total Payable : <b>{grand_total:,.2f} Dr</b>", styles["small"]),
     ]], colWidths=[80 * mm, 30 * mm, 80 * mm],
@@ -308,10 +319,6 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
                            ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, -1), "CENTER"),
                            ("TOPPADDING", (0, 0), (-1, -1), 5), ("LEFTPADDING", (0, 0), (-1, -1), 6)]))
     story.append(footer)
-    # QR image placed via a nested table cell isn't easy to inline above, so draw it directly after.
-    story.append(Spacer(1, -22 * mm))
-    story.append(Table([[Spacer(1, 1), qr_img, Spacer(1, 1)]], colWidths=[80 * mm, 30 * mm, 80 * mm],
-                        style=TableStyle([("ALIGN", (1, 0), (1, 0), "CENTER")])))
 
     story.append(Spacer(1, 10))
     story.append(Paragraph(f"For {COMPANY['name']}<br/><br/><br/>Authorised Signature",
