@@ -28,6 +28,7 @@ from order_engine import (
     check_stock_for_order,
     STOCK_REQUEST_CITIES, create_stock_request, list_stock_requests,
     approve_stock_request, reject_stock_request, city_stock_summary,
+    list_tally_sales,
 )
 # invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
 # imports that only the invoice-download and Excel-export routes need. Kept as
@@ -49,6 +50,13 @@ ADMIN_ROLE = "admin"  # unified role: full access, add clients, approve/reject o
 BROAD_VIEW_ROLES = {ADMIN_ROLE, *REGION_HEAD_ROLES}
 ROLE_LABELS_JSON = json.dumps(ROLE_LABELS)
 
+# External machine-to-machine integrations (Tally sync) can't hold a browser
+# session cookie, so they authenticate with a static key instead — checked by
+# tally_api_key_required below, not by the session-cookie gate every other
+# /api/ route goes through.
+TALLY_API_KEY = os.environ.get("TALLY_API_KEY")
+TALLY_ENDPOINTS = {"api_tally_sales"}
+
 
 @lru_cache(maxsize=1)
 def _auth_client():
@@ -62,7 +70,7 @@ def _auth_client():
 
 @app.before_request
 def require_login():
-    if request.endpoint in PUBLIC_ENDPOINTS or request.path.startswith("/static/"):
+    if request.endpoint in PUBLIC_ENDPOINTS or request.endpoint in TALLY_ENDPOINTS or request.path.startswith("/static/"):
         return
     if not session.get("user_id"):
         if request.path.startswith("/api/"):
@@ -88,6 +96,16 @@ def broad_view_required(view):
     def wrapped(*args, **kwargs):
         if session.get("role") not in BROAD_VIEW_ROLES:
             return jsonify({"error": "forbidden"}), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def tally_api_key_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        # Deny-by-default: an unset key must never be treated as "no key required".
+        if not TALLY_API_KEY or request.headers.get("X-API-Key") != TALLY_API_KEY:
+            return jsonify({"error": "unauthorized"}), 401
         return view(*args, **kwargs)
     return wrapped
 
@@ -775,6 +793,18 @@ def api_order_invoice(order_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     return send_file(buf, mimetype="application/pdf", as_attachment=True, download_name=filename)
+
+
+@app.route("/api/tally/sales")
+@tally_api_key_required
+def api_tally_sales():
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    try:
+        sales = list_tally_sales(from_date=from_date, to_date=to_date)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"commercialSale": sales})
 
 
 if __name__ == "__main__":
