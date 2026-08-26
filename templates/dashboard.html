@@ -259,7 +259,7 @@
       <section class="step">
         <div class="step-label">Client Dues</div>
         <div class="opt-muted mt8" style="font-size:12px">Clients with an outstanding balance, highest first.</div>
-        <div id="duesList" class="option-list mt16"></div>
+        <div id="duesList" class="mt16"></div>
       </section>
     </div>
     {% endif %}
@@ -1025,17 +1025,19 @@ async function loadDues() {
     box.innerHTML = `<div class="opt-muted">No clients have an outstanding balance</div>`;
     return;
   }
-  box.innerHTML = dues.map(d => `
-    <div class="option-btn" style="cursor:default">
-      <div class="person-row-left">
-        ${avatarHtml(d.business_name)}
-        <div class="person-row-info">
-          <span class="opt-name">${d.business_name}</span>
-          <span class="opt-sub">${d.primary_contact_phone ? d.primary_contact_phone + " · " : ""}${d.place && d.place !== "—" ? d.place : d.city}${d.last_payment_date ? " · Last paid " + new Date(d.last_payment_date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}) : " · No payments received"}</span>
-        </div>
-      </div>
-      <span class="badge badge-red">${fmt(d.balance)}</span>
-    </div>`).join("");
+  box.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="summary-table">
+        <thead><tr><th>Client</th><th>Locality</th><th>Last Paid</th><th class="num">Balance</th></tr></thead>
+        <tbody>${dues.map(d => `
+          <tr>
+            <td>${d.business_name}${d.primary_contact_phone ? `<br><span class="opt-sub">${d.primary_contact_phone}</span>` : ""}</td>
+            <td>${d.place && d.place !== "—" ? d.place : d.city}</td>
+            <td>${d.last_payment_date ? new Date(d.last_payment_date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}) : "—"}</td>
+            <td class="num"><span class="badge badge-red">${fmt(d.balance)}</span></td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
 }
 
 // Admin-only client onboarding — deliberately kept out of the New Order flow
