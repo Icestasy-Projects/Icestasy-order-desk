@@ -1000,6 +1000,136 @@ def client_dues(role: str | None = None) -> list:
     return dues
 
 
+# Must match invoicing.COMPANY["state"] — kept separate to avoid a circular
+# import (invoicing.py imports from this module).
+_COMPANY_STATE = "Maharashtra"
+
+
+def _tally_addr(addr: dict | None) -> str:
+    if not addr:
+        return ""
+    parts = [addr.get("line1"), addr.get("line2"), addr.get("locality") or addr.get("city"),
+             addr.get("state"), addr.get("pincode")]
+    return ", ".join(p for p in parts if p)
+
+
+def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -> list:
+    """Invoiced/delivered orders formatted for the Tally sales-sync integration
+    (GSTIN, HSN-coded line items, CGST/SGST or IGST split) — mirrors the tax
+    logic in invoicing.py's build_invoice_pdf so both stay consistent."""
+    sb = _sb()
+
+    def build_query(start, end):
+        q = (
+            sb.schema("sales").from_("orders")
+            .select("id, order_no, created_at, client_id, billing_address_id, "
+                    "shipping_address_id, status")
+            .in_("status", ["invoiced", "delivered"])
+            .order("created_at")
+        )
+        if from_date:
+            q = q.gte("created_at", from_date)
+        if to_date:
+            q = q.lt("created_at", to_date)
+        return q.range(start, end)
+
+    orders = _fetch_all_pages(build_query)
+    if not orders:
+        return []
+
+    client_ids = list({o["client_id"] for o in orders if o.get("client_id")})
+    addr_ids = list({o[k] for o in orders for k in ("billing_address_id", "shipping_address_id") if o.get(k)})
+    order_ids = [o["id"] for o in orders]
+
+    clients = {c["id"]: c for c in (
+        sb.schema("sales").from_("clients").select("id, business_name, gstin, fssai_no")
+        .in_("id", client_ids).execute().data if client_ids else [])}
+    addrs = {a["id"]: a for a in (
+        sb.schema("sales").from_("addresses").select("*").in_("id", addr_ids).execute().data
+        if addr_ids else [])}
+
+    lines_by_order = {}
+    CHUNK = 600
+    for i in range(0, len(order_ids), CHUNK):
+        chunk_ids = order_ids[i:i + CHUNK]
+
+        def build_lines_query(start, end, chunk_ids=chunk_ids):
+            return (
+                sb.schema("sales").from_("order_lines")
+                .select("order_id, quantity, unit_price, line_total, "
+                        "skus(hsn_code, gst_rate, flavours(name), pack_formats(name))")
+                .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+            )
+
+        for l in _fetch_all_pages(build_lines_query):
+            lines_by_order.setdefault(l["order_id"], []).append(l)
+
+    out = []
+    for o in orders:
+        client = clients.get(o.get("client_id"), {})
+        billing_addr = addrs.get(o.get("billing_address_id"))
+        shipping_addr = addrs.get(o.get("shipping_address_id")) or billing_addr
+        is_interstate = bool(shipping_addr and (shipping_addr.get("state") or "").strip().lower()
+                              != _COMPANY_STATE.lower())
+
+        items = []
+        tax_buckets = {}
+        subtotal = 0.0
+        for l in lines_by_order.get(o["id"], []):
+            sku = l.get("skus") or {}
+            flavour_name = (sku.get("flavours") or {}).get("name", "—")
+            format_name = (sku.get("pack_formats") or {}).get("name", "")
+            qty = float(l["quantity"])
+            rate = float(l["unit_price"])
+            net = float(l["line_total"])
+            gst_rate = float(sku.get("gst_rate") or 5.0)
+            tax_buckets[gst_rate] = tax_buckets.get(gst_rate, 0.0) + net
+            subtotal += net
+            items.append({
+                "description": f"{flavour_name} - {format_name}",
+                "hsnCode": sku.get("hsn_code") or "",
+                "quantity": qty, "rate": rate, "amount": round(net, 2),
+                "gstRate": gst_rate,
+            })
+
+        total_tax = 0.0
+        cgst = sgst = igst = 0.0
+        for rate, taxable in tax_buckets.items():
+            if is_interstate:
+                amt = round(taxable * rate / 100, 2)
+                igst += amt
+                total_tax += amt
+            else:
+                half = round(taxable * (rate / 2) / 100, 2)
+                cgst += half
+                sgst += half
+                total_tax += half * 2
+
+        raw_total = subtotal + total_tax
+        grand_total = round(raw_total)
+        round_off = round(grand_total - raw_total, 2)
+
+        out.append({
+            "invoiceNo": o["order_no"],
+            "invoiceDate": (o["created_at"] or "")[:10],
+            "partyName": client.get("business_name", ""),
+            "partyGstin": (billing_addr or {}).get("gstin") or client.get("gstin") or "",
+            "fssaiNo": client.get("fssai_no") or "",
+            "billingAddress": _tally_addr(billing_addr),
+            "shippingAddress": _tally_addr(shipping_addr),
+            "placeOfSupply": (shipping_addr or {}).get("state") or "",
+            "items": items,
+            "taxableValue": round(subtotal, 2),
+            "cgstAmount": round(cgst, 2),
+            "sgstAmount": round(sgst, 2),
+            "igstAmount": round(igst, 2),
+            "roundOff": round_off,
+            "grandTotal": grand_total,
+            "status": o["status"],
+        })
+    return out
+
+
 def update_client(client_id: int, data: dict) -> dict:
     sb = _sb()
     updates = {}
