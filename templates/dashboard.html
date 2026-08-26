@@ -258,7 +258,9 @@
     <div id="page-dues" class="hidden">
       <section class="step">
         <div class="step-label">Client Dues</div>
-        <div class="opt-muted mt8" style="font-size:12px">Clients with an outstanding balance, highest first.</div>
+        <div class="opt-muted mt8" style="font-size:12px">Clients with an outstanding balance, highest first. Click a row to see the orders behind its balance.</div>
+        <input id="duesSearch" class="search-input mt16" type="text"
+               placeholder="Search by restaurant or locality…" oninput="handleDuesSearchInput(this.value)">
         <div id="duesList" class="mt16"></div>
       </section>
     </div>
@@ -1012,6 +1014,11 @@ async function loadClients() {
   renderClients();
 }
 
+let duesData = [];
+let duesSearchQuery = "";
+let expandedDueClientId = null;
+const duesDetailCache = {};
+
 async function loadDues() {
   const box = document.getElementById("duesList");
   box.innerHTML = `<div class="searching">Loading…</div>`;
@@ -1020,24 +1027,88 @@ async function loadDues() {
     box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
-  const dues = data.clients || [];
-  if (!dues.length) {
+  duesData = data.clients || [];
+  duesSearchQuery = "";
+  expandedDueClientId = null;
+  const search = document.getElementById("duesSearch");
+  if (search) search.value = "";
+  renderDuesTable();
+}
+
+function handleDuesSearchInput(val) {
+  duesSearchQuery = val.trim().toLowerCase();
+  renderDuesTable();
+}
+
+function renderDuesTable() {
+  const box = document.getElementById("duesList");
+  if (!duesData.length) {
     box.innerHTML = `<div class="opt-muted">No clients have an outstanding balance</div>`;
+    return;
+  }
+  const q = duesSearchQuery;
+  const rows = q ? duesData.filter(d =>
+    d.business_name.toLowerCase().includes(q) ||
+    (d.place || "").toLowerCase().includes(q) ||
+    (d.city || "").toLowerCase().includes(q)) : duesData;
+  if (!rows.length) {
+    box.innerHTML = `<div class="opt-muted">No clients match "${escapeHtml(duesSearchQuery)}"</div>`;
     return;
   }
   box.innerHTML = `
     <div style="overflow-x:auto">
       <table class="summary-table">
         <thead><tr><th>Client</th><th>Locality</th><th>Last Paid</th><th class="num">Balance</th></tr></thead>
-        <tbody>${dues.map(d => `
-          <tr>
-            <td>${d.business_name}${d.primary_contact_phone ? `<br><span class="opt-sub">${d.primary_contact_phone}</span>` : ""}</td>
+        <tbody>${rows.map(d => {
+          const isOpen = expandedDueClientId === d.id;
+          let body = "";
+          if (isOpen) {
+            const detail = duesDetailCache[d.id];
+            body = `<tr><td colspan="4">${duesDetailHtml(detail)}</td></tr>`;
+          }
+          return `
+          <tr onclick="toggleDueDetail(${d.id})" style="cursor:pointer">
+            <td>${isOpen ? "▾" : "▸"} ${d.business_name}${d.primary_contact_phone ? `<br><span class="opt-sub">${d.primary_contact_phone}</span>` : ""}</td>
             <td>${d.place && d.place !== "—" ? d.place : d.city}</td>
             <td>${d.last_payment_date ? new Date(d.last_payment_date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}) : "—"}</td>
             <td class="num"><span class="badge badge-red">${fmt(d.balance)}</span></td>
-          </tr>`).join("")}</tbody>
+          </tr>${body}`;
+        }).join("")}</tbody>
       </table>
     </div>`;
+}
+
+function duesDetailHtml(detail) {
+  if (!detail) return `<div class="searching">Loading…</div>`;
+  if (detail.error) return `<div class="opt-error">${icon("triangle-alert")} ${detail.error}</div>`;
+  if (!detail.orders.length) return `<div class="opt-muted">No outstanding orders</div>`;
+  return `
+    <table class="summary-table mt8">
+      <thead><tr><th>Order</th><th>Date</th><th class="num">Total</th><th class="num">Paid</th><th class="num">Balance</th></tr></thead>
+      <tbody>${detail.orders.map(o => `
+        <tr>
+          <td>${o.order_no}</td>
+          <td>${new Date(o.date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"})}</td>
+          <td class="num">${fmt(o.total)}</td>
+          <td class="num">${fmt(o.paid)}</td>
+          <td class="num">${o.balance > 0.01 ? fmt(o.balance) : "—"}</td>
+        </tr>`).join("")}</tbody>
+    </table>`;
+}
+
+async function toggleDueDetail(clientId) {
+  if (expandedDueClientId === clientId) {
+    expandedDueClientId = null;
+    renderDuesTable();
+    return;
+  }
+  expandedDueClientId = clientId;
+  renderDuesTable();
+  if (!duesDetailCache[clientId]) {
+    const detail = await fetch(`/api/clients/${clientId}/due-detail`).then(r => r.json());
+    duesDetailCache[clientId] = detail;
+    if (expandedDueClientId === clientId) renderDuesTable();
+  }
 }
 
 // Admin-only client onboarding — deliberately kept out of the New Order flow

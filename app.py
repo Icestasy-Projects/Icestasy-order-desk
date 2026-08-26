@@ -17,7 +17,7 @@ from order_engine import (
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, delete_team_member, hard_delete_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
     set_user_password, mark_password_changed,
-    approve_order, reject_order, list_clients, client_dues,
+    approve_order, reject_order, list_clients, client_dues, client_due_detail,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
     update_client, update_address,
@@ -299,6 +299,17 @@ def api_client_dues():
         return jsonify({"clients": client_dues(role=role)})
     except Exception as e:
         return jsonify({"clients": [], "error": str(e)}), 200
+
+
+@app.route("/api/clients/<int:client_id>/due-detail")
+@broad_view_required
+def api_client_due_detail(client_id):
+    try:
+        return jsonify(client_due_detail(client_id))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/clients", methods=["POST"])
