@@ -1000,6 +1000,50 @@ def client_dues(role: str | None = None) -> list:
     return dues
 
 
+def client_due_detail(client_id: int) -> dict:
+    """Per-order breakdown behind one client's dues total: every invoiced/delivered
+    order with what's been paid against it and what's still outstanding."""
+    sb = _sb()
+    client_res = (
+        sb.schema("sales").from_("clients").select("id, business_name, primary_contact_phone")
+        .eq("id", client_id).limit(1).execute()
+    )
+    if not client_res.data:
+        raise ValueError("Client not found")
+    client = client_res.data[0]
+
+    orders = (
+        sb.schema("sales").from_("orders")
+        .select("id, order_no, created_at, total_amount, status")
+        .eq("client_id", client_id).in_("status", list(_DUES_ORDER_STATUSES))
+        .order("created_at", desc=True).execute().data
+    )
+    order_ids = [o["id"] for o in orders]
+    paid_by_order = {}
+    if order_ids:
+        for p in (
+            sb.schema("sales").from_("payments").select("order_id, amount")
+            .eq("status", "received").in_("order_id", order_ids).execute().data
+        ):
+            paid_by_order[p["order_id"]] = paid_by_order.get(p["order_id"], 0.0) + float(p["amount"])
+
+    rows = []
+    for o in orders:
+        total = float(o["total_amount"])
+        paid = round(paid_by_order.get(o["id"], 0.0), 2)
+        rows.append({
+            "order_no": o["order_no"], "date": o["created_at"], "status": o["status"],
+            "total": total, "paid": paid, "balance": round(total - paid, 2),
+        })
+
+    return {
+        "business_name": client["business_name"],
+        "primary_contact_phone": client.get("primary_contact_phone"),
+        "orders": rows,
+        "balance": round(sum(r["balance"] for r in rows), 2),
+    }
+
+
 # Must match invoicing.COMPANY["state"] — kept separate to avoid a circular
 # import (invoicing.py imports from this module).
 _COMPANY_STATE = "Maharashtra"
