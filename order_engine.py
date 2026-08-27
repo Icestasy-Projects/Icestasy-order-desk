@@ -1,11 +1,18 @@
 import os
+import secrets
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from postgrest.exceptions import APIError
 from sku_data import MOCK_PRICES, ACTIVE_SKUS
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-DEFAULT_PASSWORD = "test@123"  # new staff accounts must change this on first login
+
+
+def _generate_temp_password() -> str:
+    """A fresh, unguessable one-time password per new account — shown once to the
+    admin who creates it, then discarded (never stored in plaintext). The account
+    must still change it on first login (must_change_password)."""
+    return secrets.token_urlsafe(9)
 
 _PAGE_SIZE = 1000  # PostgREST's default max rows per request — must page past it explicitly.
 
@@ -1260,11 +1267,13 @@ def create_team_member(data: dict) -> dict:
     res = sb.schema("sales").from_("users").insert(row).execute()
     staff = res.data[0]
 
+    temp_password = _generate_temp_password()
     try:
         sb.auth.admin.create_user({
-            "email": email, "password": DEFAULT_PASSWORD, "email_confirm": True,
+            "email": email, "password": temp_password, "email_confirm": True,
             "user_metadata": {"full_name": full_name},
         })
+        staff["temp_password"] = temp_password
     except Exception as e:
         staff["auth_error"] = str(e)
     return staff
