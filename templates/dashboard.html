@@ -1665,6 +1665,9 @@ async function submitTeamMember() {
   }
   cancelAddTeamForm();
   loadTeam();
+  if (res.member && res.member.temp_password) {
+    alert(`${res.member.full_name}'s account is ready.\n\nTemporary password: ${res.member.temp_password}\n\nShare this with them directly — it won't be shown again. They'll be asked to set their own password on first login.`);
+  }
 }
 
 // pushState defaults to true (a real click on "Edit"); it's passed false when
