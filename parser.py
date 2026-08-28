@@ -2,7 +2,7 @@ import os
 import re
 import json
 import difflib
-from sku_data import FLAVOUR_ALIASES, FORMAT_ALIASES, ACTIVE_SKUS, MOCK_PRICES, FLAVOUR_NAMES, FORMAT_NAMES
+from sku_data import FLAVOUR_ALIASES, FORMAT_ALIASES, ACTIVE_SKUS, MOCK_PRICES, FLAVOUR_NAMES, FORMAT_NAMES, FLAVOUR_ID_BY_NAME
 
 PAYMENT_KEYWORDS = {"advance", "invoice", "credit"}
 
@@ -121,8 +121,18 @@ def _strip_list_marker(line: str) -> str:
 def _find_flavour(text: str):
     for alias in sorted(FLAVOUR_ALIASES, key=len, reverse=True):
         if alias in text:
-            return FLAVOUR_ALIASES[alias]
+            return FLAVOUR_ID_BY_NAME.get(FLAVOUR_ALIASES[alias].strip().lower())
     return None
+
+
+def _is_known_alias_text(text: str) -> bool:
+    """Does this text match a known alias phrase at all — regardless of whether
+    that alias's target flavour is still active? Used for segmentation (is this
+    text shaped like an item name?), which should stay stable even for a
+    discontinued flavour someone still types by its old name; the discontinued
+    -> not_found=True outcome is decided later, by _find_flavour, at resolution
+    time."""
+    return any(alias in text for alias in FLAVOUR_ALIASES)
 
 
 def _find_format(text: str):
@@ -140,15 +150,18 @@ def _has_flavour_signal(text: str) -> bool:
     t = text.lower().strip()
     if not t:
         return False
-    if _find_flavour(t) is not None:
+    if _is_known_alias_text(t):
         return True
     words = [w for w in re.findall(r"[a-z]+", t) if len(w) > 2 and w not in _STOP_WORDS]
     if not words:
         return False
     for fname in FLAVOUR_NAMES.values():
         fname_lower = fname.lower()
+        # Whole-word overlap only — a raw substring check here (e.g. "veg" in
+        # "vegan chocolate") would false-positive on any short common word that
+        # happens to be a prefix of a flavour name.
         fwords = {w for w in re.findall(r"[a-z]+", fname_lower) if len(w) > 2}
-        if any(w in fname_lower for w in words) or (set(words) & fwords):
+        if set(words) & fwords:
             return True
     # Tier 3: typo-tolerant fuzzy match (catches e.g. "Choclate", "Vanila", "kafir")
     if any(_fuzzy_flavour_ids(w) for w in words):
@@ -197,7 +210,7 @@ def _segment_line_items(line: str):
                 # + "Popcorn") each weakly "signal" on their own and get wrongly
                 # split into two items, silently dropping the tail (no next digit
                 # to claim it).
-                if _find_flavour(head.lower()) is not None and _find_flavour(tail.lower()) is not None:
+                if _is_known_alias_text(head.lower()) and _is_known_alias_text(tail.lower()):
                     segments.append((qty, head, preceding_text))
                     tokens[following_idx] = tail  # left for the next digit to claim
                     split_done = True
@@ -377,6 +390,16 @@ def _get_prices(skus):
         return {s["id"]: MOCK_PRICES.get(s["pack_format_id"], 0.0) for s in skus}
 
 
+def all_flavour_options() -> list:
+    """Every active SKU, priced the same way any other candidate is — used to
+    let staff manually pick a flavour when auto-detection finds nothing at
+    all (parse_order_text returned not_found for that line)."""
+    prices = _get_prices(ACTIVE_SKUS)
+    options = [{**s, "unit_price": prices.get(s["id"], 0.0)} for s in ACTIVE_SKUS]
+    options.sort(key=lambda s: (s["flavour_name"], s["pack_format_id"]))
+    return options
+
+
 def _enrich(raw_items):
     pending = []
     sku_refs = {}
@@ -406,6 +429,7 @@ def _enrich(raw_items):
                 "qty": item.get("qty", 1),
                 "flavour_id": item.get("flavour_id"),
                 "format_id": item.get("format_id"),
+                "flavour_hint": flavour_hint,
                 "candidates": [],
                 "ambiguous": False,
                 "resolved_sku": None,
