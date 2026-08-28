@@ -232,6 +232,12 @@ def api_parse():
     return jsonify(result)
 
 
+@app.route("/api/parse/flavour-options")
+def api_flavour_options():
+    from parser import all_flavour_options
+    return jsonify({"options": all_flavour_options()})
+
+
 @app.route("/api/reprice", methods=["POST"])
 def api_reprice():
     body = request.get_json(force=True)

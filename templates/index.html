@@ -261,6 +261,7 @@ let state = {
   collateralOnly: false,
 };
 let searchTimer = null;
+let flavourOptionsCache = null;  // lazy-loaded full active-SKU list, for manual not_found fallback
 const COLLATERAL_TYPES = ["Tent Cards","Acrylic Tent Cards","Acrylic Stands","Inserts (for Acrylic)","Posters","Flyers"];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -411,6 +412,10 @@ async function parseOrder() {
   state.items = res.items.map(i => ({...i}));
   state.payment = res.payment || null;
 
+  if (state.items.some(i => i.not_found)) {
+    await loadFlavourOptions();
+  }
+
   hide("step-paste");
   renderCart();
   show("step-cart");
@@ -421,8 +426,36 @@ async function parseOrder() {
   }
 }
 
+async function loadFlavourOptions() {
+  if (flavourOptionsCache) return flavourOptionsCache;
+  try {
+    const res = await fetch("/api/parse/flavour-options").then(r => r.json());
+    flavourOptionsCache = res.options || [];
+  } catch {
+    flavourOptionsCache = [];
+  }
+  return flavourOptionsCache;
+}
+
+function manuallyResolveItem(itemIdx, skuId) {
+  if (!skuId) return;
+  const sku = (flavourOptionsCache || []).find(s => String(s.id) === String(skuId));
+  if (!sku) return;
+  const item = state.items[itemIdx];
+  item.resolved_sku = sku;
+  item.unit_price = sku.unit_price;
+  item.not_found = false;
+  item.ambiguous = false;
+  renderCart();
+}
+
 // ── STEP 1: Cart ─────────────────────────────────────────────────────────────
 function renderCart() {
+  if (!flavourOptionsCache && state.items.some(i => i.not_found)) {
+    loadFlavourOptions().then(renderCart);
+    return;
+  }
+
   const box = document.getElementById("cartItems");
   box.innerHTML = "";
 
@@ -433,7 +466,18 @@ function renderCart() {
     div.className = "cart-item-card";
 
     if (item.not_found) {
-      div.innerHTML = `<div class="ambig-label" style="color:#c0392b">${icon("triangle-alert")} No SKU found for item ${idx + 1} (qty: ${item.qty}) — not in active catalogue</div>`;
+      const opts = (flavourOptionsCache || []).map(s =>
+        `<option value="${s.id}">${s.flavour_name} — ${s.pack_format_name} (${fmt(s.unit_price)})</option>`
+      ).join("");
+      div.innerHTML = `
+        <div class="ambig-label" style="color:#c0392b">${icon("triangle-alert")} No SKU found for item ${idx + 1} (qty: ${item.qty}, "${item.flavour_hint || ""}") — not in active catalogue. Skipped unless you pick one:</div>
+        <div class="ci-right" style="margin-top:6px;gap:8px;display:flex">
+          <select id="manualFlavour-${idx}" class="search-input">
+            <option value="">Select flavour…</option>
+            ${opts}
+          </select>
+          <button class="btn-option btn-sm" onclick="manuallyResolveItem(${idx}, document.getElementById('manualFlavour-${idx}').value)">Use this</button>
+        </div>`;
       allResolved = false;
     } else if (!item.ambiguous && item.resolved_sku) {
       const sku = item.resolved_sku;

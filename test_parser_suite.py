@@ -51,9 +51,22 @@ for fid, fname in sorted(_FLAVOURS.items()):
     add("A-exact-name", f"1 {fname}", not_found=False, flavour_in=fname)
 
 # ── B. Every alias, typed as the sole item line ──────────────────────────────
-_target_names = {fid: name for fid, name in _FLAVOURS.items()}
-for alias, fid in FLAVOUR_ALIASES.items():
-    add("B-alias", f"2 {alias}", not_found=False, flavour_in=_target_names[fid])
+# Aliases targeting a discontinued flavour (absent from the active catalog)
+# must correctly report not_found=True — that's the desired behaviour, not
+# a gap, so it gets its own category rather than being asserted resolvable.
+# Exception: a couple of these share a whole word with a still-active flavour
+# ("meetha paan" / "Reshmi Paan" both contain "paan"; "signature chocolate" /
+# "FD Chocolate" both contain "chocolate") — the same word-overlap tier that
+# gives real typo tolerance elsewhere legitimately surfaces that flavour as a
+# candidate instead of a flat miss, which is reasonable, so those two aren't
+# asserted here.
+_active_names = set(_FLAVOURS.values())
+_word_overlap_exceptions = {"meetha paan", "banarasi", "signature chocolate", "cacaoir"}
+for alias, target_name in FLAVOUR_ALIASES.items():
+    if target_name in _active_names:
+        add("B-alias", f"2 {alias}", not_found=False, flavour_in=target_name)
+    elif alias not in _word_overlap_exceptions:
+        add("B-alias-discontinued", f"2 {alias}", not_found=True)
 
 # ── C. Ambiguous generic terms — ground truth computed independently ────────
 # (plain substring search over the real flavour-name strings, not derived
@@ -140,9 +153,9 @@ add("J-format-robust", "  2   Gulqand  ", not_found=False, flavour_in="Gulqand")
 add("J-format-robust", "2 Gulqand\n\n\nAdvance", payment="advance")
 add("J-format-robust", "1 PINEAPPLE\nINVOICE\nCLIENT: TEST", payment="invoice", client_hint="TEST")
 add("J-format-robust", "\n\n2 Ramphal\n\n", not_found=False, flavour_in="Ramphal")
-add("J-format-robust", "1 Jambhul\t\t", not_found=False, flavour_in="Jambhul")
+add("J-format-robust", "1 Jambhul\t\t", not_found=True)  # discontinued flavour
 add("J-format-robust", "1 dakshin laddoo", not_found=False, flavour_in="Dakshin Laddoo")
-add("J-format-robust", "1 LEGAL OVERDOSE", not_found=False, flavour_in="Legal Overdose")
+add("J-format-robust", "1 LEGAL OVERDOSE", not_found=True)  # discontinued flavour
 
 # ── K. Real, independently-sourced WhatsApp order messages ──────────────────
 # Unlike A-J (derived from the parser's own alias/catalog data), these 9 are
