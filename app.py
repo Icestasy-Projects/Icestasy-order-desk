@@ -286,6 +286,15 @@ def api_clients_list():
         return jsonify({"clients": [], "error": str(e)}), 200
 
 
+@app.route("/api/clients/all-lite")
+def api_clients_all_lite():
+    try:
+        from order_engine import list_clients_lite
+        return jsonify({"clients": list_clients_lite()})
+    except Exception as e:
+        return jsonify({"clients": [], "error": str(e)}), 200
+
+
 @app.route("/api/clients/export")
 def api_clients_export():
     from reports import build_clients_workbook

@@ -157,6 +157,10 @@
       </div>
       <div class="opt-muted mt8">New client? Ask your Admin to add them from the Clients tab first.</div>
       <div id="clientResults" class="option-list mt8"></div>
+      <div class="opt-muted mt16" id="clientDropdownLabel">Or pick from the full client list:</div>
+      <select id="clientDropdown" class="search-input mt8" onchange="selectClientFromDropdown(this.value)">
+        <option value="">Select client…</option>
+      </select>
     </section>
 
     <!-- STEP 4: Address -->
@@ -293,6 +297,9 @@ function resetAll() {
   document.getElementById("clientSearch").value = "";
   document.getElementById("clientSearch").style.display = "";
   document.getElementById("clientResults").innerHTML = "";
+  document.getElementById("clientDropdownLabel").style.display = "";
+  document.getElementById("clientDropdown").style.display = "";
+  document.getElementById("clientDropdown").value = "";
   document.getElementById("addressList").innerHTML = "";
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
@@ -377,7 +384,7 @@ function proceedFromCollateral() {
 function _afterCollateralStep() {
   if (state.collateralOnly) {
     state.payment = null;
-    show("step-client");
+    showClientStep();
     if (document.getElementById("clientSearch").value.length >= 2) {
       _searchClients(document.getElementById("clientSearch").value);
     }
@@ -398,7 +405,7 @@ function _afterCollateralStep() {
     setTimeout(() => {
       hide("step-payment");
       document.getElementById("payment-auto-note")?.remove();
-      show("step-client");
+      showClientStep();
       const q = document.getElementById("clientSearch").value;
       if (q.length >= 2) _searchClients(q);
     }, 1500);
@@ -633,7 +640,7 @@ function selectPayment(mode) {
     .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
   if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
   hide("step-payment");
-  show("step-client");
+  showClientStep();
   if (document.getElementById("clientSearch").value.length >= 2) {
     _searchClients(document.getElementById("clientSearch").value);
   }
@@ -672,11 +679,45 @@ async function _searchClients(q) {
     </button>`).join("");
 }
 
+let clientOptionsCache = null;
+
+async function loadClientOptions() {
+  if (clientOptionsCache) { renderClientDropdown(); return; }
+  try {
+    const res = await fetch("/api/clients/all-lite").then(r => r.json());
+    clientOptionsCache = res.clients || [];
+  } catch {
+    clientOptionsCache = [];
+  }
+  renderClientDropdown();
+}
+
+function renderClientDropdown() {
+  const sel = document.getElementById("clientDropdown");
+  const opts = (clientOptionsCache || []).map(c =>
+    `<option value="${c.id}">${c.business_name}${c.primary_contact_phone ? " — " + c.primary_contact_phone : ""}</option>`
+  ).join("");
+  sel.innerHTML = `<option value="">Select client…</option>${opts}`;
+}
+
+function showClientStep() {
+  show("step-client");
+  loadClientOptions();
+}
+
+function selectClientFromDropdown(clientId) {
+  if (!clientId) return;
+  const client = (clientOptionsCache || []).find(c => String(c.id) === String(clientId));
+  if (client) selectClient(client);
+}
+
 async function selectClient(client) {
   state.client = client;
   document.getElementById("clientResults").innerHTML =
     `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientSearch").style.display = "none";
+  document.getElementById("clientDropdownLabel").style.display = "none";
+  document.getElementById("clientDropdown").style.display = "none";
 
   hide("step-client");
   await loadAddresses(client.id);
@@ -821,6 +862,9 @@ function changeClient() {
   document.getElementById("clientResults").innerHTML = "";
   document.getElementById("clientSearch").value = "";
   document.getElementById("clientSearch").focus();
+  document.getElementById("clientDropdownLabel").style.display = "";
+  document.getElementById("clientDropdown").style.display = "";
+  document.getElementById("clientDropdown").value = "";
 }
 
 // ── STEP 4: Address ──────────────────────────────────────────────────────────
