@@ -1283,14 +1283,37 @@ def create_team_member(data: dict) -> dict:
 
     temp_password = _generate_temp_password()
     try:
-        sb.auth.admin.create_user({
+        auth_res = sb.auth.admin.create_user({
             "email": email, "password": temp_password, "email_confirm": True,
             "user_metadata": {"full_name": full_name},
         })
+        auth_user_id = auth_res.user.id
+        sb.schema("sales").from_("users").update({"auth_user_id": auth_user_id}).eq("id", staff["id"]).execute()
         staff["temp_password"] = temp_password
     except Exception as e:
         staff["auth_error"] = str(e)
     return staff
+
+
+def reset_team_member_password(staff_id: int) -> dict:
+    """Admin-triggered password reset: generates a fresh one-time password,
+    sets it on the linked Supabase Auth account, and forces a change on next
+    login — same shape as the temp password issued at account creation."""
+    sb = _sb()
+    row = (
+        sb.schema("sales").from_("users")
+        .select("id, full_name, email, auth_user_id").eq("id", staff_id).limit(1).execute()
+    )
+    if not row.data:
+        raise ValueError("Staff member not found")
+    staff = row.data[0]
+    if not staff.get("auth_user_id"):
+        raise ValueError("This account has no linked login — ask them to sign up again")
+
+    temp_password = _generate_temp_password()
+    set_user_password(staff["auth_user_id"], temp_password)
+    sb.schema("sales").from_("users").update({"must_change_password": True}).eq("id", staff_id).execute()
+    return {"full_name": staff["full_name"], "email": staff["email"], "temp_password": temp_password}
 
 
 def set_user_password(auth_user_id: str, new_password: str) -> None:
