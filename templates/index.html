@@ -97,12 +97,27 @@
 
   <main class="main">
 
-    <!-- STEP 0: Paste -->
+    <!-- STEP 0: Paste / Form -->
     <section class="step" id="step-paste">
-      <div class="step-label">Paste order message</div>
-      <textarea id="orderText" class="paste-box" rows="6"
-        placeholder="2 Bulk Belgian&#10;3 Square Mango&#10;Advance&#10;Client: Trevor"></textarea>
-      <button class="btn-primary" onclick="parseOrder()">Parse Order <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+      <div class="tab-bar-flat" id="orderModeTabs">
+        <button class="tab-btn-flat active" id="orderModeTab-paste" onclick="switchOrderMode('paste')">Paste Message</button>
+        <button class="tab-btn-flat" id="orderModeTab-form" onclick="switchOrderMode('form')">Fill Form</button>
+      </div>
+
+      <div id="orderModeBox-paste" class="mt16">
+        <div class="step-label">Paste order message</div>
+        <textarea id="orderText" class="paste-box" rows="6"
+          placeholder="2 Bulk Belgian&#10;3 Square Mango&#10;Advance&#10;Client: Trevor"></textarea>
+        <button class="btn-primary" id="parseOrderBtn" onclick="parseOrder()">Parse Order <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+      </div>
+
+      <div id="orderModeBox-form" class="mt16 hidden">
+        <div class="step-label">Order items</div>
+        <div id="formItemRows"></div>
+        <button class="btn-ghost mt8" onclick="addFormItemRow()">+ Add another item</button>
+        <button class="btn-primary mt16" onclick="submitFormOrder()">Continue <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+      </div>
+
       <button class="btn-ghost mt16" style="width:100%" onclick="startCollateralOnly()">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>
         Marketing Collateral Only (no product order)
@@ -281,6 +296,8 @@ function resetAll() {
   document.getElementById("addressList").innerHTML = "";
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
+  formItemRows = [{skuId: "", qty: 1}];
+  switchOrderMode("paste");
   show("step-paste");
 }
 
@@ -392,7 +409,7 @@ function _afterCollateralStep() {
 async function parseOrder() {
   const text = document.getElementById("orderText").value.trim();
   if (!text) return;
-  const btn = document.querySelector("#step-paste .btn-primary");
+  const btn = document.getElementById("parseOrderBtn");
   btn.disabled = true; btn.textContent = "Parsing…";
   let res;
   try {
@@ -424,6 +441,74 @@ async function parseOrder() {
   if (res.client_hint) {
     document.getElementById("clientSearch").value = res.client_hint;
   }
+}
+
+// ── STEP 0b: Fill Form (dropdown-only item entry) ────────────────────────────
+let formItemRows = [{skuId: "", qty: 1}];
+
+async function switchOrderMode(mode) {
+  document.getElementById("orderModeTab-paste").classList.toggle("active", mode === "paste");
+  document.getElementById("orderModeTab-form").classList.toggle("active", mode === "form");
+  document.getElementById("orderModeBox-paste").classList.toggle("hidden", mode !== "paste");
+  document.getElementById("orderModeBox-form").classList.toggle("hidden", mode !== "form");
+  if (mode === "form") {
+    await loadFlavourOptions();
+    renderFormItemRows();
+  }
+}
+
+function renderFormItemRows() {
+  const box = document.getElementById("formItemRows");
+  const options = flavourOptionsCache || [];
+  box.innerHTML = formItemRows.map((row, idx) => {
+    const opts = options.map(s =>
+      `<option value="${s.id}" ${String(s.id) === String(row.skuId) ? "selected" : ""}>${s.flavour_name} — ${s.pack_format_name} (${fmt(s.unit_price)})</option>`
+    ).join("");
+    const removeBtn = formItemRows.length > 1
+      ? `<button class="qty-btn" onclick="removeFormItemRow(${idx})" title="Remove">${icon("x")}</button>` : "";
+    return `
+      <div class="ci-right" style="margin-bottom:8px;gap:8px;display:flex;align-items:center">
+        <select class="search-input" style="flex:1" onchange="formItemRows[${idx}].skuId = this.value">
+          <option value="">Select flavour…</option>
+          ${opts}
+        </select>
+        <input class="search-input" type="number" min="1" value="${row.qty}" style="width:70px;text-align:center"
+          onchange="formItemRows[${idx}].qty = Math.max(1, parseInt(this.value)||1)">
+        ${removeBtn}
+      </div>`;
+  }).join("");
+}
+
+function addFormItemRow() {
+  formItemRows.push({skuId: "", qty: 1});
+  renderFormItemRows();
+}
+
+function removeFormItemRow(idx) {
+  formItemRows.splice(idx, 1);
+  renderFormItemRows();
+}
+
+function submitFormOrder() {
+  const options = flavourOptionsCache || [];
+  const chosen = formItemRows.filter(r => r.skuId);
+  if (!chosen.length) {
+    alert("Pick at least one flavour before continuing.");
+    return;
+  }
+  state.items = chosen.map(row => {
+    const sku = options.find(s => String(s.id) === String(row.skuId));
+    return {
+      qty: row.qty, flavour_id: sku.flavour_id, format_id: sku.pack_format_id,
+      candidates: [sku], ambiguous: false, resolved_sku: sku,
+      unit_price: sku.unit_price, not_found: false,
+    };
+  });
+  state.payment = null;
+
+  hide("step-paste");
+  renderCart();
+  show("step-cart");
 }
 
 async function loadFlavourOptions() {
