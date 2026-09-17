@@ -197,6 +197,20 @@ def search_clients(query: str) -> list:
     return result.data
 
 
+def list_clients_lite() -> list:
+    """Every active client's id/name/contact — lightweight (no order counts or
+    address joins, unlike list_clients) so it's cheap to fetch just to
+    populate a "browse all clients" dropdown, e.g. when a pasted order's
+    client hint doesn't match anyone via search."""
+    sb = _sb()
+    result = (
+        sb.schema("sales").from_("clients")
+        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin")
+        .eq("status", "active").order("business_name").execute()
+    )
+    return result.data
+
+
 def register_client(data: dict, registered_by: int) -> dict:
     sb = _sb()
     business_name = (data.get("business_name") or "").strip()
