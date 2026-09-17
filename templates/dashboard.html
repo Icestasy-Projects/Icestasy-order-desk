@@ -1699,6 +1699,9 @@ function showEditTeamForm(staffId, pushState = true) {
         <button class="btn-primary" onclick="submitEditTeamMember(${staffId})">Save</button>
       </div>
       <div class="btn-group mt8">
+        <button class="btn-option btn-sm" onclick="resetTeamMemberPassword(${staffId})">Reset Password</button>
+      </div>
+      <div class="btn-group mt8">
         <button class="btn-option btn-sm" style="color:var(--red)" onclick="deleteTeamMember(${staffId})">Deactivate</button>
         <button class="btn-option btn-sm" style="color:var(--red)" onclick="hardDeleteTeamMember(${staffId})">Delete Permanently</button>
       </div>
@@ -1741,6 +1744,19 @@ async function submitEditTeamMember(staffId) {
   }
   closeEditTeamForm();
   loadTeam();
+}
+
+async function resetTeamMemberPassword(staffId) {
+  const t = teamData.find(m => m.id === staffId);
+  if (!confirm(`Reset the password for ${t ? t.full_name : "this team member"}? They'll need to use the new one-time password to log in, and will be asked to set their own on next login.`)) return;
+  const res = await fetch(`/api/team/${staffId}/reset-password`, {method: "POST"}).then(r => r.json());
+  if (!res.ok) {
+    const errBox = document.getElementById("etError");
+    if (errBox) errBox.textContent = res.error || "Could not reset password";
+    else alert(res.error || "Could not reset password");
+    return;
+  }
+  alert(`${res.full_name}'s password has been reset.\n\nTemporary password: ${res.temp_password}\n\nShare this with them directly — it won't be shown again. They'll be asked to set their own password on next login.`);
 }
 
 async function deleteTeamMember(staffId) {

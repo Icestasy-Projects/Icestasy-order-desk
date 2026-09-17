@@ -16,7 +16,7 @@ from order_engine import (
     register_client, create_address, get_staff_by_email,
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, delete_team_member, hard_delete_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
-    set_user_password, mark_password_changed,
+    set_user_password, mark_password_changed, reset_team_member_password,
     approve_order, reject_order, list_clients, client_dues, client_due_detail,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
@@ -595,6 +595,18 @@ def api_hard_delete_team_member(staff_id):
     try:
         member = hard_delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/team/<int:staff_id>/reset-password", methods=["POST"])
+@admin_required
+def api_reset_team_member_password(staff_id):
+    try:
+        result = reset_team_member_password(staff_id)
+        return jsonify({"ok": True, **result})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
