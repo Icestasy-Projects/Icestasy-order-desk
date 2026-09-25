@@ -611,6 +611,20 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
     addrs = {a["id"]: a for a in (
         sb.schema("sales").from_("addresses").select("id,city,locality,state").in_("id", addr_ids).execute().data
         if addr_ids else [])}
+    # Fallback: for orders without shipping_address_id, look up the client's
+    # first address so imported orders still show a city instead of "—".
+    orphan_client_ids = list({o["client_id"] for o in orders
+                             if o.get("client_id") and not o.get("shipping_address_id")})
+    client_default_addr = {}
+    if orphan_client_ids:
+        for i in range(0, len(orphan_client_ids), CHUNK):
+            chunk = orphan_client_ids[i:i + CHUNK]
+            for a in (sb.schema("sales").from_("addresses")
+                      .select("id,client_id,city,locality,state,is_default")
+                      .in_("client_id", chunk)
+                      .order("is_default", desc=True).order("id")
+                      .execute().data):
+                client_default_addr.setdefault(a["client_id"], a)
     staff = {u["id"]: u for u in (
         sb.schema("sales").from_("users").select("id,full_name").in_("id", sp_ids).execute().data
         if sp_ids else [])}
@@ -646,7 +660,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
     out = []
     for o in orders:
         client = clients.get(o.get("client_id"), {})
-        addr = addrs.get(o.get("shipping_address_id"), {})
+        addr = addrs.get(o.get("shipping_address_id")) or client_default_addr.get(o.get("client_id")) or {}
         sp = staff.get(o.get("salesperson_id"), {})
         payment = payments.get(o["id"])
         place = addr.get("locality") or addr.get("city") or "—"
@@ -782,9 +796,21 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
     addrs = {a["id"]: a for a in (
         sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", addr_ids).execute().data
         if addr_ids else [])}
+    orphan_cids = list({o["client_id"] for o in orders
+                        if o.get("client_id") and not o.get("shipping_address_id")})
+    _client_fallback = {}
+    if orphan_cids:
+        CHUNK_A = 600
+        for i in range(0, len(orphan_cids), CHUNK_A):
+            for a in (sb.schema("sales").from_("addresses")
+                      .select("client_id,city,locality,is_default")
+                      .in_("client_id", orphan_cids[i:i + CHUNK_A])
+                      .order("is_default", desc=True).order("id")
+                      .execute().data):
+                _client_fallback.setdefault(a["client_id"], a)
 
     def _addr_place(o):
-        addr = addrs.get(o.get("shipping_address_id")) or {}
+        addr = addrs.get(o.get("shipping_address_id")) or _client_fallback.get(o.get("client_id")) or {}
         return addr.get("locality") or addr.get("city")
 
     if role in REGION_HEAD_ROLES:
@@ -1590,6 +1616,16 @@ def city_stock_summary() -> list:
         addrs = {a["id"]: a for a in (
             sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", addr_ids).execute().data
             if addr_ids else [])}
+        _stk_orphans = list({o["client_id"] for o in orders
+                             if o.get("client_id") and not o.get("shipping_address_id")})
+        _stk_fallback = {}
+        if _stk_orphans:
+            for a in (sb.schema("sales").from_("addresses")
+                      .select("client_id,city,locality,is_default")
+                      .in_("client_id", _stk_orphans)
+                      .order("is_default", desc=True).order("id")
+                      .execute().data):
+                _stk_fallback.setdefault(a["client_id"], a)
         orders_by_id = {o["id"]: o for o in orders}
         order_ids = list(orders_by_id.keys())
         CHUNK = 600
@@ -1608,7 +1644,7 @@ def city_stock_summary() -> list:
             o = orders_by_id.get(l["order_id"])
             if not o:
                 continue
-            addr = addrs.get(o.get("shipping_address_id")) or {}
+            addr = addrs.get(o.get("shipping_address_id")) or _stk_fallback.get(o.get("client_id")) or {}
             place = addr.get("locality") or addr.get("city")
             city = city_for_stock_request(place)
             key = (city, l["sku_id"])
