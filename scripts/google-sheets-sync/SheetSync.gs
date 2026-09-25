@@ -14,6 +14,8 @@
  * USAGE:
  *   Click "Icestasy Sync → Sync New Orders to DB"
  *   Only rows without "SYNCED" in the Sync Status column will be processed.
+ *   If it hits the 6-minute limit, it auto-continues via a time trigger.
+ *   Use "Stop Auto-Sync" to cancel any pending auto-continuation.
  *
  * SHEET FORMAT (Sales Paste 2026):
  *   A: (unused) | B: B-Type  |  C: Date  |  D: Invoice  |  E: Billing
@@ -24,6 +26,9 @@
  */
 
 var SUPABASE_URL = 'https://acngdpcpxburkzqxjpbf.supabase.co';
+
+// Stop processing 60s before the 6-minute Apps Script limit
+var MAX_RUNTIME_MS = 300000;
 
 // ── Column indices (0-based) ──
 var COL_BTYPE    = 1;  // B
@@ -206,6 +211,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Icestasy Sync')
     .addItem('Sync New Orders to DB', 'syncOrdersToDb')
+    .addItem('Stop Auto-Sync', 'stopAutoSync')
     .addSeparator()
     .addItem('Setup API Key', 'setupApiKey')
     .addItem('Test Connection', 'testConnection')
@@ -247,6 +253,35 @@ function testConnection() {
   } catch (e) {
     ui.alert('Connection failed: ' + e.message);
   }
+}
+
+function stopAutoSync() {
+  clearAutoTrigger_();
+  PropertiesService.getScriptProperties().deleteProperty('SYNC_AUTO_CONTINUE');
+  SpreadsheetApp.getActiveSpreadsheet().toast('Auto-sync stopped. No pending continuation.', 'Icestasy Sync', 5);
+}
+
+
+// ═══════════════════════════════════════════════
+//  AUTO-TRIGGER MANAGEMENT
+// ═══════════════════════════════════════════════
+
+function clearAutoTrigger_() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'syncOrdersToDb') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+}
+
+function scheduleAutoContinue_() {
+  clearAutoTrigger_();
+  PropertiesService.getScriptProperties().setProperty('SYNC_AUTO_CONTINUE', 'true');
+  ScriptApp.newTrigger('syncOrdersToDb')
+    .timeBased()
+    .after(60 * 1000)
+    .create();
 }
 
 
@@ -365,14 +400,24 @@ function lookupClientId_(clientName) {
 
 
 // ═══════════════════════════════════════════════
-//  MAIN SYNC
+//  MAIN SYNC (resumable, time-aware)
 // ═══════════════════════════════════════════════
 
 function syncOrdersToDb() {
-  var ui = SpreadsheetApp.getUi();
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var startTime = new Date().getTime();
+  var props = PropertiesService.getScriptProperties();
+  var isAutoResume = props.getProperty('SYNC_AUTO_CONTINUE') === 'true';
+
+  // Clear auto-continue flag — we're running now
+  props.deleteProperty('SYNC_AUTO_CONTINUE');
+  clearAutoTrigger_();
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getActiveSheet();
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
+
+  ss.toast('Finding header and date range...', 'Icestasy Sync', -1);
 
   // Find header row (look for "Invoice" in first 5 rows)
   var headerData = sheet.getRange(1, 1, Math.min(5, lastRow), lastCol).getValues();
@@ -387,51 +432,65 @@ function syncOrdersToDb() {
     if (headerRow >= 0) break;
   }
   if (headerRow < 0) {
-    ui.alert('Could not find header row with "Invoice" column. Check your sheet format.');
+    ss.toast('Could not find header row with "Invoice" column.', 'Icestasy Sync', 10);
     return;
   }
 
   var dataStartRow = headerRow + 2; // 1-indexed sheet row where data begins
   var totalDataRows = lastRow - dataStartRow + 1;
   if (totalDataRows <= 0) {
-    ui.alert('No data rows found below the header.');
+    ss.toast('No data rows found below the header.', 'Icestasy Sync', 10);
     return;
   }
 
-  // Read only the date column to find where FY 2026-27 (Apr 1, 2026) starts
-  var SYNC_FROM = new Date(2026, 3, 1); // April 1, 2026
+  // Only sync June–September 2026
+  var SYNC_FROM  = new Date(2026, 5, 1);  // June 1, 2026
+  var SYNC_UNTIL = new Date(2026, 9, 1);  // October 1, 2026 (exclusive)
   var dates = sheet.getRange(dataStartRow, COL_DATE + 1, totalDataRows, 1).getValues();
+
+  // Find first row in range
   var yearStartIdx = -1;
   for (var d = 0; d < dates.length; d++) {
     var dt = dates[d][0];
-    if (dt instanceof Date && dt >= SYNC_FROM) {
+    if (dt instanceof Date && dt >= SYNC_FROM && dt < SYNC_UNTIL) {
       yearStartIdx = d;
       break;
     }
   }
 
   if (yearStartIdx < 0) {
-    ui.alert('No rows found from ' + SYNC_FROM.toDateString() + ' onward. Nothing to sync.');
+    ss.toast('No rows found for Jun–Sep 2026.', 'Icestasy Sync', 10);
     return;
   }
 
+  // Find last row in range
+  var yearEndIdx = yearStartIdx;
+  for (var d2 = dates.length - 1; d2 >= yearStartIdx; d2--) {
+    var dt2 = dates[d2][0];
+    if (dt2 instanceof Date && dt2 >= SYNC_FROM && dt2 < SYNC_UNTIL) {
+      yearEndIdx = d2;
+      break;
+    }
+  }
+
   var syncStartRow = dataStartRow + yearStartIdx; // 1-indexed
-  var syncRowCount = lastRow - syncStartRow + 1;
-  ui.alert('Loading ' + syncRowCount + ' rows from Apr 2026 onward (starting at sheet row ' + syncStartRow + ').\nThis may take a moment.');
+  var syncRowCount = yearEndIdx - yearStartIdx + 1;
+
+  ss.toast('Loading ' + syncRowCount + ' rows (Jun–Sep 2026)...', 'Icestasy Sync', -1);
 
   var data = sheet.getRange(syncStartRow, 1, syncRowCount, lastCol).getValues();
 
-  // Group rows by invoice number
+  // Group rows by invoice number, skipping already synced rows
   var orderMap = {};
   var skippedNoInvoice = 0;
+  var skippedSynced = 0;
   var unknownFlavours = {};
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
 
-    // Double-check date is from Apr 2026 onward
     var rowDate = row[COL_DATE];
-    if (rowDate instanceof Date && rowDate < SYNC_FROM) continue;
+    if (rowDate instanceof Date && (rowDate < SYNC_FROM || rowDate >= SYNC_UNTIL)) continue;
 
     var invoice = row[COL_INVOICE];
     if (!invoice || String(invoice).trim() === '') {
@@ -444,7 +503,10 @@ function syncOrdersToDb() {
     // Skip already synced
     if (row.length > COL_SYNC) {
       var syncStatus = row[COL_SYNC] ? String(row[COL_SYNC]).trim() : '';
-      if (syncStatus === 'SYNCED') continue;
+      if (syncStatus === 'SYNCED') {
+        skippedSynced++;
+        continue;
+      }
     }
 
     if (!orderMap[invoice]) {
@@ -454,14 +516,12 @@ function syncOrdersToDb() {
     var od = orderMap[invoice];
     od.rowIndices.push(syncStartRow + i);
 
-    // Capture B-Type for city info
     var btype = row[COL_BTYPE] ? String(row[COL_BTYPE]).trim() : '';
     if (btype) od.btype = btype;
 
     var flavour = row[COL_FLAVOUR];
 
     if (isSummaryFlavour_(flavour)) {
-      // Summary row — order totals
       od.summary = {
         date: row[COL_DATE],
         billing: row[COL_BILLING] ? String(row[COL_BILLING]).trim() : '',
@@ -470,7 +530,6 @@ function syncOrdersToDb() {
         total: parseFloat(row[COL_AMT_POST]) || 0
       };
     } else {
-      // Line item row
       var qty = parseFloat(row[COL_QTY]) || 0;
       var amtPre = parseFloat(row[COL_AMT_PRE]) || 0;
       var parsed = parseFlavourToSku_(flavour);
@@ -492,10 +551,6 @@ function syncOrdersToDb() {
   }
 
   var invoices = Object.keys(orderMap);
-  if (invoices.length === 0) {
-    ui.alert('No new orders to sync. All rows are either already synced or have no invoice.');
-    return;
-  }
 
   // Count valid orders
   var validCount = 0;
@@ -507,35 +562,115 @@ function syncOrdersToDb() {
     }
   }
 
-  // Build confirmation message
-  var confirmMsg = 'Found ' + validCount + ' orders with ' + lineCount + ' line items to sync.\n' +
-    '(' + (invoices.length - validCount) + ' orders skipped: no summary or no mapped lines)\n';
-
-  var unknownKeys = Object.keys(unknownFlavours);
-  if (unknownKeys.length > 0) {
-    confirmMsg += '\nUnmapped flavours (lines skipped):\n';
-    for (var uk = 0; uk < Math.min(10, unknownKeys.length); uk++) {
-      confirmMsg += '  - ' + unknownKeys[uk] + ' (' + unknownFlavours[unknownKeys[uk]] + ' lines)\n';
-    }
-    if (unknownKeys.length > 10) confirmMsg += '  ... and ' + (unknownKeys.length - 10) + ' more\n';
+  if (validCount === 0) {
+    ss.toast(
+      'No rows to process.' +
+      (skippedSynced > 0 ? ' (' + skippedSynced + ' rows already marked SYNCED)' : ''),
+      'Icestasy Sync', 10
+    );
+    return;
   }
 
-  confirmMsg += '\nProceed?';
+  // Pre-fetch existing order_nos from Supabase to avoid duplicates
+  ss.toast('Checking for existing orders in DB...', 'Icestasy Sync', -1);
+  var existingOrders = {};
+  var validInvoices = [];
+  for (var vi = 0; vi < invoices.length; vi++) {
+    if (orderMap[invoices[vi]].summary && orderMap[invoices[vi]].lines.length > 0) {
+      validInvoices.push(invoices[vi]);
+    }
+  }
+  // Check in batches of 50 (PostgREST URL length limit)
+  for (var bi = 0; bi < validInvoices.length; bi += 50) {
+    var batch = validInvoices.slice(bi, bi + 50);
+    var inList = batch.map(function(inv) { return '"' + inv.replace(/"/g, '\\"') + '"'; }).join(',');
+    var existing = supabaseGet_('orders', 'select=order_no&order_no=in.(' + encodeURIComponent(inList) + ')&limit=1000');
+    for (var ei = 0; ei < existing.length; ei++) {
+      existingOrders[existing[ei].order_no] = true;
+    }
+  }
 
-  var confirmResult = ui.alert('Confirm Sync', confirmMsg, ui.ButtonSet.YES_NO);
-  if (confirmResult !== ui.Button.YES) return;
+  // Mark already-existing orders' rows as SYNCED and remove from processing
+  var alreadyInDb = 0;
+  for (var ai = 0; ai < invoices.length; ai++) {
+    if (existingOrders[invoices[ai]]) {
+      var od2 = orderMap[invoices[ai]];
+      for (var ri2 = 0; ri2 < od2.rowIndices.length; ri2++) {
+        sheet.getRange(od2.rowIndices[ri2], COL_SYNC + 1).setValue('SYNCED');
+      }
+      alreadyInDb++;
+      delete orderMap[invoices[ai]];
+    }
+  }
 
-  // Process each order
+  // Rebuild invoice list after removing duplicates
+  invoices = Object.keys(orderMap);
+  validCount = 0;
+  lineCount = 0;
+  for (var k2 = 0; k2 < invoices.length; k2++) {
+    if (orderMap[invoices[k2]].summary && orderMap[invoices[k2]].lines.length > 0) {
+      validCount++;
+      lineCount += orderMap[invoices[k2]].lines.length;
+    }
+  }
+
+  if (validCount === 0) {
+    ss.toast(
+      'No new orders to sync.' +
+      (alreadyInDb > 0 ? ' (' + alreadyInDb + ' already in DB, marked SYNCED)' : '') +
+      (skippedSynced > 0 ? ' (' + skippedSynced + ' rows already marked SYNCED)' : ''),
+      'Icestasy Sync', 10
+    );
+    return;
+  }
+
+  // On manual run (not auto-resume), show confirmation
+  if (!isAutoResume) {
+    var ui = SpreadsheetApp.getUi();
+    var confirmMsg = validCount + ' NEW orders with ' + lineCount + ' line items to sync.\n' +
+      (alreadyInDb > 0 ? alreadyInDb + ' orders already in DB (skipped, marked SYNCED).\n' : '') +
+      (skippedSynced > 0 ? skippedSynced + ' rows already marked SYNCED (skipped).\n' : '') +
+      '(' + (invoices.length - validCount) + ' orders skipped: no summary or no mapped lines)\n';
+
+    var unknownKeys = Object.keys(unknownFlavours);
+    if (unknownKeys.length > 0) {
+      confirmMsg += '\nUnmapped flavours (lines skipped):\n';
+      for (var uk = 0; uk < Math.min(10, unknownKeys.length); uk++) {
+        confirmMsg += '  - ' + unknownKeys[uk] + ' (' + unknownFlavours[unknownKeys[uk]] + ' lines)\n';
+      }
+      if (unknownKeys.length > 10) confirmMsg += '  ... and ' + (unknownKeys.length - 10) + ' more\n';
+    }
+
+    confirmMsg += '\nScript will auto-continue if it hits the time limit.\nProceed?';
+
+    var confirmResult = ui.alert('Confirm Sync', confirmMsg, ui.ButtonSet.YES_NO);
+    if (confirmResult !== ui.Button.YES) return;
+  } else {
+    ss.toast(
+      'Auto-continuing sync: ' + validCount + ' new orders remaining' +
+      (alreadyInDb > 0 ? ' (' + alreadyInDb + ' duplicates skipped)' : '') + '...',
+      'Icestasy Sync', 5
+    );
+  }
+
+  // Process each order with time check
   var synced = 0;
   var errors = [];
   var log = [];
+  var timedOut = false;
 
   for (var j = 0; j < invoices.length; j++) {
+    // Time check — stop before the limit
+    var elapsed = new Date().getTime() - startTime;
+    if (elapsed >= MAX_RUNTIME_MS) {
+      timedOut = true;
+      break;
+    }
+
     var inv = invoices[j];
     var od = orderMap[inv];
 
     if (!od.summary || od.lines.length === 0) {
-      log.push(inv + ': SKIP (no summary or no lines)');
       continue;
     }
 
@@ -558,21 +693,18 @@ function syncOrdersToDb() {
       // Format date
       var dateStr = null;
       if (od.summary.date) {
-        var d = od.summary.date;
-        if (d instanceof Date) {
-          dateStr = d.toISOString();
-        } else if (String(d).trim() !== '') {
-          dateStr = String(d);
+        var dd = od.summary.date;
+        if (dd instanceof Date) {
+          dateStr = dd.toISOString();
+        } else if (String(dd).trim() !== '') {
+          dateStr = String(dd);
         }
       }
-
-      // Determine channel from B-Type
-      var channel = 'whatsapp';
 
       var orderData = {
         order_no: inv,
         client_id: clientId,
-        channel: channel,
+        channel: 'whatsapp',
         order_type: 'commercial',
         payment_mode: 'invoice',
         status: 'delivered',
@@ -615,27 +747,45 @@ function syncOrdersToDb() {
       }
 
       synced++;
-      log.push(inv + ': OK (' + od.lines.length + ' lines, id=' + orderId + ')');
+
+      // Progress toast every 50 orders
+      if (synced % 50 === 0) {
+        ss.toast('Synced ' + synced + ' orders so far...', 'Icestasy Sync', 3);
+      }
 
     } catch (e) {
       errors.push(inv + ': ' + e.message);
     }
   }
 
-  // Report
-  var msg = 'Sync complete!\n\n' +
-    'Synced: ' + synced + ' orders\n' +
-    'Errors: ' + errors.length + '\n';
-
+  // Log results
+  Logger.log('=== SYNC BATCH ===');
+  Logger.log('Synced: ' + synced + ', Errors: ' + errors.length + ', Timed out: ' + timedOut);
   if (errors.length > 0) {
-    msg += '\nErrors:\n' + errors.slice(0, 20).join('\n');
-    if (errors.length > 20) msg += '\n... and ' + (errors.length - 20) + ' more';
+    Logger.log('=== ERRORS ===');
+    Logger.log(errors.join('\n'));
   }
 
-  Logger.log('=== SYNC LOG ===');
-  Logger.log(log.join('\n'));
-  Logger.log('=== ERRORS ===');
-  Logger.log(errors.join('\n'));
+  if (timedOut) {
+    // Schedule auto-continuation
+    scheduleAutoContinue_();
+    ss.toast(
+      'Synced ' + synced + ' orders this run (' + errors.length + ' errors).\n' +
+      'Time limit reached — auto-continuing in ~1 minute.\n' +
+      'Use "Stop Auto-Sync" to cancel.',
+      'Icestasy Sync', 15
+    );
+  } else {
+    // All done
+    var msg = 'Sync complete!\n' +
+      'Synced: ' + synced + ' orders\n' +
+      'Errors: ' + errors.length;
 
-  ui.alert('Sync Results', msg, ui.ButtonSet.OK);
+    if (errors.length > 0) {
+      msg += '\n\nErrors:\n' + errors.slice(0, 20).join('\n');
+      if (errors.length > 20) msg += '\n... and ' + (errors.length - 20) + ' more';
+    }
+
+    SpreadsheetApp.getUi().alert('Sync Results', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
 }
