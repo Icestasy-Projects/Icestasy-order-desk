@@ -371,13 +371,15 @@ function lookupClientId_(clientName) {
 function syncOrdersToDb() {
   var ui = SpreadsheetApp.getUi();
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = sheet.getDataRange().getValues();
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
 
   // Find header row (look for "Invoice" in first 5 rows)
+  var headerData = sheet.getRange(1, 1, Math.min(5, lastRow), lastCol).getValues();
   var headerRow = -1;
-  for (var h = 0; h < Math.min(5, data.length); h++) {
-    for (var c = 0; c < data[h].length; c++) {
-      if (String(data[h][c]).trim().toLowerCase() === 'invoice') {
+  for (var h = 0; h < headerData.length; h++) {
+    for (var c = 0; c < headerData[h].length; c++) {
+      if (String(headerData[h][c]).trim().toLowerCase() === 'invoice') {
         headerRow = h;
         break;
       }
@@ -389,19 +391,48 @@ function syncOrdersToDb() {
     return;
   }
 
-  var startRow = headerRow + 1;
-  if (startRow >= data.length) {
+  var dataStartRow = headerRow + 2; // 1-indexed sheet row where data begins
+  var totalDataRows = lastRow - dataStartRow + 1;
+  if (totalDataRows <= 0) {
     ui.alert('No data rows found below the header.');
     return;
   }
+
+  // Read only the date column to find where current year starts
+  var SYNC_YEAR = new Date().getFullYear(); // 2026
+  var dates = sheet.getRange(dataStartRow, COL_DATE + 1, totalDataRows, 1).getValues();
+  var yearStartIdx = -1;
+  for (var d = 0; d < dates.length; d++) {
+    var dt = dates[d][0];
+    if (dt instanceof Date && dt.getFullYear() >= SYNC_YEAR) {
+      yearStartIdx = d;
+      break;
+    }
+  }
+
+  if (yearStartIdx < 0) {
+    ui.alert('No rows found for ' + SYNC_YEAR + '. Nothing to sync.');
+    return;
+  }
+
+  var syncStartRow = dataStartRow + yearStartIdx; // 1-indexed
+  var syncRowCount = lastRow - syncStartRow + 1;
+  ui.alert('Loading ' + syncRowCount + ' rows from ' + SYNC_YEAR + ' (starting at sheet row ' + syncStartRow + ').\nThis may take a moment.');
+
+  var data = sheet.getRange(syncStartRow, 1, syncRowCount, lastCol).getValues();
 
   // Group rows by invoice number
   var orderMap = {};
   var skippedNoInvoice = 0;
   var unknownFlavours = {};
 
-  for (var i = startRow; i < data.length; i++) {
+  for (var i = 0; i < data.length; i++) {
     var row = data[i];
+
+    // Double-check date is current year
+    var rowDate = row[COL_DATE];
+    if (rowDate instanceof Date && rowDate.getFullYear() < SYNC_YEAR) continue;
+
     var invoice = row[COL_INVOICE];
     if (!invoice || String(invoice).trim() === '') {
       skippedNoInvoice++;
@@ -421,7 +452,7 @@ function syncOrdersToDb() {
     }
 
     var od = orderMap[invoice];
-    od.rowIndices.push(i + 1);
+    od.rowIndices.push(syncStartRow + i);
 
     // Capture B-Type for city info
     var btype = row[COL_BTYPE] ? String(row[COL_BTYPE]).trim() : '';
