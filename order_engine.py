@@ -635,7 +635,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         def build_lines_query(start, end, chunk_ids=chunk_ids):
             return (
                 sb.schema("sales").from_("order_lines")
-                .select("order_id").eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+                .select("order_id").in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
             )
 
         for l in _fetch_all_pages(build_lines_query):
@@ -803,7 +803,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
             return (
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, line_total, skus(sku_code, gst_rate, flavours(name))")
-                .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
             )
 
         lines.extend(_fetch_all_pages(build_lines_query))
@@ -867,7 +867,7 @@ def fetch_report_order_lines(order_ids: list) -> dict:
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, unit_price, line_total, line_discount_amount, status, "
                         "skus(sku_code, flavours(name), pack_formats(name))")
-                .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
             )
 
         lines.extend(_fetch_all_pages(build_lines_query))
@@ -1123,7 +1123,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, unit_price, line_total, "
                         "skus(hsn_code, gst_rate, flavours(name), pack_formats(name))")
-                .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
             )
 
         for l in _fetch_all_pages(build_lines_query):
@@ -1598,7 +1598,7 @@ def city_stock_summary() -> list:
             def build_lines_query(start, end, chunk_ids=chunk_ids):
                 return (
                     sb.schema("sales").from_("order_lines").select("order_id, sku_id, quantity")
-                    .eq("status", "active").in_("order_id", chunk_ids).range(start, end)
+                    .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
                 )
 
             lines.extend(_fetch_all_pages(build_lines_query))
