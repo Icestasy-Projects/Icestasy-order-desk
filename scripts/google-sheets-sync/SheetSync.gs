@@ -398,26 +398,26 @@ function syncOrdersToDb() {
     return;
   }
 
-  // Read only the date column to find where current year starts
-  var SYNC_YEAR = new Date().getFullYear(); // 2026
+  // Read only the date column to find where FY 2026-27 (Apr 1, 2026) starts
+  var SYNC_FROM = new Date(2026, 3, 1); // April 1, 2026
   var dates = sheet.getRange(dataStartRow, COL_DATE + 1, totalDataRows, 1).getValues();
   var yearStartIdx = -1;
   for (var d = 0; d < dates.length; d++) {
     var dt = dates[d][0];
-    if (dt instanceof Date && dt.getFullYear() >= SYNC_YEAR) {
+    if (dt instanceof Date && dt >= SYNC_FROM) {
       yearStartIdx = d;
       break;
     }
   }
 
   if (yearStartIdx < 0) {
-    ui.alert('No rows found for ' + SYNC_YEAR + '. Nothing to sync.');
+    ui.alert('No rows found from ' + SYNC_FROM.toDateString() + ' onward. Nothing to sync.');
     return;
   }
 
   var syncStartRow = dataStartRow + yearStartIdx; // 1-indexed
   var syncRowCount = lastRow - syncStartRow + 1;
-  ui.alert('Loading ' + syncRowCount + ' rows from ' + SYNC_YEAR + ' (starting at sheet row ' + syncStartRow + ').\nThis may take a moment.');
+  ui.alert('Loading ' + syncRowCount + ' rows from Apr 2026 onward (starting at sheet row ' + syncStartRow + ').\nThis may take a moment.');
 
   var data = sheet.getRange(syncStartRow, 1, syncRowCount, lastCol).getValues();
 
@@ -429,9 +429,9 @@ function syncOrdersToDb() {
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
 
-    // Double-check date is current year
+    // Double-check date is from Apr 2026 onward
     var rowDate = row[COL_DATE];
-    if (rowDate instanceof Date && rowDate.getFullYear() < SYNC_YEAR) continue;
+    if (rowDate instanceof Date && rowDate < SYNC_FROM) continue;
 
     var invoice = row[COL_INVOICE];
     if (!invoice || String(invoice).trim() === '') {
