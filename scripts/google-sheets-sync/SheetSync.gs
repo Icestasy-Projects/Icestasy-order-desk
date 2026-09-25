@@ -2,31 +2,31 @@
  * Icestasy Order Desk — Google Sheets → Supabase Sync
  *
  * SETUP:
- *   1. Open your Google Sheet (same format as Book2.xlsx)
+ *   1. Open your Google Sheet (Sales Paste 2026 or similar)
  *   2. Extensions → Apps Script → paste this entire file
  *   3. Run onOpen() once to create the menu
  *   4. Click "Icestasy Sync → Setup API Key" and enter your
- *      Supabase service_role key (Dashboard → Settings → API → service_role)
+ *      Supabase service_role key (Dashboard → Settings → API →
+ *      Legacy anon, service_role tab → copy service_role)
  *   5. Make sure the "sales" schema is exposed:
- *      Dashboard → Settings → API → Exposed schemas → add "sales"
- *   6. Add column N header: "Sync Status"
+ *      Integrations → Data API → Settings → Exposed schemas → add "sales"
  *
  * USAGE:
  *   Click "Icestasy Sync → Sync New Orders to DB"
- *   Only rows without "SYNCED" in column N will be processed.
+ *   Only rows without "SYNCED" in the Sync Status column will be processed.
  *
- * SHEET FORMAT (same as Book2.xlsx):
- *   A: B Type  |  B: Year  |  C: Date  |  D: Invoice  |  E: Billing
- *   F: Client  |  G: Flavour  |  H: Qty  |  I: Amt Pre  |  J: Amt Post
- *   K: Amt OS  |  L: Billed By  |  M: Product  |  N: Sync Status
+ * SHEET FORMAT (Sales Paste 2026):
+ *   A: (unused) | B: B-Type  |  C: Date  |  D: Invoice  |  E: Billing
+ *   F: Client   | G: Flavour |  H: Qty   |  I: Amt Pre  |  J: Amt Post
  *
- *   Summary rows: have Invoice but NO Flavour → order totals
- *   Line item rows: have Invoice AND Flavour → individual SKU lines
+ *   Summary rows: Flavour is empty OR "Null Flavour" → order totals
+ *   Line item rows: Flavour has actual name (e.g. "Amrood - 4 Ltrs") → SKU lines
  */
 
 var SUPABASE_URL = 'https://acngdpcpxburkzqxjpbf.supabase.co';
 
 // ── Column indices (0-based) ──
+var COL_BTYPE    = 1;  // B
 var COL_DATE     = 2;  // C
 var COL_INVOICE  = 3;  // D
 var COL_BILLING  = 4;  // E
@@ -35,84 +35,106 @@ var COL_FLAVOUR  = 6;  // G
 var COL_QTY      = 7;  // H
 var COL_AMT_PRE  = 8;  // I
 var COL_AMT_POST = 9;  // J
+
+// Sync Status goes in the first empty column after your data.
+// Adjust this if your sheet has more columns after J.
 var COL_SYNC     = 13; // N
 
 // ── Flavour name mapping: Excel lowercase → DB flavour name ──
 var FLAVOUR_MAP = {
-  'dakkhan sitaphal':       'Dakkhan Sitaphal (Custard Apple)',
+  'aale paak':              'Aale Paak',
   'amrood':                 'Amrood (Guava/Peru)',
-  'ratnagiri haapoos':      'Ratnagiri Hapoos (Mango)',
-  'ratnagiri hapoos':       'Ratnagiri Hapoos (Mango)',
-  'ukadiche modak':         'Ukadiche Modak',
-  'gulqand':                'Gulqand',
-  'chikkamagaluru kaaphi':  'Chikkamagaluru Kaaphi',
-  'karikku':                'Karikku (Tender Coconut)',
-  'vanilla vantage (fd)':   'Vanilla Vantage (FD)',
-  'vanilla vantage':        'Vanilla Vantage (FD)',
-  'cookie dusk':            'Cookie Dusk',
-  'kesar thandai':          'Kesar Thandai',
+  'apple pie':              'Apple Pie',
+  'banana caramel':         'Banana Caramel',
   'belgian speculoos':      'Belgian Speculoos',
-  'palaapazham':            'Palaapazham (Jackfruit)',
+  'blueberry blush (fd)':   'Blueberry Blush (FD)',
+  'blueberry blush':        'Blueberry Blush (FD)',
+  'chikkamagaluru kaaphi':  'Chikkamagaluru Kaaphi',
+  'chikoo':                 'Chikoo',
+  'cookie dusk':            'Cookie Dusk',
   'crumble & dough':        'Crumble and Dough',
   'crumble and dough':      'Crumble and Dough',
-  'mysore paak':            'Mysore Paak',
-  'salted caramel':         'Salted Caramel',
-  'reshmi paan':            'Reshmi Paan',
+  'cutting chai biskoot':   'Cutting Chai Biskoot',
+  'dakkhan sitaphal':       'Dakkhan Sitaphal (Custard Apple)',
   'dakshin laddoo':         'Dakshin Laddoo',
-  'khajoor':                'Khajoor',
-  'madagascar vanilla':     'Madagascar Vanilla',
-  'kyoka kuro goma':        'Kyoka Kuro Goma',
-  'kuro goma':              'Kyoka Kuro Goma',
-  'aale paak':              'Aale Paak',
-  'strawberry strength (fd)': 'Strawberry Strength (FD)',
+  'fd chocolate':           'FD Chocolate',
   'french vanilla':         'French Vanilla',
+  'gajar halwa':            'Gajar Halwa',
   'gud & saunf':            'Gud & Sauf',
   'gud & sauf':             'Gud & Sauf',
-  'kashmiri kesar':         'Kashmiri Kesar',
-  'japanese matcha':        'Japanese Matcha',
-  'gajar halwa':            'Gajar Halwa',
-  'sunkissed twilight':     'Sunkissed Twilight',
-  'apple pie':              'Apple Pie',
-  'midnight mania':         'Midnight Mania (Ultra Dark Chocolate)',
-  'vegan chocolate':        'Vegan Chocolate',
-  'puranpoli':              'Puranpoli',
-  'kaffir lime coconut':    'Kaffir Lime Coconut',
+  'gulqand':                'Gulqand',
   'hara pista':             'Hara Pista',
-  'ramphal':                'Ramphal',
-  'yorkshire butterscotch': 'Yorkshire Butterscotch',
+  'hass avocado':           'Hass Avocado',
+  'japanese matcha':        'Japanese Matcha',
+  'kaffir lime coconut':    'Kaffir Lime Coconut',
+  'kaju katli':             'Kaju Katli',
+  'karikku':                'Karikku (Tender Coconut)',
+  'kashmiri kesar':         'Kashmiri Kesar',
+  'kesar thandai':          'Kesar Thandai',
+  'khajoor':                'Khajoor',
+  'kuro goma':              'Kyoka Kuro Goma',
+  'kyoka kuro goma':        'Kyoka Kuro Goma',
+  'madagascar vanilla':     'Madagascar Vanilla',
   'mango basil':            'Mango Basil',
   'mango mania (fd)':       'Mango Mania (FD)',
-  'hass avocado':           'Hass Avocado',
-  'strawberry cream':       'Strawberry Cream',
-  'kaju katli':             'Kaju Katli',
-  'shahi sevaiya':          'Shahi Sevaiya',
-  'fd chocolate':           'FD Chocolate',
-  'blueberry blush (fd)':   'Blueberry Blush (FD)',
-  'banana caramel':         'Banana Caramel',
-  'chikoo':                 'Chikoo',
-  'cutting chai biskoot':   'Cutting Chai Biskoot',
-  'hass avocado':           'Hass Avocado',
-  'kashmiri kesar':         'Kashmiri Kesar',
+  'mango mania':            'Mango Mania (FD)',
+  'midnight mania':         'Midnight Mania (Ultra Dark Chocolate)',
   'miso caramel':           'Miso Caramel',
+  'mysore paak':            'Mysore Paak',
   'naarali bhaat':          'Naarali Bhaat',
   'off season sitaphal':    'Off Season Sitaphal',
+  'palaapazham':            'Palaapazham (Jackfruit)',
+  'puranpoli':              'Puranpoli',
   'qubaani':                'Qubaani (Apricots)',
-  'signature strawberry':   'Signature Strawberry (Rosaea)',
+  'ramphal':                'Ramphal',
+  'ratnagiri haapoos':      'Ratnagiri Hapoos (Mango)',
+  'ratnagiri hapoos':       'Ratnagiri Hapoos (Mango)',
+  'reshmi paan':            'Reshmi Paan',
+  'salted caramel':         'Salted Caramel',
+  'shahi sevaiya':          'Shahi Sevaiya',
   'signature strawberry (rosaea)': 'Signature Strawberry (Rosaea)',
+  'signature strawberry':   'Signature Strawberry (Rosaea)',
   'strawberry cream':       'Strawberry Cream',
+  'strawberry strength (fd)': 'Strawberry Strength (FD)',
+  'strawberry strength':    'Strawberry Strength (FD)',
+  'sunkissed twilight':     'Sunkissed Twilight',
   'tilgul':                 'Tilgul',
+  'ukadiche modak':         'Ukadiche Modak',
+  'vanilla vantage (fd)':   'Vanilla Vantage (FD)',
+  'vanilla vantage':        'Vanilla Vantage (FD)',
+  'vegan chocolate':        'Vegan Chocolate',
   'vegan mango':            'Vegan Mango',
-  'wasabi punch':           'Wasabi Punch'
+  'wasabi punch':           'Wasabi Punch',
+  'yorkshire butterscotch': 'Yorkshire Butterscotch'
 };
 
-// Discontinued — return null to skip
-var DISCONTINUED = {
-  'chocolate choice (fd)': true,
-  'caramelized popcorn': true,
-  'gulab jamun': true,
+// Flavours without SKUs in DB — skip silently
+var NO_SKU = {
+  'null flavour': true,
+  'after hours': true,
   'banarasi meetha paan': true,
+  'boondi': true,
+  'caramelized popcorn': true,
+  'cheese melt': true,
+  'chocolate choice (fd)': true,
+  'chocolate choice': true,
+  'dates and almonds': true,
+  'gulab jamun': true,
   'jambhul': true,
-  'sheer qhurma': true
+  'legal overdose': true,
+  'mishti doi': true,
+  'new york style cheesecake': true,
+  'nutty naughty': true,
+  'pandan purple yam': true,
+  'pinni': true,
+  'sheer qhurma': true,
+  'signature chocolate (cacaoir)': true,
+  'signature mango (aurum)': true,
+  'tamrind & curry leaf': true,
+  'tamarind & curry leaf': true,
+  'turkish hazelnut': true,
+  'vegan strawberry': true,
+  'white knight': true
 };
 
 // ── SKU ID lookup: DB flavour name → {format_id: sku_id} ──
@@ -194,8 +216,9 @@ function setupApiKey() {
   var ui = SpreadsheetApp.getUi();
   var result = ui.prompt(
     'Supabase Service Role Key',
-    'Paste your service_role key from Supabase Dashboard → Settings → API.\n' +
-    'This is stored securely in Script Properties (not visible in the sheet).',
+    'Paste your service_role key from Supabase Dashboard.\n' +
+    'Settings → API Keys → Legacy tab → service_role.\n' +
+    'Stored securely in Script Properties (not visible in the sheet).',
     ui.ButtonSet.OK_CANCEL
   );
   if (result.getSelectedButton() === ui.Button.OK) {
@@ -288,6 +311,14 @@ function detectFormatId_(formatStr) {
   return null;
 }
 
+function isSummaryFlavour_(flavourStr) {
+  if (!flavourStr) return true;
+  var str = String(flavourStr).trim();
+  if (str === '') return true;
+  if (str.toLowerCase().indexOf('null flavour') >= 0) return true;
+  return false;
+}
+
 function parseFlavourToSku_(flavourStr) {
   if (!flavourStr || String(flavourStr).trim() === '') return null;
 
@@ -298,10 +329,10 @@ function parseFlavourToSku_(flavourStr) {
   var rawName = str.substring(0, lastDash).trim().toLowerCase();
   var formatPart = str.substring(lastDash + 3).trim();
 
-  if (DISCONTINUED[rawName]) return null;
+  if (NO_SKU[rawName]) return null;
 
   var dbName = FLAVOUR_MAP[rawName];
-  if (!dbName) return null;
+  if (!dbName) return { error: rawName };
 
   var formatId = detectFormatId_(formatPart);
   if (!formatId) return null;
@@ -310,7 +341,7 @@ function parseFlavourToSku_(flavourStr) {
   if (!skuMap) return null;
 
   var skuId = skuMap[formatId] || skuMap[1];
-  return skuId || null;
+  return skuId ? { sku_id: skuId } : null;
 }
 
 
@@ -342,16 +373,34 @@ function syncOrdersToDb() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var data = sheet.getDataRange().getValues();
 
-  if (data.length < 2) {
-    ui.alert('No data rows found.');
+  // Find header row (look for "Invoice" in first 5 rows)
+  var headerRow = -1;
+  for (var h = 0; h < Math.min(5, data.length); h++) {
+    for (var c = 0; c < data[h].length; c++) {
+      if (String(data[h][c]).trim().toLowerCase() === 'invoice') {
+        headerRow = h;
+        break;
+      }
+    }
+    if (headerRow >= 0) break;
+  }
+  if (headerRow < 0) {
+    ui.alert('Could not find header row with "Invoice" column. Check your sheet format.');
+    return;
+  }
+
+  var startRow = headerRow + 1;
+  if (startRow >= data.length) {
+    ui.alert('No data rows found below the header.');
     return;
   }
 
   // Group rows by invoice number
-  var orderMap = {};  // invoice → {summary, lines[], rowIndices[]}
+  var orderMap = {};
   var skippedNoInvoice = 0;
+  var unknownFlavours = {};
 
-  for (var i = 1; i < data.length; i++) {
+  for (var i = startRow; i < data.length; i++) {
     var row = data[i];
     var invoice = row[COL_INVOICE];
     if (!invoice || String(invoice).trim() === '') {
@@ -361,25 +410,27 @@ function syncOrdersToDb() {
 
     invoice = String(invoice).trim();
 
-    // Skip non-Pune invoices and credit notes
-    if (invoice.indexOf('PU') !== 0 || invoice.indexOf('CN') === 0) continue;
-
     // Skip already synced
-    var syncStatus = row[COL_SYNC] ? String(row[COL_SYNC]).trim() : '';
-    if (syncStatus === 'SYNCED') continue;
+    if (row.length > COL_SYNC) {
+      var syncStatus = row[COL_SYNC] ? String(row[COL_SYNC]).trim() : '';
+      if (syncStatus === 'SYNCED') continue;
+    }
 
     if (!orderMap[invoice]) {
-      orderMap[invoice] = { summary: null, lines: [], rowIndices: [] };
+      orderMap[invoice] = { summary: null, lines: [], rowIndices: [], btype: '' };
     }
 
     var od = orderMap[invoice];
-    od.rowIndices.push(i + 1); // 1-based row for sheet updates
+    od.rowIndices.push(i + 1);
+
+    // Capture B-Type for city info
+    var btype = row[COL_BTYPE] ? String(row[COL_BTYPE]).trim() : '';
+    if (btype) od.btype = btype;
 
     var flavour = row[COL_FLAVOUR];
-    var hasFlavour = flavour && String(flavour).trim() !== '';
 
-    if (!hasFlavour) {
-      // Summary row
+    if (isSummaryFlavour_(flavour)) {
+      // Summary row — order totals
       od.summary = {
         date: row[COL_DATE],
         billing: row[COL_BILLING] ? String(row[COL_BILLING]).trim() : '',
@@ -391,11 +442,16 @@ function syncOrdersToDb() {
       // Line item row
       var qty = parseFloat(row[COL_QTY]) || 0;
       var amtPre = parseFloat(row[COL_AMT_PRE]) || 0;
-      var skuId = parseFlavourToSku_(flavour);
+      var parsed = parseFlavourToSku_(flavour);
 
-      if (skuId && qty > 0) {
+      if (parsed && parsed.error) {
+        unknownFlavours[parsed.error] = (unknownFlavours[parsed.error] || 0) + 1;
+        continue;
+      }
+
+      if (parsed && parsed.sku_id && qty > 0) {
         od.lines.push({
-          sku_id: skuId,
+          sku_id: parsed.sku_id,
           quantity: qty,
           unit_price: Math.round((amtPre / qty) * 100) / 100,
           line_total: Math.round(amtPre * 100) / 100
@@ -410,7 +466,7 @@ function syncOrdersToDb() {
     return;
   }
 
-  // Confirm
+  // Count valid orders
   var validCount = 0;
   var lineCount = 0;
   for (var k = 0; k < invoices.length; k++) {
@@ -420,13 +476,22 @@ function syncOrdersToDb() {
     }
   }
 
-  var confirmResult = ui.alert(
-    'Confirm Sync',
-    'Found ' + validCount + ' orders with ' + lineCount + ' line items to sync.\n' +
-    '(' + (invoices.length - validCount) + ' orders skipped: no summary or no lines)\n\n' +
-    'Proceed?',
-    ui.ButtonSet.YES_NO
-  );
+  // Build confirmation message
+  var confirmMsg = 'Found ' + validCount + ' orders with ' + lineCount + ' line items to sync.\n' +
+    '(' + (invoices.length - validCount) + ' orders skipped: no summary or no mapped lines)\n';
+
+  var unknownKeys = Object.keys(unknownFlavours);
+  if (unknownKeys.length > 0) {
+    confirmMsg += '\nUnmapped flavours (lines skipped):\n';
+    for (var uk = 0; uk < Math.min(10, unknownKeys.length); uk++) {
+      confirmMsg += '  - ' + unknownKeys[uk] + ' (' + unknownFlavours[unknownKeys[uk]] + ' lines)\n';
+    }
+    if (unknownKeys.length > 10) confirmMsg += '  ... and ' + (unknownKeys.length - 10) + ' more\n';
+  }
+
+  confirmMsg += '\nProceed?';
+
+  var confirmResult = ui.alert('Confirm Sync', confirmMsg, ui.ButtonSet.YES_NO);
   if (confirmResult !== ui.Button.YES) return;
 
   // Process each order
@@ -450,10 +515,8 @@ function syncOrdersToDb() {
         continue;
       }
 
-      // Look up client
       var clientId = lookupClientId_(clientName);
-      if (!clientId) {
-        // Try billing name as fallback
+      if (!clientId && od.summary.billing && od.summary.billing !== clientName) {
         clientId = lookupClientId_(od.summary.billing);
       }
       if (!clientId) {
@@ -467,16 +530,18 @@ function syncOrdersToDb() {
         var d = od.summary.date;
         if (d instanceof Date) {
           dateStr = d.toISOString();
-        } else {
+        } else if (String(d).trim() !== '') {
           dateStr = String(d);
         }
       }
 
-      // Insert order
+      // Determine channel from B-Type
+      var channel = 'whatsapp';
+
       var orderData = {
         order_no: inv,
         client_id: clientId,
-        channel: 'whatsapp',
+        channel: channel,
         order_type: 'commercial',
         payment_mode: 'invoice',
         status: 'delivered',
@@ -498,7 +563,7 @@ function syncOrdersToDb() {
       }
       var orderId = insertedOrders[0].id;
 
-      // Insert order lines
+      // Insert order lines (batch)
       var lineData = [];
       for (var li = 0; li < od.lines.length; li++) {
         lineData.push({
@@ -519,7 +584,7 @@ function syncOrdersToDb() {
       }
 
       synced++;
-      log.push(inv + ': OK (' + od.lines.length + ' lines)');
+      log.push(inv + ': OK (' + od.lines.length + ' lines, id=' + orderId + ')');
 
     } catch (e) {
       errors.push(inv + ': ' + e.message);
