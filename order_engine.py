@@ -611,6 +611,14 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
     addrs = {a["id"]: a for a in (
         sb.schema("sales").from_("addresses").select("id,city,locality,state").in_("id", addr_ids).execute().data
         if addr_ids else [])}
+    staff = {u["id"]: u for u in (
+        sb.schema("sales").from_("users").select("id,full_name").in_("id", sp_ids).execute().data
+        if sp_ids else [])}
+    payments = {}
+    # Chunked so the `.in_(order_id, ...)` filter's URL doesn't grow unbounded with the
+    # order count — thousands of ids in one query string risks silently exceeding a
+    # proxy/CDN's URL length limit.
+    CHUNK = 600
     # Fallback: for orders without shipping_address_id, look up the client's
     # first address so imported orders still show a city instead of "—".
     orphan_client_ids = list({o["client_id"] for o in orders
@@ -625,14 +633,6 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
                       .order("is_default", desc=True).order("id")
                       .execute().data):
                 client_default_addr.setdefault(a["client_id"], a)
-    staff = {u["id"]: u for u in (
-        sb.schema("sales").from_("users").select("id,full_name").in_("id", sp_ids).execute().data
-        if sp_ids else [])}
-    payments = {}
-    # Chunked so the `.in_(order_id, ...)` filter's URL doesn't grow unbounded with the
-    # order count — thousands of ids in one query string risks silently exceeding a
-    # proxy/CDN's URL length limit.
-    CHUNK = 600
     for i in range(0, len(order_ids), CHUNK):
         chunk_ids = order_ids[i:i + CHUNK]
         for p in (
