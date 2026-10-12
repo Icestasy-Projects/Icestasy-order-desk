@@ -814,6 +814,7 @@ function orderRow(o) {
       <div class="dash-order-main" onclick="toggleOrderLines(${o.id})" style="cursor:pointer">
         <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${o.order_no}</span>
         <span class="dash-order-client">${o.client_name}${showPlace ? " · " + o.place : ""}</span>
+        <span class="opt-sub">${o.created_at ? new Date(o.created_at).toLocaleDateString("en-IN", {day: "numeric", month: "short"}) : ""}</span>
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">

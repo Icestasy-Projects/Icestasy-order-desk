@@ -14,6 +14,7 @@
  * USAGE:
  *   Click "Icestasy Sync → Sync New Orders to DB"
  *   Only rows without "SYNCED" in the Sync Status column will be processed.
+ *   Starts scanning near the last SYNCED row, so re-runs are fast.
  *   If it hits the 6-minute limit, it auto-continues via a time trigger.
  *   Use "Stop Auto-Sync" to cancel any pending auto-continuation.
  *
@@ -443,40 +444,24 @@ function syncOrdersToDb() {
     return;
   }
 
-  // Only sync June–September 2026
-  var SYNC_FROM  = new Date(2026, 5, 1);  // June 1, 2026
-  var SYNC_UNTIL = new Date(2026, 9, 1);  // October 1, 2026 (exclusive)
-  var dates = sheet.getRange(dataStartRow, COL_DATE + 1, totalDataRows, 1).getValues();
-
-  // Find first row in range
-  var yearStartIdx = -1;
-  for (var d = 0; d < dates.length; d++) {
-    var dt = dates[d][0];
-    if (dt instanceof Date && dt >= SYNC_FROM && dt < SYNC_UNTIL) {
-      yearStartIdx = d;
+  // Scan from the first unsynced row for efficiency: walk backward from
+  // the end of column N (SYNCED markers) to find the last SYNCED row,
+  // then start a small buffer before it to catch any gaps.
+  var syncCol = sheet.getRange(dataStartRow, COL_SYNC + 1, totalDataRows, 1).getValues();
+  var lastSyncedIdx = -1;
+  for (var si = syncCol.length - 1; si >= 0; si--) {
+    if (String(syncCol[si][0]).trim() === 'SYNCED') {
+      lastSyncedIdx = si;
       break;
     }
   }
+  // Start 100 rows before the last SYNCED row (buffer for any gaps/errors),
+  // or from the beginning if nothing is synced yet.
+  var scanFromIdx = lastSyncedIdx >= 0 ? Math.max(0, lastSyncedIdx - 100) : 0;
+  var syncStartRow = dataStartRow + scanFromIdx;
+  var syncRowCount = totalDataRows - scanFromIdx;
 
-  if (yearStartIdx < 0) {
-    ss.toast('No rows found for Jun–Sep 2026.', 'Icestasy Sync', 10);
-    return;
-  }
-
-  // Find last row in range
-  var yearEndIdx = yearStartIdx;
-  for (var d2 = dates.length - 1; d2 >= yearStartIdx; d2--) {
-    var dt2 = dates[d2][0];
-    if (dt2 instanceof Date && dt2 >= SYNC_FROM && dt2 < SYNC_UNTIL) {
-      yearEndIdx = d2;
-      break;
-    }
-  }
-
-  var syncStartRow = dataStartRow + yearStartIdx; // 1-indexed
-  var syncRowCount = yearEndIdx - yearStartIdx + 1;
-
-  ss.toast('Loading ' + syncRowCount + ' rows (Jun–Sep 2026)...', 'Icestasy Sync', -1);
+  ss.toast('Loading ' + syncRowCount + ' rows to scan for new orders...', 'Icestasy Sync', -1);
 
   var data = sheet.getRange(syncStartRow, 1, syncRowCount, lastCol).getValues();
 
@@ -488,9 +473,6 @@ function syncOrdersToDb() {
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-
-    var rowDate = row[COL_DATE];
-    if (rowDate instanceof Date && (rowDate < SYNC_FROM || rowDate >= SYNC_UNTIL)) continue;
 
     var invoice = row[COL_INVOICE];
     if (!invoice || String(invoice).trim() === '') {
