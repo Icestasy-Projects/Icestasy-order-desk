@@ -942,7 +942,7 @@ async function showConfirm() {
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"}</strong></div>
     ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
-    <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"}</strong></div>
+    <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"} <button class="pill-change" onclick="changeAddress()">change</button></strong></div>
     ${resolved.length ? `<table class="summary-table">
       <thead><tr><th>Item</th><th>Format</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
       <tbody>${itemRows}</tbody>
