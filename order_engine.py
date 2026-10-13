@@ -584,98 +584,23 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
 
 def list_dashboard_orders(user_id: int, role: str) -> list:
     sb = _sb()
-
-    def build_query(start, end):
-        q = (
-            sb.schema("sales").from_("orders")
-            .select("id, order_no, status, total_amount, created_at, client_id, salesperson_id, "
-                    "shipping_address_id, notes")
-            .order("created_at", desc=True)
-        )
-        if role != "admin" and role not in REGION_HEAD_ROLES:
-            q = q.eq("created_by_user_id", user_id)
-        return q.range(start, end)
-
-    orders = _fetch_all_pages(build_query)
-    if not orders:
+    rows = sb.rpc("get_dashboard_orders", {"p_user_id": user_id, "p_role": role}).execute().data
+    if not rows:
         return []
-
-    client_ids = list({o["client_id"] for o in orders if o.get("client_id")})
-    addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
-    sp_ids = list({o["salesperson_id"] for o in orders if o.get("salesperson_id")})
-    order_ids = [o["id"] for o in orders]
-
-    clients = {c["id"]: c for c in (
-        sb.schema("sales").from_("clients").select("id,business_name").in_("id", client_ids).execute().data
-        if client_ids else [])}
-    addrs = {a["id"]: a for a in (
-        sb.schema("sales").from_("addresses").select("id,city,locality,state").in_("id", addr_ids).execute().data
-        if addr_ids else [])}
-    staff = {u["id"]: u for u in (
-        sb.schema("sales").from_("users").select("id,full_name").in_("id", sp_ids).execute().data
-        if sp_ids else [])}
-    payments = {}
-    # Chunked so the `.in_(order_id, ...)` filter's URL doesn't grow unbounded with the
-    # order count — thousands of ids in one query string risks silently exceeding a
-    # proxy/CDN's URL length limit.
-    CHUNK = 600
-    # Fallback: for orders without shipping_address_id, look up the client's
-    # first address so imported orders still show a city instead of "—".
-    orphan_client_ids = list({o["client_id"] for o in orders
-                             if o.get("client_id") and not o.get("shipping_address_id")})
-    client_default_addr = {}
-    if orphan_client_ids:
-        for i in range(0, len(orphan_client_ids), CHUNK):
-            chunk = orphan_client_ids[i:i + CHUNK]
-            for a in (sb.schema("sales").from_("addresses")
-                      .select("id,client_id,city,locality,state,is_default")
-                      .in_("client_id", chunk)
-                      .order("is_default", desc=True).order("id")
-                      .execute().data):
-                client_default_addr.setdefault(a["client_id"], a)
-    for i in range(0, len(order_ids), CHUNK):
-        chunk_ids = order_ids[i:i + CHUNK]
-        for p in (
-            sb.schema("sales").from_("payments").select("order_id,status,amount,payment_type,received_at")
-            .in_("order_id", chunk_ids).order("received_at", desc=True).execute().data
-        ):
-            payments.setdefault(p["order_id"], p)  # most recent per order (already sorted desc)
-
-    # Historical bulk-imported orders can have zero order_lines rows (see
-    # flavour_sales_summary), which skews revenue reporting. Flag those here — cheap,
-    # id-only fetch — so the dashboard can exclude them from views without a separate call.
-    ids_with_lines = set()
-    for i in range(0, len(order_ids), CHUNK):
-        chunk_ids = order_ids[i:i + CHUNK]
-
-        def build_lines_query(start, end, chunk_ids=chunk_ids):
-            return (
-                sb.schema("sales").from_("order_lines")
-                .select("order_id").in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
-            )
-
-        for l in _fetch_all_pages(build_lines_query):
-            ids_with_lines.add(l["order_id"])
-
     out = []
-    for o in orders:
-        client = clients.get(o.get("client_id"), {})
-        addr = addrs.get(o.get("shipping_address_id")) or client_default_addr.get(o.get("client_id")) or {}
-        sp = staff.get(o.get("salesperson_id"), {})
-        payment = payments.get(o["id"])
-        place = addr.get("locality") or addr.get("city") or "—"
+    for r in rows:
+        place = r.get("place", "—")
         out.append({
-            "id": o["id"], "order_no": o["order_no"], "status": o["status"],
-            "total_amount": float(o["total_amount"]), "created_at": o["created_at"],
-            "client_name": client.get("business_name", "—"),
+            "id": r["id"], "order_no": r["order_no"], "status": r["status"],
+            "total_amount": float(r["total_amount"]), "created_at": r["created_at"],
+            "client_name": r.get("client_name", "—"),
             "place": place,
             "city": city_for_place(place) if place != "—" else "—",
-            "salesperson_name": sp.get("full_name", "—"),
-            "payment_status": payment["status"] if payment else "not_recorded",
-            "has_lines": o["id"] in ids_with_lines,
-            "notes": o.get("notes") or "",
+            "salesperson_name": r.get("salesperson_name", "—"),
+            "payment_status": r.get("payment_status", "not_recorded"),
+            "has_lines": r.get("has_lines", False),
+            "notes": r.get("notes", ""),
         })
-
     if role in REGION_HEAD_ROLES:
         out = [o for o in out if _region_role_for_city(o["place"]) == role]
     return out

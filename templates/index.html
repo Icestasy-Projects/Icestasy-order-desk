@@ -98,7 +98,7 @@
   <main class="main">
 
     <!-- STEP 0: Paste / Form -->
-    <section class="step" id="step-paste">
+    <section class="step hidden" id="step-paste">
       <div class="tab-bar-flat" id="orderModeTabs">
         <button class="tab-btn-flat active" id="orderModeTab-paste" onclick="switchOrderMode('paste')">Paste Message</button>
         <button class="tab-btn-flat" id="orderModeTab-form" onclick="switchOrderMode('form')">Fill Form</button>
@@ -149,7 +149,7 @@
     </section>
 
     <!-- STEP 3: Client -->
-    <section class="step hidden" id="step-client">
+    <section class="step" id="step-client">
       <div class="step-label">Client</div>
       <div class="search-row">
         <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
@@ -291,7 +291,7 @@ const hide = id => document.getElementById(id).classList.add("hidden");
 function resetAll() {
   state = {items: [], payment: null, client: null, address_id: null, address_label: null,
            collateral: [], collateralOnly: false};
-  ["step-cart","step-collateral","step-payment","step-client","step-address","step-confirm","step-done"]
+  ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm","step-done"]
     .forEach(hide);
   document.getElementById("orderText").value = "";
   document.getElementById("clientSearch").value = "";
@@ -305,7 +305,8 @@ function resetAll() {
   document.getElementById("collateralList").innerHTML = "";
   formItemRows = [{skuId: "", qty: 1}];
   switchOrderMode("paste");
-  show("step-paste");
+  show("step-client");
+  loadClientOptions();
 }
 
 // ── Marketing Collateral ────────────────────────────────────────────────────
@@ -384,10 +385,7 @@ function proceedFromCollateral() {
 function _afterCollateralStep() {
   if (state.collateralOnly) {
     state.payment = null;
-    showClientStep();
-    if (document.getElementById("clientSearch").value.length >= 2) {
-      _searchClients(document.getElementById("clientSearch").value);
-    }
+    showAddressStep();
     return;
   }
 
@@ -405,11 +403,14 @@ function _afterCollateralStep() {
     setTimeout(() => {
       hide("step-payment");
       document.getElementById("payment-auto-note")?.remove();
-      showClientStep();
-      const q = document.getElementById("clientSearch").value;
-      if (q.length >= 2) _searchClients(q);
+      showAddressStep();
     }, 1500);
   }
+}
+
+async function showAddressStep() {
+  await loadAddresses(state.client.id);
+  show("step-address");
 }
 
 // ── STEP 0: Parse ───────────────────────────────────────────────────────────
@@ -640,10 +641,7 @@ function selectPayment(mode) {
     .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
   if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
   hide("step-payment");
-  showClientStep();
-  if (document.getElementById("clientSearch").value.length >= 2) {
-    _searchClients(document.getElementById("clientSearch").value);
-  }
+  showAddressStep();
 }
 
 function markPayment(mode) {
@@ -720,8 +718,7 @@ async function selectClient(client) {
   document.getElementById("clientDropdown").style.display = "none";
 
   hide("step-client");
-  await loadAddresses(client.id);
-  show("step-address");
+  show("step-paste");
 }
 
 async function loadAddresses(clientId) {
@@ -865,6 +862,8 @@ function changeClient() {
   document.getElementById("clientDropdownLabel").style.display = "";
   document.getElementById("clientDropdown").style.display = "";
   document.getElementById("clientDropdown").value = "";
+  ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"].forEach(hide);
+  show("step-client");
 }
 
 // ── STEP 4: Address ──────────────────────────────────────────────────────────
@@ -1249,6 +1248,8 @@ async function submitOrderWithOptions(options) {
   }
   return res;
 }
+
+loadClientOptions();
 
 function renderDoneOrders(orders, title) {
   hide("step-confirm");

@@ -1,5 +1,6 @@
 import io
-from datetime import date, datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -75,6 +76,23 @@ GROUP_KEY_FUNCS = {
     "client": lambda o: o.get("client_name") or "—",
     "salesperson": lambda o: o.get("salesperson_name") or "—",
 }
+
+
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+def _month_key_ist(created_at: str) -> str:
+    try:
+        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00")).astimezone(_IST)
+        return dt.strftime("%Y-%m")
+    except (ValueError, AttributeError):
+        return "0000-00"
+
+
+def _month_sheet_name(key: str) -> str:
+    try:
+        return datetime.strptime(key, "%Y-%m").strftime("%b %y")
+    except ValueError:
+        return "Other"
 
 
 def _last_12_months_range() -> tuple:
@@ -409,9 +427,25 @@ def build_orders_workbook(orders: list, role_label: str, full_name: str,
 
     wb = Workbook()
     if report_type == "all":
-        ws = wb.active
-        ws.title = "Orders"
-        _write_orders_sheet(ws, orders, subtitle_text)
+        month_groups = defaultdict(list)
+        for o in orders:
+            month_groups[_month_key_ist(o.get("created_at", ""))].append(o)
+        first = True
+        for key in sorted(month_groups.keys()):
+            month_orders = month_groups[key]
+            sheet_name = _month_sheet_name(key)
+            if first:
+                ws = wb.active
+                ws.title = sheet_name
+                first = False
+            else:
+                ws = wb.create_sheet(sheet_name)
+            month_sub = f"{full_name} · {role_label} · Generated {generated} · {len(month_orders)} orders · {sheet_name}"
+            _write_orders_sheet(ws, month_orders, month_sub)
+        if first:
+            ws = wb.active
+            ws.title = "Orders"
+            _write_orders_sheet(ws, [], subtitle_text)
     else:
         summary_ws = wb.active
         summary_ws.title = "Summary"
