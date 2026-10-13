@@ -182,6 +182,7 @@ MOCK_SKUS = [
         "flavour_id": fid, "flavour_name": _FLAVOURS[fid],
         "pack_format_id": pfid, "pack_format_name": _FORMATS[pfid][0],
         "is_sample": _FORMATS[pfid][1],
+        "gst_rate": 5.0,
     }
     for idx, (sku_code, fid, pfid) in enumerate(_SKU_ROWS, start=1)
 ]
@@ -200,7 +201,7 @@ def load_live_skus():
         client = create_client(url, key)
         result = (
             client.schema("sales").from_("skus")
-            .select("id, sku_code, flavour_id, pack_format_id, flavours(name), pack_formats(name, is_sample)")
+            .select("id, sku_code, flavour_id, pack_format_id, gst_rate, flavours(name), pack_formats(name, is_sample)")
             .eq("status", "active")
             .execute()
         )
@@ -214,6 +215,7 @@ def load_live_skus():
                 "flavour_id": row["flavour_id"], "flavour_name": fn,
                 "pack_format_id": row["pack_format_id"], "pack_format_name": pf,
                 "is_sample": is_s,
+                "gst_rate": float(row["gst_rate"]) if row.get("gst_rate") is not None else 5.0,
             })
         return skus if skus else None
     except Exception as e:
