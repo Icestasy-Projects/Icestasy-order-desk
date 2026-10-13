@@ -304,6 +304,7 @@ function resetAll() {
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
   formItemRows = [{skuId: "", qty: 1}];
+  _returningToConfirm = false;
   switchOrderMode("paste");
   show("step-client");
   loadClientOptions();
@@ -634,6 +635,19 @@ function renderNextAfterCart() {
 }
 
 // ── STEP 2: Payment ──────────────────────────────────────────────────────────
+let _returningToConfirm = false;
+
+function changePayment() {
+  _returningToConfirm = true;
+  hide("step-confirm");
+  document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
+  if (state.payment) {
+    document.querySelectorAll("#paymentBtns .btn-option")
+      .forEach(b => { if (b.textContent.toLowerCase().trim() === state.payment) b.classList.add("active"); });
+  }
+  show("step-payment");
+}
+
 function selectPayment(mode) {
   state.payment = mode;
   document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
@@ -641,7 +655,12 @@ function selectPayment(mode) {
     .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
   if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
   hide("step-payment");
-  showAddressStep();
+  if (_returningToConfirm) {
+    _returningToConfirm = false;
+    showConfirm();
+  } else {
+    showAddressStep();
+  }
 }
 
 function markPayment(mode) {
@@ -922,7 +941,7 @@ async function showConfirm() {
 
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"}</strong></div>
-    ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())}</strong></div>`}
+    ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
     <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"}</strong></div>
     ${resolved.length ? `<table class="summary-table">
       <thead><tr><th>Item</th><th>Format</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
