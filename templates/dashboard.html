@@ -809,12 +809,15 @@ function orderRow(o) {
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
   const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
   const isOpen = expandedOrderId === o.id;
+  const orderDate = o.created_at ? new Date(o.created_at).toLocaleDateString("en-IN", {day: "numeric", month: "short", year: "numeric"}) : "";
   return `
     <div class="dash-order-row">
       <div class="dash-order-main" onclick="toggleOrderLines(${o.id})" style="cursor:pointer">
-        <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${o.order_no}</span>
+        <div class="dash-order-top">
+          <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${o.order_no}</span>
+          ${orderDate ? `<span class="dash-order-date">${orderDate}</span>` : ""}
+        </div>
         <span class="dash-order-client">${o.client_name}${showPlace ? " · " + o.place : ""}</span>
-        <span class="opt-sub">${o.created_at ? new Date(o.created_at).toLocaleDateString("en-IN", {day: "numeric", month: "short", year: "numeric"}) : ""}</span>
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
@@ -902,7 +905,9 @@ function renderOrders() {
     const k = groupKey(o);
     (groups[k] = groups[k] || []).push(o);
   });
-  box.innerHTML = Object.entries(groups).map(([name, orders]) => {
+  box.innerHTML = Object.entries(groups)
+    .sort((a, b) => b[1].reduce((s, o) => s + o.total_amount, 0) - a[1].reduce((s, o) => s + o.total_amount, 0))
+    .map(([name, orders]) => {
     const groupTotal = orders.reduce((s, o) => s + o.total_amount, 0);
     const isOpen = expandedGroup === name;
     const safeName = JSON.stringify(name).replace(/'/g, "&#39;");
@@ -932,9 +937,11 @@ function renderPlaceGroups(orders) {
     const raw = o.place || "—";
     const k = raw === "—" ? "—" : raw.trim().toLowerCase();
     (places[k] = places[k] || []).push(o);
-    placeLabels[k] = placeLabels[k] || raw;
+    placeLabels[k] = placeLabels[k] || (raw === "—" ? "Auto Synced" : raw);
   });
-  return Object.entries(places).map(([place, placeOrders]) => {
+  return Object.entries(places)
+    .sort((a, b) => b[1].reduce((s, o) => s + o.total_amount, 0) - a[1].reduce((s, o) => s + o.total_amount, 0))
+    .map(([place, placeOrders]) => {
     const placeTotal = placeOrders.reduce((s, o) => s + o.total_amount, 0);
     const isOpen = expandedPlace === place;
     const safePlace = JSON.stringify(place).replace(/'/g, "&#39;");
