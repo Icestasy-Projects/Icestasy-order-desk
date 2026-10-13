@@ -344,7 +344,7 @@ def api_register_client():
 def api_addresses(client_id):
     try:
         addrs = get_client_addresses(client_id)
-        return jsonify({"addresses": [{"id": a["id"], "label": addr_label(a), "city": a.get("city") or ""} for a in addrs]})
+        return jsonify({"addresses": [{"id": a["id"], "label": addr_label(a), "city": a.get("city") or "", "state": a.get("state") or ""} for a in addrs]})
     except Exception as e:
         return jsonify({"addresses": [], "error": str(e)}), 200
 
@@ -354,7 +354,7 @@ def api_create_address(client_id):
     body = request.get_json(force=True)
     try:
         addr = create_address(client_id, body)
-        return jsonify({"ok": True, "address": {"id": addr["id"], "label": addr_label(addr), "city": addr.get("city") or ""}})
+        return jsonify({"ok": True, "address": {"id": addr["id"], "label": addr_label(addr), "city": addr.get("city") or "", "state": addr.get("state") or ""}})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:

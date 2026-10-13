@@ -276,6 +276,7 @@ let state = {
   client: null,
   address_id: null,
   address_label: null,
+  address_state: null,
   collateral: [],    // [{type, quantity, notes}]
   collateralOnly: false,
 };
@@ -290,7 +291,7 @@ const hide = id => document.getElementById(id).classList.add("hidden");
 
 function resetAll() {
   state = {items: [], payment: null, client: null, address_id: null, address_label: null,
-           collateral: [], collateralOnly: false};
+           address_state: null, collateral: [], collateralOnly: false};
   ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm","step-done"]
     .forEach(hide);
   document.getElementById("orderText").value = "";
@@ -749,7 +750,7 @@ async function loadAddresses(clientId) {
       <button class="btn-ghost mt8" onclick="skipAddress()">Skip for now</button>`;
   } else {
     box.innerHTML = addrs.map(a => `
-      <button class="option-btn" onclick="selectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}', '${(a.city||"").replace(/'/g,"\\'")}')">
+      <button class="option-btn" onclick="selectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}', '${(a.city||"").replace(/'/g,"\\'")}', '${(a.state||"").replace(/'/g,"\\'")}')">
         ${a.label}
       </button>`).join("");
   }
@@ -758,6 +759,7 @@ async function loadAddresses(clientId) {
 function skipAddress() {
   state.address_id = null;
   state.address_label = null;
+  state.address_state = null;
   hide("step-address");
   showConfirm();
 }
@@ -869,7 +871,7 @@ async function submitAddress() {
     errBox.textContent = res.error || "Could not save address";
     return;
   }
-  selectAddress(res.address.id, res.address.label, res.address.city || "");
+  selectAddress(res.address.id, res.address.label, res.address.city || "", res.address.state || "");
 }
 
 function changeClient() {
@@ -886,9 +888,10 @@ function changeClient() {
 }
 
 // ── STEP 4: Address ──────────────────────────────────────────────────────────
-async function selectAddress(id, label, city) {
+async function selectAddress(id, label, city, addrState) {
   state.address_id = id;
   state.address_label = label;
+  state.address_state = addrState || "";
   document.getElementById("addressList").innerHTML =
     `<div class="selected-pill">${icon("check")} ${label} <button class="pill-change" onclick="changeAddress()">change</button></div>`;
   document.getElementById("addAddressToggleBtn").style.display = "none";
@@ -927,6 +930,7 @@ function changeAddress() {
 
 // ── STEP 5: Confirm ──────────────────────────────────────────────────────────
 async function showConfirm() {
+  const COMPANY_STATE = "maharashtra";
   const resolved = state.items.filter(i => !i.not_found && i.resolved_sku);
   state._subtotal = resolved.reduce((s,i) => s + i.qty * i.unit_price, 0);
   const itemRows = resolved.map(i =>
@@ -939,6 +943,40 @@ async function showConfirm() {
     `<div class="summary-row"><span>${c.type}${c.notes ? " (" + c.notes + ")" : ""}</span><strong>Qty ${c.quantity}</strong></div>`
   ).join("");
 
+  const isInterstate = state.address_state
+    && state.address_state.trim().toLowerCase() !== COMPANY_STATE;
+  let cgst = 0, sgst = 0, igst = 0;
+  for (const i of resolved) {
+    const net = i.qty * i.unit_price;
+    const rate = i.resolved_sku.gst_rate ?? 5.0;
+    if (isInterstate) {
+      igst += Math.round(net * rate / 100 * 100) / 100;
+    } else {
+      const half = Math.round(net * (rate / 2) / 100 * 100) / 100;
+      cgst += half;
+      sgst += half;
+    }
+  }
+  const totalTax = Math.round((cgst + sgst + igst) * 100) / 100;
+  const rawGrand = state._subtotal + totalTax;
+  const grandTotal = Math.round(rawGrand);
+  const roundOff = Math.round((grandTotal - rawGrand) * 100) / 100;
+  state._totalTax = totalTax;
+  state._grandTotal = grandTotal;
+
+  let taxHtml = "";
+  if (resolved.length) {
+    if (isInterstate) {
+      taxHtml = `<div class="summary-row"><span>IGST</span><strong>${fmt(igst)}</strong></div>`;
+    } else {
+      taxHtml = `<div class="summary-row"><span>CGST</span><strong>${fmt(cgst)}</strong></div>
+        <div class="summary-row"><span>SGST</span><strong>${fmt(sgst)}</strong></div>`;
+    }
+    if (roundOff !== 0) {
+      taxHtml += `<div class="summary-row"><span>Round Off</span><strong>${roundOff > 0 ? "+" : ""}${fmt(roundOff)}</strong></div>`;
+    }
+  }
+
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"}</strong></div>
     ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
@@ -949,7 +987,9 @@ async function showConfirm() {
     </table>` : ""}
     ${collateralRows ? `<div class="step-label mt16">Marketing Collateral</div>${collateralRows}` : ""}
     <div class="summary-total">Subtotal <strong>${fmt(state._subtotal)}</strong></div>
-    <div class="summary-total" id="discountTotalRow" style="display:none">After Discount <strong id="discountTotalAmt"></strong></div>`;
+    <div class="summary-total" id="discountTotalRow" style="display:none">After Discount <strong id="discountTotalAmt"></strong></div>
+    <div id="taxBreakdown">${taxHtml}</div>
+    ${resolved.length ? `<div class="summary-total" style="font-size:18px;border-top:2px solid var(--slate-200);padding-top:8px;margin-top:4px">Grand Total <strong id="grandTotalAmt">${fmt(grandTotal)}</strong></div>` : ""}`;
 
   _baseDiscPct = 0;
   document.querySelectorAll("#discChips .disc-chip").forEach(b => b.classList.remove("active"));
@@ -1004,6 +1044,51 @@ function _effectiveDiscPct() {
   if (state.payment === "advance") pct += 2.5;
   return pct;
 }
+function _recalcGrandTotal(afterDiscount) {
+  const COMPANY_STATE = "maharashtra";
+  const resolved = state.items.filter(i => !i.not_found && i.resolved_sku);
+  const isInterstate = state.address_state
+    && state.address_state.trim().toLowerCase() !== COMPANY_STATE;
+  const discFraction = afterDiscount < state._subtotal && state._subtotal > 0
+    ? afterDiscount / state._subtotal : 1;
+  let cgst = 0, sgst = 0, igst = 0;
+  for (const i of resolved) {
+    const net = i.qty * i.unit_price * discFraction;
+    const rate = i.resolved_sku.gst_rate ?? 5.0;
+    if (isInterstate) {
+      igst += Math.round(net * rate / 100 * 100) / 100;
+    } else {
+      const half = Math.round(net * (rate / 2) / 100 * 100) / 100;
+      cgst += half;
+      sgst += half;
+    }
+  }
+  const totalTax = Math.round((cgst + sgst + igst) * 100) / 100;
+  const rawGrand = afterDiscount + totalTax;
+  const grandTotal = Math.round(rawGrand);
+  const roundOff = Math.round((grandTotal - rawGrand) * 100) / 100;
+  state._totalTax = totalTax;
+  state._grandTotal = grandTotal;
+
+  const gtEl = document.getElementById("grandTotalAmt");
+  if (gtEl) gtEl.textContent = fmt(grandTotal);
+
+  const taxRows = document.getElementById("taxBreakdown");
+  if (taxRows && resolved.length) {
+    let html = "";
+    if (isInterstate) {
+      html = `<div class="summary-row"><span>IGST</span><strong>${fmt(igst)}</strong></div>`;
+    } else {
+      html = `<div class="summary-row"><span>CGST</span><strong>${fmt(cgst)}</strong></div>
+        <div class="summary-row"><span>SGST</span><strong>${fmt(sgst)}</strong></div>`;
+    }
+    if (roundOff !== 0) {
+      html += `<div class="summary-row"><span>Round Off</span><strong>${roundOff > 0 ? "+" : ""}${fmt(roundOff)}</strong></div>`;
+    }
+    taxRows.innerHTML = html;
+  }
+}
+
 function updateDiscountPreview() {
   const discInput = document.getElementById("discountPct");
   if (!discInput) return;
@@ -1015,23 +1100,26 @@ function updateDiscountPreview() {
   const preview = document.getElementById("discountPreview");
   const totalRow = document.getElementById("discountTotalRow");
   const totalAmt = document.getElementById("discountTotalAmt");
+  let afterDiscount = state._subtotal;
   if (pct > 0 && state._subtotal) {
     const disc = Math.round(state._subtotal * pct / 100 * 100) / 100;
+    afterDiscount = state._subtotal - disc;
     if (preview) preview.textContent = `−${fmt(disc)}`;
-    if (totalAmt) totalAmt.textContent = fmt(state._subtotal - disc);
+    if (totalAmt) totalAmt.textContent = fmt(afterDiscount);
     if (totalRow) totalRow.style.display = "";
     const sp = document.getElementById("discSumPct");
     const sa = document.getElementById("discSumAmt");
     const st = document.getElementById("discSumTotal");
     if (sp) sp.textContent = pct + "%";
     if (sa) sa.textContent = fmt(disc);
-    if (st) st.textContent = fmt(state._subtotal - disc);
+    if (st) st.textContent = fmt(afterDiscount);
     if (summary) summary.classList.remove("hidden");
   } else {
     if (preview) preview.textContent = "";
     if (totalRow) totalRow.style.display = "none";
     if (summary) summary.classList.add("hidden");
   }
+  _recalcGrandTotal(afterDiscount);
 }
 
 // ── STEP 6: Place ────────────────────────────────────────────────────────────
