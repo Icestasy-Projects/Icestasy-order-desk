@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
@@ -140,6 +141,16 @@ _REGION_ROLE_TO_ORDER_CODE = {
 
 def _order_city_code(place: str) -> str:
     return _REGION_ROLE_TO_ORDER_CODE[_region_role_for_city(place)]
+
+
+# Reverse of the order-number city code, for orders with no address on file
+# (e.g. sheet-synced "PU10/26-27/3499") — the prefix is the only city signal.
+_ORDER_CODE_TO_CITY = {"MU": "Mumbai", "PU": "Pune", "BA": "Bangalore", "HY": "Hyderabad", "DL": "Delhi"}
+
+
+def _city_from_order_no(order_no: str | None) -> str:
+    prefix = re.match(r"[A-Za-z]+", order_no or "")
+    return _ORDER_CODE_TO_CITY.get(prefix.group(0).upper(), "—") if prefix else "—"
 
 
 def _financial_year(d: date) -> str:
@@ -590,19 +601,20 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
     out = []
     for r in rows:
         place = r.get("place", "—")
+        city = city_for_place(place) if place != "—" else _city_from_order_no(r["order_no"])
         out.append({
             "id": r["id"], "order_no": r["order_no"], "status": r["status"],
             "total_amount": float(r["total_amount"]), "created_at": r["created_at"],
             "client_name": r.get("client_name", "—"),
             "place": place,
-            "city": city_for_place(place) if place != "—" else "—",
+            "city": city,
             "salesperson_name": r.get("salesperson_name", "—"),
             "payment_status": r.get("payment_status", "not_recorded"),
             "has_lines": r.get("has_lines", False),
             "notes": r.get("notes", ""),
         })
     if role in REGION_HEAD_ROLES:
-        out = [o for o in out if _region_role_for_city(o["place"]) == role]
+        out = [o for o in out if _CITY_TO_REGION_ROLE.get(o["city"], "roi_head") == role]
     return out
 
 
