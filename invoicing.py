@@ -159,7 +159,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
         sb.schema("sales").from_("order_lines")
         .select("quantity, unit_price, line_discount_amount, line_total, "
                  "skus(sku_code, hsn_code, gst_rate, flavours(name), pack_formats(name))")
-        .eq("order_id", order_id).eq("status", "active").execute().data
+        .eq("order_id", order_id).in_("status", ["active", "delivered"]).execute().data
     )
 
     is_interstate = bool(shipping_addr and (shipping_addr.get("state") or "").strip().lower()
