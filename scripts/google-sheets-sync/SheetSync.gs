@@ -452,6 +452,22 @@ function lookupClientId_(clientName) {
   // 2. Fuzzy match: normalise the input and compare against index
   var parsed = parseClientName_(name);
   var candidates = clientByNorm_[parsed.core];
+
+  // If exact core didn't match, try substring: check if any DB core
+  // starts with our core or vice-versa (handles "Maratha Samrat" matching
+  // "Maratha Samrat Camp", "Sitara" matching "Sitara Loni Kalbhor", etc.)
+  if (!candidates || candidates.length === 0) {
+    var allCores = Object.keys(clientByNorm_);
+    var subs = [];
+    for (var ci = 0; ci < allCores.length; ci++) {
+      var dbCore = allCores[ci];
+      if (dbCore.indexOf(parsed.core) === 0 || parsed.core.indexOf(dbCore) === 0) {
+        subs = subs.concat(clientByNorm_[dbCore]);
+      }
+    }
+    if (subs.length > 0) candidates = subs;
+  }
+
   if (candidates && candidates.length > 0) {
     // If only one client with this core name, use it
     if (candidates.length === 1) {
@@ -480,13 +496,17 @@ function lookupClientId_(clientName) {
 
   // 3. Not found — auto-create the client
   try {
-    var newParts = name.split(' - ');
-    var newClient = { business_name: name, client_type: 'horeca', status: 'active' };
+    var newClient = {
+      business_name: name,
+      client_type: 'horeca',
+      status: 'active',
+      primary_contact_phone: '0000000000',
+      registered_by: 3
+    };
     var inserted = supabaseInsert_('clients', newClient);
     if (inserted && inserted.length > 0) {
       var newId = inserted[0].id;
       clientCache_[name] = newId;
-      // Update the index so subsequent lookups for the same name hit cache
       clientByExact_[name.toLowerCase()] = newId;
       return newId;
     }
