@@ -382,21 +382,120 @@ function parseFlavourToSku_(flavourStr) {
 
 
 // ═══════════════════════════════════════════════
-//  CLIENT CACHE
+//  CLIENT CACHE — fuzzy-matching lookup
 // ═══════════════════════════════════════════════
 
 var clientCache_ = {};
+var allClients_ = null;       // [{id, business_name}]
+var clientByExact_ = {};      // lowercase exact name -> id
+var clientByNorm_ = {};       // normalised core -> [{id, business_name, loc}]
+
+function ensureClientIndex_() {
+  if (allClients_) return;
+  allClients_ = supabaseGet_('clients', 'select=id,business_name&status=eq.active&limit=5000');
+  clientByExact_ = {};
+  clientByNorm_ = {};
+  for (var i = 0; i < allClients_.length; i++) {
+    var c = allClients_[i];
+    var bname = (c.business_name || '').trim();
+    clientByExact_[bname.toLowerCase()] = c.id;
+    var parsed = parseClientName_(bname);
+    var nk = parsed.core;
+    if (!clientByNorm_[nk]) clientByNorm_[nk] = [];
+    clientByNorm_[nk].push({ id: c.id, business_name: bname, loc: parsed.loc });
+  }
+}
+
+var STRIP_WORDS_ = [
+  'hotel', 'shri', 'shree', 'sri', 'pure veg', 'pure vegetarian',
+  'family restaurant', 'restaurant', 'resto bar', 'restrobar', 'resto',
+  'bar & restaurant', 'bar and restaurant',
+  'multi cuisine', 'multicuisine', 'dining', 'all day dining',
+  'veg', 'non veg', 'nonveg', 'treat', 'food', 'foods',
+  'the taste of maharashtra', 'an evening full of flavours',
+  'sizzler', 'sizzlers', 'cafe', 'dhaba', 'bhojanalaya'
+];
+
+function parseClientName_(raw) {
+  var parts = raw.split(' - ');
+  var corePart = parts[0].trim();
+  var locPart = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
+  // strip parenthetical location aliases from loc: "Narhe (Wadgaon)" -> "narhe wadgaon"
+  locPart = locPart.replace(/[()]/g, ' ');
+
+  var low = corePart.toLowerCase();
+  // strip known noise words (longest first to avoid partial matches)
+  var sorted = STRIP_WORDS_.slice().sort(function(a, b) { return b.length - a.length; });
+  for (var i = 0; i < sorted.length; i++) {
+    low = low.split(sorted[i]).join(' ');
+  }
+  low = low.replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+
+  var locLow = locPart.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  return { core: low, loc: locLow };
+}
 
 function lookupClientId_(clientName) {
   if (!clientName) return null;
   var name = String(clientName).trim();
   if (clientCache_[name] !== undefined) return clientCache_[name];
 
-  var encoded = encodeURIComponent(name);
-  var results = supabaseGet_('clients', 'select=id&business_name=eq.' + encoded + '&limit=1');
-  var id = (results.length > 0) ? results[0].id : null;
-  clientCache_[name] = id;
-  return id;
+  ensureClientIndex_();
+
+  // 1. Exact match
+  var exactId = clientByExact_[name.toLowerCase()];
+  if (exactId) {
+    clientCache_[name] = exactId;
+    return exactId;
+  }
+
+  // 2. Fuzzy match: normalise the input and compare against index
+  var parsed = parseClientName_(name);
+  var candidates = clientByNorm_[parsed.core];
+  if (candidates && candidates.length > 0) {
+    // If only one client with this core name, use it
+    if (candidates.length === 1) {
+      clientCache_[name] = candidates[0].id;
+      return candidates[0].id;
+    }
+    // Multiple candidates — try to match location
+    if (parsed.loc) {
+      var locWords = parsed.loc.split(' ');
+      var best = null, bestScore = 0;
+      for (var i = 0; i < candidates.length; i++) {
+        var cLoc = candidates[i].loc;
+        var score = 0;
+        for (var w = 0; w < locWords.length; w++) {
+          if (cLoc.indexOf(locWords[w]) >= 0) score++;
+        }
+        if (score > bestScore) { bestScore = score; best = candidates[i]; }
+      }
+      if (best && bestScore > 0) {
+        clientCache_[name] = best.id;
+        return best.id;
+      }
+    }
+    // No location match — don't guess among multiple
+  }
+
+  // 3. Not found — auto-create the client
+  try {
+    var newParts = name.split(' - ');
+    var newClient = { business_name: name, client_type: 'horeca', status: 'active' };
+    var inserted = supabaseInsert_('clients', newClient);
+    if (inserted && inserted.length > 0) {
+      var newId = inserted[0].id;
+      clientCache_[name] = newId;
+      // Update the index so subsequent lookups for the same name hit cache
+      clientByExact_[name.toLowerCase()] = newId;
+      return newId;
+    }
+  } catch (e) {
+    // Insert failed — fall through to null
+  }
+
+  clientCache_[name] = null;
+  return null;
 }
 
 
