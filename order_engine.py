@@ -609,6 +609,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
             "place": place,
             "city": city,
             "salesperson_name": r.get("salesperson_name", "—"),
+            "source": r.get("source", ""),
             "payment_status": r.get("payment_status", "not_recorded"),
             "has_lines": r.get("has_lines", False),
             "notes": r.get("notes", ""),
@@ -785,7 +786,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
         out.append({
             "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
             "sku_code": sku.get("sku_code", "—"),
-            "city": city_for_place(place) if place else "—",
+            "city": city_for_place(place) if place else _city_from_order_no(o.get("order_no")),
             "created_at": o["created_at"],
             "quantity": float(l["quantity"]),
             "revenue": float(l["line_total"]),
@@ -801,7 +802,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
         o = orders_by_id[oid]
         place = _addr_place(o)
         order_totals.append({
-            "city": city_for_place(place) if place else "—",
+            "city": city_for_place(place) if place else _city_from_order_no(o.get("order_no")),
             "created_at": o["created_at"],
             "tax": float(o.get("tax_amount") or 0),
             "total": float(o["total_amount"]),

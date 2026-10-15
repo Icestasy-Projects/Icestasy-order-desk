@@ -818,7 +818,7 @@ function orderRow(o) {
           ${orderDate ? `<span class="dash-order-date">${orderDate}</span>` : ""}
         </div>
         <span class="dash-order-client">${o.client_name}${showPlace ? " · " + o.place : ""}</span>
-        ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.salesperson_name}</span>` : ""}
+        ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.source === "sheet_sync" ? "Auto Synced" : o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
         <span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
