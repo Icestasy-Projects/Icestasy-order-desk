@@ -213,6 +213,7 @@ function onOpen() {
     .createMenu('Icestasy Sync')
     .addItem('Sync New Orders to DB', 'syncOrdersToDb')
     .addItem('Stop Auto-Sync', 'stopAutoSync')
+    .addItem('Remove Non-PU/MU Orders from DB', 'removeNonPuMuOrders')
     .addSeparator()
     .addItem('Setup API Key', 'setupApiKey')
     .addItem('Test Connection', 'testConnection')
@@ -306,6 +307,28 @@ function supabaseGet_(table, queryParams) {
   var code = resp.getResponseCode();
   if (code < 200 || code >= 300) {
     throw new Error('GET ' + table + ' failed (' + code + '): ' + resp.getContentText());
+  }
+  return JSON.parse(resp.getContentText());
+}
+
+function supabaseDelete_(table, queryParams) {
+  var key = getApiKey_();
+  var url = SUPABASE_URL + '/rest/v1/' + table + '?' + queryParams;
+  var resp = UrlFetchApp.fetch(url, {
+    method: 'delete',
+    headers: {
+      'apikey': key,
+      'Authorization': 'Bearer ' + key,
+      'Content-Profile': 'sales',
+      'Accept-Profile': 'sales',
+      'Prefer': 'return=representation',
+      'Accept': 'application/json'
+    },
+    muteHttpExceptions: true
+  });
+  var code = resp.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error('DELETE ' + table + ' failed (' + code + '): ' + resp.getContentText());
   }
   return JSON.parse(resp.getContentText());
 }
@@ -653,6 +676,29 @@ function syncOrdersToDb() {
 
   var invoices = Object.keys(orderMap);
 
+  // Only sync Pune (PU) and Mumbai (MU) orders — skip ROI, IP, BU, DEL, HYD, etc.
+  var ALLOWED_PREFIXES = ['PU', 'MU'];
+  var skippedCity = 0;
+  for (var ci2 = 0; ci2 < invoices.length; ci2++) {
+    var prefix = invoices[ci2].replace(/[0-9].*/, '').toUpperCase();
+    var allowed = false;
+    for (var ap = 0; ap < ALLOWED_PREFIXES.length; ap++) {
+      if (prefix === ALLOWED_PREFIXES[ap]) { allowed = true; break; }
+    }
+    if (!allowed) {
+      // Mark rows as SYNCED so they don't come back each run
+      var od3 = orderMap[invoices[ci2]];
+      if (od3 && od3.rowIndices) {
+        for (var ri3 = 0; ri3 < od3.rowIndices.length; ri3++) {
+          sheet.getRange(od3.rowIndices[ri3], COL_SYNC + 1).setValue('SYNCED');
+        }
+      }
+      skippedCity++;
+      delete orderMap[invoices[ci2]];
+    }
+  }
+  invoices = Object.keys(orderMap);
+
   // Count valid orders
   var validCount = 0;
   var lineCount = 0;
@@ -889,4 +935,74 @@ function syncOrdersToDb() {
 
     SpreadsheetApp.getUi().alert('Sync Results', msg, SpreadsheetApp.getUi().ButtonSet.OK);
   }
+}
+
+
+// ═══════════════════════════════════════════════
+//  CLEANUP: Remove non-Pune/Mumbai orders from DB
+// ═══════════════════════════════════════════════
+
+function removeNonPuMuOrders() {
+  var ui = SpreadsheetApp.getUi();
+
+  // Find non-PU/MU sheet_sync orders
+  var orders = supabaseGet_('orders',
+    'select=id,order_no,total_amount' +
+    '&source=eq.sheet_sync' +
+    '&order_no=not.like.PU*&order_no=not.like.MU*' +
+    '&limit=500');
+
+  if (!orders || orders.length === 0) {
+    ui.alert('Cleanup', 'No non-PU/MU orders found in DB.', ui.ButtonSet.OK);
+    return;
+  }
+
+  var totalAmt = orders.reduce(function(s, o) { return s + parseFloat(o.total_amount || 0); }, 0);
+  var preview = orders.slice(0, 10).map(function(o) { return o.order_no + ' (₹' + o.total_amount + ')'; }).join('\n');
+  if (orders.length > 10) preview += '\n... and ' + (orders.length - 10) + ' more';
+
+  var confirm = ui.alert(
+    'Remove ' + orders.length + ' non-PU/MU orders?',
+    'Total value: ₹' + Math.round(totalAmt).toLocaleString() + '\n\n' + preview +
+    '\n\nThis will delete these orders and their line items from the database.',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+
+  var deleted = 0, errors = [];
+  var CHILD_TABLES = ['order_collateral', 'order_links', 'order_status_history', 'payments', 'order_lines'];
+
+  for (var i = 0; i < orders.length; i++) {
+    var oid = orders[i].id;
+    try {
+      for (var t = 0; t < CHILD_TABLES.length; t++) {
+        supabaseDelete_(CHILD_TABLES[t], 'order_id=eq.' + oid);
+      }
+      supabaseDelete_('orders', 'id=eq.' + oid);
+      deleted++;
+    } catch (e) {
+      errors.push(orders[i].order_no + ': ' + e.message);
+    }
+  }
+
+  // Also remove auto-created clients that now have zero orders
+  var orphanClients = 0;
+  try {
+    var autoClients = supabaseGet_('clients',
+      'select=id,business_name&primary_contact_phone=eq.0000000000&limit=500');
+    for (var ac = 0; ac < autoClients.length; ac++) {
+      var orderCheck = supabaseGet_('orders', 'select=id&client_id=eq.' + autoClients[ac].id + '&limit=1');
+      if (!orderCheck || orderCheck.length === 0) {
+        try {
+          supabaseDelete_('clients', 'id=eq.' + autoClients[ac].id);
+          orphanClients++;
+        } catch (e2) { /* skip */ }
+      }
+    }
+  } catch (e3) { /* skip orphan cleanup */ }
+
+  var msg = 'Deleted ' + deleted + ' of ' + orders.length + ' orders.';
+  if (orphanClients > 0) msg += '\nRemoved ' + orphanClients + ' orphan auto-created clients.';
+  if (errors.length > 0) msg += '\n\nErrors:\n' + errors.join('\n');
+  ui.alert('Cleanup Complete', msg, ui.ButtonSet.OK);
 }
