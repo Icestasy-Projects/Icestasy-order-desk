@@ -142,6 +142,15 @@ def _order_city_code(place: str) -> str:
     return _REGION_ROLE_TO_ORDER_CODE[_region_role_for_city(place)]
 
 
+_ORDER_CODE_TO_CITY = {"MU": "Mumbai", "PU": "Pune", "BA": "Bangalore",
+                       "HY": "Hyderabad", "DL": "Delhi", "ROI": "ROI"}
+
+
+def _city_from_order_no(order_no: str) -> str:
+    prefix = "".join(c for c in (order_no or "") if c.isalpha()).upper()
+    return _ORDER_CODE_TO_CITY.get(prefix, "—")
+
+
 def _financial_year(d: date) -> str:
     """Indian FY runs April-March, e.g. May 2026 and Jan 2027 are both FY 26-27."""
     start_year = d.year if d.month >= 4 else d.year - 1
@@ -595,7 +604,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
             "total_amount": float(r["total_amount"]), "created_at": r["created_at"],
             "client_name": r.get("client_name", "—"),
             "place": place,
-            "city": city_for_place(place) if place != "—" else "—",
+            "city": city_for_place(place) if place != "—" else _city_from_order_no(r["order_no"]),
             "salesperson_name": r.get("salesperson_name", "—"),
             "payment_status": r.get("payment_status", "not_recorded"),
             "has_lines": r.get("has_lines", False),
@@ -773,7 +782,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
         out.append({
             "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
             "sku_code": sku.get("sku_code", "—"),
-            "city": city_for_place(place) if place else "—",
+            "city": city_for_place(place) if place else _city_from_order_no(o.get("order_no")),
             "created_at": o["created_at"],
             "quantity": float(l["quantity"]),
             "revenue": float(l["line_total"]),
@@ -789,7 +798,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
         o = orders_by_id[oid]
         place = _addr_place(o)
         order_totals.append({
-            "city": city_for_place(place) if place else "—",
+            "city": city_for_place(place) if place else _city_from_order_no(o.get("order_no")),
             "created_at": o["created_at"],
             "tax": float(o.get("tax_amount") or 0),
             "total": float(o["total_amount"]),
