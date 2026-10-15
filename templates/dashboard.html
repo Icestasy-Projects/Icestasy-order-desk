@@ -905,8 +905,13 @@ function renderOrders() {
     const k = groupKey(o);
     (groups[k] = groups[k] || []).push(o);
   });
-  box.innerHTML = Object.entries(groups)
-    .sort((a, b) => b[1].reduce((s, o) => s + o.total_amount, 0) - a[1].reduce((s, o) => s + o.total_amount, 0))
+  const groupEntries = Object.entries(groups);
+  if (grouping === "month") {
+    groupEntries.sort((a, b) => new Date(b[1][0].created_at) - new Date(a[1][0].created_at));
+  } else {
+    groupEntries.sort((a, b) => b[1].reduce((s, o) => s + o.total_amount, 0) - a[1].reduce((s, o) => s + o.total_amount, 0));
+  }
+  box.innerHTML = groupEntries
     .map(([name, orders]) => {
     const groupTotal = orders.reduce((s, o) => s + o.total_amount, 0);
     const isOpen = expandedGroup === name;
@@ -1887,7 +1892,12 @@ function renderInsights() {
       name, lines, qty: lines.reduce((s, l) => s + l.quantity, 0), revenue: lines.reduce((s, l) => s + l.revenue, 0),
       tax: orders.reduce((s, o) => s + o.tax, 0), total: orders.reduce((s, o) => s + o.total, 0),
     };
-  }).sort((a, b) => b.revenue - a.revenue);
+  });
+  if (insightsGrouping === "month") {
+    groupTotals.sort((a, b) => new Date(b.lines[0].created_at) - new Date(a.lines[0].created_at));
+  } else {
+    groupTotals.sort((a, b) => b.revenue - a.revenue);
+  }
 
   box.innerHTML = groupTotals.map(g => {
     const isOpen = expandedInsightsGroup === g.name;
