@@ -606,6 +606,7 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
             "place": place,
             "city": city_for_place(place) if place != "—" else _city_from_order_no(r["order_no"]),
             "salesperson_name": r.get("salesperson_name", "—"),
+            "source": r.get("source", ""),
             "payment_status": r.get("payment_status", "not_recorded"),
             "has_lines": r.get("has_lines", False),
             "notes": r.get("notes", ""),
