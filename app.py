@@ -373,8 +373,10 @@ def api_pending_orders(client_id):
 @app.route("/api/orders/<int:order_id>/cancel", methods=["POST"])
 def api_cancel_order(order_id):
     try:
-        cancel_order(order_id)
+        cancel_order(order_id, user_id=session["user_id"], role=session["role"])
         return jsonify({"ok": True})
+    except PermissionError as e:
+        return jsonify({"ok": False, "error": str(e)}), 403
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
@@ -487,6 +489,8 @@ def api_complete_order(order_id):
     try:
         order = mark_order_completed(order_id, user_id=session["user_id"], role=session["role"])
         return jsonify({"ok": True, "order": order})
+    except PermissionError as e:
+        return jsonify({"ok": False, "error": str(e)}), 403
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
@@ -507,8 +511,10 @@ def api_flavour_sales():
 @broad_view_required
 def api_mark_paid(order_id):
     try:
-        payment = mark_payment_received(order_id, received_by=session["user_id"])
+        payment = mark_payment_received(order_id, received_by=session["user_id"], role=session["role"])
         return jsonify({"ok": True, "payment": payment})
+    except PermissionError as e:
+        return jsonify({"ok": False, "error": str(e)}), 403
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:

@@ -459,11 +459,33 @@ def check_pending_orders(client_id: int) -> list:
     return pending.data
 
 
-def cancel_order(order_id: int) -> dict:
+def _assert_order_access(sb, order: dict, user_id: int, role: str, action: str) -> None:
+    """Raise ValueError unless this user may act on the order: admin any, region
+    head their region's orders, anyone else only orders they created/own."""
+    if role == "admin":
+        return
+    if role in REGION_HEAD_ROLES:
+        place = None
+        if order.get("shipping_address_id"):
+            addr = (sb.schema("sales").from_("addresses").select("city,locality")
+                    .eq("id", order["shipping_address_id"]).limit(1).execute())
+            if addr.data:
+                place = addr.data[0].get("locality") or addr.data[0].get("city")
+        if _region_role_for_city(place) != role:
+            raise PermissionError(f"Not authorized to {action} this order")
+        return
+    if order.get("created_by_user_id") != user_id and order.get("salesperson_id") != user_id:
+        raise PermissionError(f"Not authorized to {action} this order")
+
+
+def cancel_order(order_id: int, user_id: int, role: str) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("id, status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders")
+             .select("id, status, created_by_user_id, salesperson_id, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _assert_order_access(sb, order.data[0], user_id, role, "cancel")
     if order.data[0]["status"] in ("invoiced", "delivered", "cancelled", "rejected"):
         raise ValueError(f"Cannot cancel — order is already {order.data[0]['status']}")
     res = (
@@ -619,11 +641,17 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
     return out
 
 
-def mark_payment_received(order_id: int, received_by: int) -> dict:
+def mark_payment_received(order_id: int, received_by: int, role: str = "admin") -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("total_amount, status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders")
+             .select("total_amount, status, shipping_address_id").eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _assert_order_access(sb, order.data[0], received_by, role, "record payment for")
+    already = (sb.schema("sales").from_("payments").select("id")
+               .eq("order_id", order_id).eq("status", "received").limit(1).execute())
+    if already.data:
+        raise ValueError("Payment already recorded for this order")
     if order.data[0]["status"] in ("rejected", "cancelled"):
         raise ValueError(f"Order is {order.data[0]['status']} — nothing to collect payment for")
     row = {
@@ -688,15 +716,13 @@ def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
     sb = _sb()
     order = (
         sb.schema("sales").from_("orders")
-        .select("status, created_by_user_id, salesperson_id")
+        .select("status, created_by_user_id, salesperson_id, shipping_address_id")
         .eq("id", order_id).limit(1).execute()
     )
     if not order.data:
         raise ValueError("Order not found")
     o = order.data[0]
-    if role not in REGION_HEAD_ROLES and role != "admin":
-        if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
-            raise ValueError("Not authorized to update this order")
+    _assert_order_access(sb, o, user_id, role, "update")
     # Completion (delivery) is independent of invoicing — an order can be invoiced
     # before or after the goods actually go out, so "invoiced" alone shouldn't
     # block marking it completed. Only these are truly final.
