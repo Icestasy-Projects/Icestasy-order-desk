@@ -3,14 +3,14 @@
 depending on interstate vs intrastate, running client balance, UPI QR)."""
 import io
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 
 import qrcode
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "logo1_trimmed.png")
@@ -179,7 +179,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
         disc_amt = float(l.get("line_discount_amount") or 0)
         net = float(l["line_total"])
         disc_pct = (disc_amt / gross * 100) if gross else 0
-        gst_rate = float(sku.get("gst_rate") or 5.0)
+        gst_rate = float(sku["gst_rate"]) if sku.get("gst_rate") is not None else 5.0
         tax_buckets[gst_rate] = tax_buckets.get(gst_rate, 0.0) + net
         total_qty += qty
         subtotal += net

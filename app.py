@@ -221,7 +221,7 @@ def new_order():
 @app.route("/api/parse", methods=["POST"])
 def api_parse():
     body = request.get_json(force=True)
-    text = body.get("text", "").strip()
+    text = (body.get("text") or "").strip()
     if not text:
         return jsonify({"error": "empty"}), 400
     result = parse_order_text(text)
@@ -371,9 +371,9 @@ def api_pending_orders(client_id):
 
 
 @app.route("/api/orders/<int:order_id>/cancel", methods=["POST"])
-def api_cancel_order(order_id):
+def api_cancel_order(order_id, user_id=session["user_id"], role=session["role"]):
     try:
-        cancel_order(order_id)
+        cancel_order(order_id, user_id=session["user_id"], role=session["role"])
         return jsonify({"ok": True})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -419,6 +419,8 @@ def api_orders():
             force_hold_reason=body.get("force_hold_reason"),
         )
         return jsonify({"ok": True, "order": order})
+    except (ValueError, KeyError, TypeError) as e:
+        return jsonify({"ok": False, "error": f"Invalid order: {e}"}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -568,6 +570,9 @@ def api_create_team_member():
 @admin_required
 def api_update_team_member(staff_id):
     body = request.get_json(force=True)
+    # An admin who deactivates or demotes their own account locks themselves out.
+    if staff_id == session.get("user_id") and (body.get("is_active") is False or body.get("role", ADMIN_ROLE) != ADMIN_ROLE):
+        return jsonify({"ok": False, "error": "You can't deactivate or change the role of your own account"}), 409
     try:
         member = update_team_member(staff_id, body)
         return jsonify({"ok": True, "member": member})
@@ -580,6 +585,8 @@ def api_update_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>", methods=["DELETE"])
 @admin_required
 def api_delete_team_member(staff_id):
+    if staff_id == session.get("user_id"):
+        return jsonify({"ok": False, "error": "You can't deactivate your own account"}), 409
     try:
         member = delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
@@ -592,6 +599,8 @@ def api_delete_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>/permanent", methods=["DELETE"])
 @admin_required
 def api_hard_delete_team_member(staff_id):
+    if staff_id == session.get("user_id"):
+        return jsonify({"ok": False, "error": "You can't delete your own account"}), 409
     try:
         member = hard_delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
