@@ -11,6 +11,32 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
+<style>
+.sku-picker { position: relative; }
+.sku-picker-input { padding-right: 36px !important; }
+.sku-picker-clear {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; color: var(--slate-400);
+  padding: 4px; line-height: 1; display: flex; align-items: center;
+}
+.sku-picker-clear:hover { color: var(--slate-600); }
+.sku-picker-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+  max-height: 260px; overflow-y: auto; background: var(--white);
+  border: 1.5px solid var(--slate-300); border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+}
+.sku-picker-option {
+  padding: 10px 14px; cursor: pointer; display: flex;
+  flex-direction: column; gap: 2px; border-bottom: 1px solid var(--slate-100);
+}
+.sku-picker-option:last-child { border-bottom: none; }
+.sku-picker-option:hover, .sku-picker-option.selected { background: var(--brand-soft); }
+.sku-picker-option .sku-name { font-size: 14px; font-weight: 500; color: var(--slate-800); }
+.sku-picker-option .sku-meta { font-size: 12px; color: var(--slate-500); }
+.sku-picker-empty { padding: 14px; text-align: center; color: var(--slate-400); font-size: 13px; }
+</style>
 </head>
 <body>
 <div class="app">
@@ -467,23 +493,75 @@ function renderFormItemRows() {
   const box = document.getElementById("formItemRows");
   const options = flavourOptionsCache || [];
   box.innerHTML = formItemRows.map((row, idx) => {
-    const opts = options.map(s =>
-      `<option value="${s.id}" ${String(s.id) === String(row.skuId) ? "selected" : ""}>${s.flavour_name} — ${s.pack_format_name} (${fmt(s.unit_price)})</option>`
-    ).join("");
+    const selected = options.find(s => String(s.id) === String(row.skuId));
+    const displayVal = selected ? `${selected.flavour_name} — ${selected.pack_format_name} (${fmt(selected.unit_price)})` : "";
     const removeBtn = formItemRows.length > 1
       ? `<button class="qty-btn" onclick="removeFormItemRow(${idx})" title="Remove">${icon("x")}</button>` : "";
     return `
       <div class="ci-right" style="margin-bottom:8px;gap:8px;display:flex;align-items:center">
-        <select class="search-input" style="flex:1" onchange="formItemRows[${idx}].skuId = this.value">
-          <option value="">Select flavour…</option>
-          ${opts}
-        </select>
+        <div class="sku-picker" style="flex:1;position:relative">
+          <input class="search-input sku-picker-input" type="text" autocomplete="off"
+            placeholder="Type to search flavour…"
+            value="${displayVal.replace(/"/g, '&quot;')}"
+            onfocus="openSkuDropdown(${idx})"
+            oninput="filterSkuDropdown(${idx}, this.value)">
+          ${displayVal ? `<button class="sku-picker-clear" type="button" onclick="clearSkuPick(${idx})" title="Clear">${icon("x")}</button>` : ""}
+          <div class="sku-picker-list hidden" id="skuList-${idx}"></div>
+        </div>
         <input class="search-input" type="number" min="1" value="${row.qty}" style="width:70px;text-align:center"
           onchange="formItemRows[${idx}].qty = Math.max(1, parseInt(this.value)||1)">
         ${removeBtn}
       </div>`;
   }).join("");
 }
+
+function openSkuDropdown(idx) {
+  const input = document.querySelector(`#skuList-${idx}`).previousElementSibling?.previousElementSibling
+    || document.querySelector(`.sku-picker:nth-child(1) input`);
+  filterSkuDropdown(idx, document.querySelectorAll(".sku-picker-input")[idx]?.value || "");
+}
+
+function filterSkuDropdown(idx, query) {
+  const listEl = document.getElementById(`skuList-${idx}`);
+  if (!listEl) return;
+  const options = flavourOptionsCache || [];
+  const q = query.toLowerCase().trim();
+  const filtered = q
+    ? options.filter(s => `${s.flavour_name} ${s.pack_format_name}`.toLowerCase().includes(q))
+    : options;
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="sku-picker-empty">No matches</div>`;
+  } else {
+    listEl.innerHTML = filtered.map(s =>
+      `<div class="sku-picker-option${String(s.id) === String(formItemRows[idx]?.skuId) ? " selected" : ""}"
+            onmousedown="pickSku(${idx}, '${s.id}')">
+        <span class="sku-name">${s.flavour_name}</span>
+        <span class="sku-meta">${s.pack_format_name} · ${fmt(s.unit_price)}</span>
+      </div>`
+    ).join("");
+  }
+  listEl.classList.remove("hidden");
+}
+
+function pickSku(idx, skuId) {
+  formItemRows[idx].skuId = skuId;
+  closeAllSkuDropdowns();
+  renderFormItemRows();
+}
+
+function clearSkuPick(idx) {
+  formItemRows[idx].skuId = "";
+  renderFormItemRows();
+  setTimeout(() => document.querySelectorAll(".sku-picker-input")[idx]?.focus(), 0);
+}
+
+function closeAllSkuDropdowns() {
+  document.querySelectorAll(".sku-picker-list").forEach(el => el.classList.add("hidden"));
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".sku-picker")) closeAllSkuDropdowns();
+});
 
 function addFormItemRow() {
   formItemRows.push({skuId: "", qty: 1});
