@@ -653,11 +653,16 @@ function submitFormOrder() {
       unit_price: sku.unit_price, not_found: false,
     };
   });
-  state.payment = null;
 
   hide("step-paste");
-  renderCart();
-  show("step-cart");
+  if (_returningToConfirm) {
+    _returningToConfirm = false;
+    showConfirm();
+  } else {
+    state.payment = null;
+    renderCart();
+    show("step-cart");
+  }
   renderOrderSummary();
   saveOrderDraft();
 }
@@ -778,6 +783,18 @@ function renderNextAfterCart() {
 
 // ── STEP 2: Payment ──────────────────────────────────────────────────────────
 let _returningToConfirm = false;
+
+async function changeItems() {
+  _returningToConfirm = true;
+  hide("step-confirm");
+  formItemRows = state.items
+    .filter(i => !i.not_found && i.resolved_sku)
+    .map(i => ({skuId: String(i.resolved_sku.id), qty: i.qty}));
+  state.items = [];
+  show("step-paste");
+  await switchOrderMode("form");
+  renderOrderSummary();
+}
 
 function changePayment() {
   _returningToConfirm = true;
@@ -1119,7 +1136,8 @@ async function showConfirm() {
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"}</strong></div>
     ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
     <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"} <button class="pill-change" onclick="changeAddress()">change</button></strong></div>
-    ${resolved.length ? `<table class="summary-table">
+    ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
+    <table class="summary-table">
       <thead><tr><th>Item</th><th>Format</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
       <tbody>${itemRows}</tbody>
     </table>` : ""}
