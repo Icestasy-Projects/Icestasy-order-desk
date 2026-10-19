@@ -416,7 +416,6 @@ def api_orders():
             notes=body.get("notes"),
             collateral=body.get("collateral"),
             discount_pct=float(body.get("discount_pct") or 0),
-            force_hold_reason=body.get("force_hold_reason"),
         )
         return jsonify({"ok": True, "order": order})
     except Exception as e:

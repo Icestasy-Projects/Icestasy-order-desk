@@ -281,7 +281,7 @@
     </section>
 
     <!-- STEP 3: Client -->
-    <section class="step" id="step-client">
+    <section class="step hidden" id="step-client">
       <div class="step-label">Client</div>
       <div class="sku-picker" id="clientPickerWrap">
         <input class="search-input sku-picker-input" type="text" autocomplete="off"
@@ -305,11 +305,6 @@
     <section class="step hidden" id="step-confirm">
       <div class="step-label">Order Summary</div>
       <div id="summaryBox" class="summary-box"></div>
-
-      <div id="holdWarning" class="hold-warning hidden">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-        <span id="holdWarningText"></span>
-      </div>
 
       <div class="confirm-extras">
         <div class="confirm-row" style="flex-direction:column;align-items:stretch">
@@ -1304,19 +1299,6 @@ async function showConfirm() {
   document.getElementById("orderComment").value = "";
   updateDiscountPreview();
 
-  // Check hold status
-  const holdEl = document.getElementById("holdWarning");
-  try {
-    const hc = await fetch(`/api/clients/${state.client.id}/hold-check`).then(r => r.json());
-    if (hc.hold) {
-      document.getElementById("holdWarningText").textContent =
-        "This order will be placed ON HOLD — " + (hc.reason || "previous unpaid orders");
-      holdEl.classList.remove("hidden");
-    } else {
-      holdEl.classList.add("hidden");
-    }
-  } catch (e) { holdEl.classList.add("hidden"); }
-
   show("step-confirm");
   renderOrderSummary();
 }
@@ -1644,31 +1626,30 @@ async function submitOrderWithOptions(options) {
       collateral: options.collateral !== undefined ? options.collateral : state.collateral,
       discount_pct: discountPct,
       notes: notes || null,
-      force_hold_reason: options.forceHoldReason || null,
     }),
   }).then(r => r.json());
 
   btn.disabled = false; btn.innerHTML = `${icon("check")} Confirm &amp; Place Order`;
 
   if (res.ok && !options.suppressDone) {
-    renderDoneOrders([res.order], res.order.on_hold ? "Order On Hold" : "Order Confirmed");
+    renderDoneOrders([res.order], "Order Confirmed");
   } else if (!res.ok) {
     alert("Order failed: " + (res.error || "Unknown error"));
   }
   return res;
 }
 
-loadClientOptions();
-(async () => { await restoreOrderDraft(); })();
+(async () => {
+  await loadClientOptions();
+  const restored = await restoreOrderDraft();
+  if (!restored) show("step-client");
+})();
 
 function renderDoneOrders(orders, title) {
   hide("step-confirm");
   const cards = orders.map(order => {
     const total = fmt(order.total);
     const discLine = order.discount_pct ? `<div class="done-meta" style="color:var(--green)">Discount: ${order.discount_pct}% (−${fmt(order.discount)})</div>` : "";
-    const holdBanner = order.on_hold
-      ? `<div class="hold-banner">${icon("triangle-alert")} Order placed ON HOLD — ${order.hold_reason || "admin review required"}</div>`
-      : "";
     const linesList = (order.lines || []).map(l =>
       `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
     ).join("") + (order.collateral || []).map(c =>
@@ -1676,11 +1657,10 @@ function renderDoneOrders(orders, title) {
     ).join("");
     return `
       <div class="done-order-card">
-      <div class="done-icon" style="color:${order.on_hold ? "var(--red)" : "var(--green)"}">${icon(order.on_hold ? "triangle-alert" : "circle-check-big")}</div>
-      <div class="done-title">${order.on_hold ? "Order On Hold" : "Order Confirmed"}</div>
+      <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
+      <div class="done-title">Order Confirmed</div>
       <a class="done-no" href="/orders?order=${order.id}" style="text-decoration:none">${order.order_no}</a>
       <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
-      ${holdBanner}
       ${discLine}
       <ul class="done-lines">${linesList}</ul>
       <div class="done-total">Total: <strong>${total}</strong></div>
@@ -1743,54 +1723,59 @@ async function restoreOrderDraft() {
   try {
     let raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) raw = sessionStorage.getItem(DRAFT_KEY);
-    if (!raw) return;
+    if (!raw) return false;
     draft = JSON.parse(raw);
-    if (!draft || !draft.state || !draft.state.client) return;
-    if (Date.now() - draft.ts > 3600000) { clearOrderDraft(); return; }
-  } catch (_) { return; }
+    if (!draft || !draft.state || !draft.state.client) return false;
+    if (Date.now() - draft.ts > 3600000) { clearOrderDraft(); return false; }
+  } catch (_) { return false; }
 
-  state.items = draft.state.items || [];
-  state.payment = draft.state.payment;
-  state.client = draft.state.client;
-  state.address_id = draft.state.address_id;
-  state.address_label = draft.state.address_label;
-  state.address_state = draft.state.address_state;
-  state.collateral = draft.state.collateral || [];
-  state.collateralOnly = draft.state.collateralOnly || false;
-  formItemRows = (draft.formItemRows || []).filter(r => r.skuId);
-  if (draft.packFormat) selectedPackFormat = draft.packFormat;
+  try {
+    state.items = draft.state.items || [];
+    state.payment = draft.state.payment;
+    state.client = draft.state.client;
+    state.address_id = draft.state.address_id;
+    state.address_label = draft.state.address_label;
+    state.address_state = draft.state.address_state;
+    state.collateral = draft.state.collateral || [];
+    state.collateralOnly = draft.state.collateralOnly || false;
+    formItemRows = (draft.formItemRows || []).filter(r => r.skuId);
+    if (draft.packFormat) selectedPackFormat = draft.packFormat;
 
-  if (draft.bu) {
-    selectedBU = draft.bu;
-    try { localStorage.setItem("icestasy_bu", draft.bu); } catch (_) {}
-    _syncBUui(draft.bu);
+    if (draft.bu) {
+      selectedBU = draft.bu;
+      try { localStorage.setItem("icestasy_bu", draft.bu); } catch (_) {}
+      _syncBUui(draft.bu);
+    }
+
+    // Restore client pill
+    document.getElementById("clientPickerWrap").style.display = "none";
+    document.getElementById("clientSelectedPill").innerHTML =
+      `<div class="selected-pill">${icon("check")} ${state.client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+
+    // Show the step the user was on
+    const target = draft.step || "step-paste";
+    show(target);
+
+    if (target === "step-paste") {
+      await switchOrderMode("form");
+    } else if (target === "step-cart") {
+      renderCart();
+    } else if (target === "step-collateral") {
+      renderCollateralList();
+    } else if (target === "step-payment") {
+      if (state.payment) markPayment(state.payment);
+    } else if (target === "step-address") {
+      if (state.client) loadAddresses(state.client.id);
+    } else if (target === "step-confirm") {
+      if (state.payment) markPayment(state.payment);
+      showConfirm();
+    }
+    renderOrderSummary();
+    return true;
+  } catch (e) {
+    console.error("[draft restore]", e);
+    return false;
   }
-
-  // Restore client pill
-  document.getElementById("clientPickerWrap").style.display = "none";
-  document.getElementById("clientSelectedPill").innerHTML =
-    `<div class="selected-pill">${icon("check")} ${state.client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
-
-  // Show the step the user was on
-  hide("step-client");
-  const target = draft.step || "step-paste";
-  show(target);
-
-  if (target === "step-paste") {
-    await switchOrderMode("form");
-  } else if (target === "step-cart") {
-    renderCart();
-  } else if (target === "step-collateral") {
-    renderCollateralList();
-  } else if (target === "step-payment") {
-    if (state.payment) markPayment(state.payment);
-  } else if (target === "step-address") {
-    if (state.client) loadAddresses(state.client.id);
-  } else if (target === "step-confirm") {
-    if (state.payment) markPayment(state.payment);
-    showConfirm();
-  }
-  renderOrderSummary();
 }
 
 window.addEventListener("beforeunload", saveOrderDraft);

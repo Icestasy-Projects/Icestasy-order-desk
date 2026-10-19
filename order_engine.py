@@ -534,7 +534,7 @@ def release_hold(order_id: int) -> dict:
     return res.data[0]
 
 
-def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0, force_hold_reason=None):
+def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0):
     sb = _sb()
     payment_mode = payment_mode or "advance"
     subtotal = sum(l["quantity"] * l["unit_price"] for l in lines)
@@ -551,9 +551,7 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             if place:
                 city_code = _order_city_code(place)
 
-    hold_check = should_auto_hold(client_id)
-    hold_reason = force_hold_reason or hold_check.get("reason", "")
-    status = "hold" if force_hold_reason or hold_check["hold"] else "draft"
+    status = "draft"
 
     order_no = _next_order_no(sb, city_code)
     order_row = {
@@ -591,8 +589,6 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
 
     result = {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
             "discount_pct": discount_pct,
-            "on_hold": status == "hold",
-            "hold_reason": hold_reason,
             "lines": [{"sku_code": l["sku_code"], "flavour_name": l["flavour_name"],
                        "format_name": l["format_name"], "quantity": l["quantity"],
                        "unit_price": l["unit_price"],
