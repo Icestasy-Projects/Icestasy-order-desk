@@ -99,19 +99,20 @@
 
     <!-- STEP 0: Paste / Form -->
     <section class="step hidden" id="step-paste">
-      <div class="tab-bar-flat" id="orderModeTabs">
-        <button class="tab-btn-flat active" id="orderModeTab-paste" onclick="switchOrderMode('paste')">Paste Message</button>
-        <button class="tab-btn-flat" id="orderModeTab-form" onclick="switchOrderMode('form')">Fill Form</button>
+      {# Paste Message tab hidden — re-enable when ready #}
+      <div class="tab-bar-flat" id="orderModeTabs" style="display:none!important">
+        <button class="tab-btn-flat" id="orderModeTab-paste" onclick="switchOrderMode('paste')">Paste Message</button>
+        <button class="tab-btn-flat active" id="orderModeTab-form" onclick="switchOrderMode('form')">Fill Form</button>
       </div>
 
-      <div id="orderModeBox-paste" class="mt16">
+      <div id="orderModeBox-paste" class="mt16" style="display:none!important">
         <div class="step-label">Paste order message</div>
         <textarea id="orderText" class="paste-box" rows="6"
           placeholder="2 Bulk Belgian&#10;3 Square Mango&#10;Advance&#10;Client: Trevor"></textarea>
         <button class="btn-primary" id="parseOrderBtn" onclick="parseOrder()">Parse Order <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
       </div>
 
-      <div id="orderModeBox-form" class="mt16 hidden">
+      <div id="orderModeBox-form" class="mt16">
         <div class="step-label">Order items</div>
         <div id="formItemRows"></div>
         <button class="btn-ghost mt8" onclick="addFormItemRow()">+ Add another item</button>
@@ -739,6 +740,7 @@ async function selectClient(client) {
 
   hide("step-client");
   show("step-paste");
+  switchOrderMode("form");
 }
 
 async function loadAddresses(clientId) {
