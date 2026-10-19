@@ -1729,18 +1729,20 @@ function saveOrderDraft() {
       bu: selectedBU,
       ts: Date.now(),
     };
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   } catch (_) {}
 }
 
 function clearOrderDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
   try { sessionStorage.removeItem(DRAFT_KEY); } catch (_) {}
 }
 
 async function restoreOrderDraft() {
   let draft;
   try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
+    let raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) raw = sessionStorage.getItem(DRAFT_KEY);
     if (!raw) return;
     draft = JSON.parse(raw);
     if (!draft || !draft.state || !draft.state.client) return;
@@ -1793,8 +1795,9 @@ async function restoreOrderDraft() {
 
 window.addEventListener("beforeunload", saveOrderDraft);
 document.addEventListener("visibilitychange", () => { if (document.hidden) saveOrderDraft(); });
+window.addEventListener("pagehide", saveOrderDraft);
+setInterval(saveOrderDraft, 5000);
 
-// Save draft when clicking any nav link (anchor navigation can skip beforeunload on some browsers)
 document.querySelectorAll("a[href]").forEach(a => {
   a.addEventListener("click", saveOrderDraft);
 });
