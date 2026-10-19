@@ -60,6 +60,25 @@
   padding: 4px; display: flex; align-items: center; transition: color .15s;
 }
 .item-card-remove:hover { color: var(--red, #ef4444); }
+.order-summary {
+  background: var(--slate-50); border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.summary-line {
+  display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--slate-600);
+}
+.summary-label {
+  font-weight: 600; color: var(--slate-500); text-transform: uppercase;
+  font-size: 11px; letter-spacing: .04em; min-width: 56px; flex-shrink: 0;
+}
+.summary-value { font-weight: 500; color: var(--slate-800); }
+.summary-items-list { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.summary-chip {
+  display: inline-block; background: var(--white); border: 1px solid var(--slate-200);
+  border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--slate-700);
+  white-space: nowrap;
+}
 </style>
 </head>
 <body>
@@ -71,7 +90,7 @@
         <span class="brand-text"><strong>Icestasy</strong><small>ORDER DESK</small></span>
       </a>
       <div class="header-right menu-wrap">
-        <span class="user-email">{{ user_email }}</span>
+        <span class="user-email">Hi, {{ (full_name.split(" ")[0] if full_name else user_email) }}</span>
         <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
         </button>
@@ -140,6 +159,8 @@
   </script>
 
   <main class="main">
+
+    <div id="orderSummary" class="order-summary hidden"></div>
 
     <!-- STEP 0: Paste / Form -->
     <section class="step hidden" id="step-paste">
@@ -358,6 +379,7 @@ function resetAll() {
   show("step-client");
   loadClientOptions();
   clearOrderDraft();
+  renderOrderSummary();
 }
 
 // ── Marketing Collateral ────────────────────────────────────────────────────
@@ -464,6 +486,7 @@ function _afterCollateralStep() {
 async function showAddressStep() {
   await loadAddresses(state.client.id);
   show("step-address");
+  renderOrderSummary();
 }
 
 // ── STEP 0: Parse ───────────────────────────────────────────────────────────
@@ -553,6 +576,7 @@ function renderFormItemRows() {
 function changeItemQty(idx, delta) {
   formItemRows[idx].qty = Math.max(1, formItemRows[idx].qty + delta);
   renderFormItemRows();
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -590,6 +614,7 @@ function addSkuToOrder(skuId) {
   closeAllSkuDropdowns();
   document.getElementById("skuSearchInput").value = "";
   renderFormItemRows();
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -609,6 +634,7 @@ function addFormItemRow() {
 function removeFormItemRow(idx) {
   formItemRows.splice(idx, 1);
   renderFormItemRows();
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -632,6 +658,7 @@ function submitFormOrder() {
   hide("step-paste");
   renderCart();
   show("step-cart");
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -771,6 +798,7 @@ function selectPayment(mode) {
   if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
   saveOrderDraft();
   hide("step-payment");
+  renderOrderSummary();
   if (_returningToConfirm) {
     _returningToConfirm = false;
     showConfirm();
@@ -847,6 +875,7 @@ async function selectClient(client) {
   hide("step-client");
   show("step-paste");
   await switchOrderMode("form");
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -991,6 +1020,7 @@ function changeClient() {
   document.getElementById("clientPickerInput").focus();
   ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"].forEach(hide);
   show("step-client");
+  renderOrderSummary();
 }
 
 // ── STEP 4: Address ──────────────────────────────────────────────────────────
@@ -1024,6 +1054,7 @@ async function selectAddress(id, label, city, addrState) {
   }
   saveOrderDraft();
   hide("step-address");
+  renderOrderSummary();
   showConfirm();
 }
 
@@ -1124,6 +1155,7 @@ async function showConfirm() {
   } catch (e) { holdEl.classList.add("hidden"); }
 
   show("step-confirm");
+  renderOrderSummary();
 }
 
 let _baseDiscPct = 0;
@@ -1515,7 +1547,8 @@ function getVisibleStep() {
 function saveOrderDraft() {
   try {
     const step = getVisibleStep();
-    if (step === "step-done" || step === "step-client") return;
+    if (step === "step-done") return;
+    if (step === "step-client" && !state.client) return;
     const draft = {
       state: {
         items: state.items,
@@ -1583,10 +1616,61 @@ async function restoreOrderDraft() {
     if (state.payment) markPayment(state.payment);
     showConfirm();
   }
+  renderOrderSummary();
 }
 
 window.addEventListener("beforeunload", saveOrderDraft);
 document.addEventListener("visibilitychange", () => { if (document.hidden) saveOrderDraft(); });
+
+// Save draft when clicking any nav link (anchor navigation can skip beforeunload on some browsers)
+document.querySelectorAll("a[href]").forEach(a => {
+  a.addEventListener("click", saveOrderDraft);
+});
+
+// ── Order summary (progressive visibility of selections) ─────────────────────
+function renderOrderSummary() {
+  const box = document.getElementById("orderSummary");
+  const step = getVisibleStep();
+  const pastClient = ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"];
+  const pastItems = ["step-cart","step-collateral","step-payment","step-address","step-confirm"];
+  const pastPayment = ["step-address","step-confirm"];
+  const lines = [];
+
+  if (state.client && pastClient.includes(step)) {
+    lines.push(`<div class="summary-line"><span class="summary-label">Client</span><span class="summary-value">${state.client.business_name}</span></div>`);
+  }
+  if (state.items.length && pastItems.includes(step)) {
+    const chips = state.items.map(it => {
+      const name = it.resolved_sku ? it.resolved_sku.flavour_name : "Item";
+      return `<span class="summary-chip">${name} x${it.qty}</span>`;
+    }).join("");
+    lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
+  }
+  if (formItemRows.length && step === "step-paste") {
+    const options = flavourOptionsCache || [];
+    const chosen = formItemRows.filter(r => r.skuId);
+    if (chosen.length) {
+      const chips = chosen.map(r => {
+        const sku = options.find(s => String(s.id) === String(r.skuId));
+        return `<span class="summary-chip">${sku ? sku.flavour_name : "Item"} x${r.qty}</span>`;
+      }).join("");
+      lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
+    }
+  }
+  if (state.payment && pastPayment.includes(step)) {
+    lines.push(`<div class="summary-line"><span class="summary-label">Payment</span><span class="summary-value" style="text-transform:capitalize">${state.payment}</span></div>`);
+  }
+  if (state.address_label && step === "step-confirm") {
+    lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${state.address_label}</span></div>`);
+  }
+
+  if (lines.length) {
+    box.innerHTML = lines.join("");
+    box.classList.remove("hidden");
+  } else {
+    box.classList.add("hidden");
+  }
+}
 </script>
 </body>
 </html>
