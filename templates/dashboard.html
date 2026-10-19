@@ -67,20 +67,7 @@
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
         Team
       </button>
-      <button class="tab-btn" id="page-tab-insights" onclick="switchPage('insights', this)">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
-        Insights
-      </button>
-      <button class="tab-btn" id="page-tab-dues" onclick="switchPage('dues', this)">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-        Dues
-      </button>
-      {% endif %}
-      {% if can_view_team %}
-      <button class="tab-btn" id="page-tab-stock" onclick="switchPage('stock', this)">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
-        Stock
-      </button>
+      {# Insights, Dues, Stock tabs hidden — re-enable when ready #}
       {% endif %}
       {% if is_admin %}
       <button class="tab-btn" id="page-tab-flavours" onclick="switchPage('flavours', this)">
@@ -237,7 +224,8 @@
       </section>
     </div>
 
-    <div id="page-insights" class="hidden">
+    {# Insights, Dues, Stock pages hidden — re-enable when ready #}
+    <div id="page-insights" class="hidden" style="display:none!important">
       <section class="step">
         <div class="dash-title-row">
           <div class="step-label" style="margin-bottom:0">Flavour Sales Insights</div>
@@ -255,7 +243,7 @@
       </section>
     </div>
 
-    <div id="page-dues" class="hidden">
+    <div id="page-dues" class="hidden" style="display:none!important">
       <section class="step">
         <div class="step-label">Client Dues</div>
         <div class="opt-muted mt8" style="font-size:12px">Clients with an outstanding balance, highest first. Click a row to see the orders behind its balance.</div>
@@ -267,7 +255,7 @@
     {% endif %}
 
     {% if can_view_team %}
-    <div id="page-stock" class="hidden">
+    <div id="page-stock" class="hidden" style="display:none!important">
       <section class="step">
         <div class="dash-title-row">
           <div class="step-label" style="margin-bottom:0">Stock</div>
