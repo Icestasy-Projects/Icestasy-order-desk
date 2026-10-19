@@ -234,15 +234,19 @@
       </div>
 
       <div id="orderModeBox-form" class="mt16">
-        <div class="step-label">Order items</div>
-        <div class="sku-picker" style="position:relative">
-          <input class="search-input sku-picker-input" type="text" autocomplete="off"
-            id="skuSearchInput" placeholder="Type to search and add flavour…"
-            onfocus="openMainSkuDropdown()"
-            oninput="filterMainSkuDropdown(this.value)">
-          <div class="sku-picker-list hidden" id="skuMainList"></div>
+        <div class="step-label">Pack format</div>
+        <div class="btn-group" id="skuFormatBtns"></div>
+        <div id="skuFormSection" class="mt16" style="display:none">
+          <div class="step-label">Add flavours <span id="skuFormatTag" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--brand);font-size:12px"></span></div>
+          <div class="sku-picker" style="position:relative">
+            <input class="search-input sku-picker-input" type="text" autocomplete="off"
+              id="skuSearchInput" placeholder="Type to search and add flavour…"
+              onfocus="openMainSkuDropdown()"
+              oninput="filterMainSkuDropdown(this.value)">
+            <div class="sku-picker-list hidden" id="skuMainList"></div>
+          </div>
+          <div id="formItemCards" class="mt16"></div>
         </div>
-        <div id="formItemCards" class="mt16"></div>
         <button class="btn-primary mt16" onclick="submitFormOrder()">Continue <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
       </div>
 
@@ -428,6 +432,7 @@ function resetAll() {
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
   formItemRows = [];
+  selectedPackFormat = null;
   _returningToConfirm = false;
   const skuInput = document.getElementById("skuSearchInput");
   if (skuInput) skuInput.value = "";
@@ -585,6 +590,7 @@ async function parseOrder() {
 
 // ── STEP 0b: Fill Form (dropdown-only item entry) ────────────────────────────
 let formItemRows = [];
+let selectedPackFormat = null;
 
 async function switchOrderMode(mode) {
   document.getElementById("orderModeTab-paste").classList.toggle("active", mode === "paste");
@@ -593,8 +599,34 @@ async function switchOrderMode(mode) {
   document.getElementById("orderModeBox-form").classList.toggle("hidden", mode !== "form");
   if (mode === "form") {
     await loadFlavourOptions();
+    renderFormatButtons();
     renderFormItemRows();
   }
+}
+
+function renderFormatButtons() {
+  const options = flavourOptionsCache || [];
+  const formats = {};
+  options.forEach(s => { formats[s.pack_format_id] = s.pack_format_name; });
+  const sorted = Object.entries(formats).sort((a, b) => a[1].localeCompare(b[1]));
+  const box = document.getElementById("skuFormatBtns");
+  box.innerHTML = sorted.map(([id, name]) =>
+    `<button class="btn-option${selectedPackFormat === Number(id) ? " active" : ""}" onclick="selectPackFormat(${id})">${name}</button>`
+  ).join("");
+  const section = document.getElementById("skuFormSection");
+  section.style.display = selectedPackFormat ? "" : "none";
+}
+
+function selectPackFormat(pfId) {
+  selectedPackFormat = Number(pfId);
+  const options = flavourOptionsCache || [];
+  const match = options.find(s => s.pack_format_id === selectedPackFormat);
+  renderFormatButtons();
+  document.getElementById("skuFormatTag").textContent = match ? match.pack_format_name : "";
+  document.getElementById("skuSearchInput").value = "";
+  document.getElementById("skuSearchInput").focus();
+  renderFormItemRows();
+  saveOrderDraft();
 }
 
 function renderFormItemRows() {
@@ -646,9 +678,12 @@ function filterMainSkuDropdown(query) {
   const options = flavourOptionsCache || [];
   const q = query.toLowerCase().trim();
   const alreadyAdded = new Set(formItemRows.filter(r => r.skuId).map(r => String(r.skuId)));
+  let pool = selectedPackFormat
+    ? options.filter(s => s.pack_format_id === selectedPackFormat)
+    : options;
   const filtered = (q
-    ? options.filter(s => `${s.flavour_name} ${s.pack_format_name}`.toLowerCase().includes(q))
-    : options
+    ? pool.filter(s => s.flavour_name.toLowerCase().includes(q))
+    : pool
   ).filter(s => !alreadyAdded.has(String(s.id)));
   if (!filtered.length) {
     listEl.innerHTML = `<div class="sku-picker-empty">${q ? "No matches" : "All flavours added"}</div>`;
@@ -656,7 +691,7 @@ function filterMainSkuDropdown(query) {
     listEl.innerHTML = filtered.map(s =>
       `<div class="sku-picker-option" onmousedown="addSkuToOrder('${s.id}')">
         <span class="sku-name">${s.flavour_name}</span>
-        <span class="sku-meta">${s.pack_format_name} · ${fmt(s.unit_price)}</span>
+        <span class="sku-meta">${fmt(s.unit_price)} each</span>
       </div>`
     ).join("");
   }
@@ -846,6 +881,8 @@ async function changeItems() {
   formItemRows = state.items
     .filter(i => !i.not_found && i.resolved_sku)
     .map(i => ({skuId: String(i.resolved_sku.id), qty: i.qty}));
+  const formats = new Set(state.items.filter(i => i.resolved_sku).map(i => i.resolved_sku.pack_format_id));
+  selectedPackFormat = formats.size === 1 ? [...formats][0] : (selectedPackFormat || null);
   state.items = [];
   show("step-paste");
   await switchOrderMode("form");
@@ -1688,6 +1725,7 @@ function saveOrderDraft() {
         collateralOnly: state.collateralOnly,
       },
       formItemRows: formItemRows,
+      packFormat: selectedPackFormat,
       step: step,
       bu: selectedBU,
       ts: Date.now(),
@@ -1719,6 +1757,7 @@ async function restoreOrderDraft() {
   state.collateral = draft.state.collateral || [];
   state.collateralOnly = draft.state.collateralOnly || false;
   formItemRows = (draft.formItemRows || []).filter(r => r.skuId);
+  if (draft.packFormat) selectedPackFormat = draft.packFormat;
 
   if (draft.bu) {
     selectedBU = draft.bu;
