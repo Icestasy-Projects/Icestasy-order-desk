@@ -148,7 +148,7 @@
       <div class="step-label">Client</div>
       <div class="search-row">
         <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
-               oninput="debounceSearch(this.value)">
+               autocomplete="off" oninput="debounceSearch(this.value)">
       </div>
       <div class="opt-muted mt8">New client? Ask your Admin to add them from the Clients tab first.</div>
       <div id="clientResults" class="option-list mt8"></div>
