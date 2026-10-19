@@ -751,8 +751,7 @@ function submitFormOrder() {
     showConfirm();
   } else {
     state.payment = null;
-    renderCart();
-    show("step-cart");
+    renderNextAfterCart();
   }
   renderOrderSummary();
   saveOrderDraft();
