@@ -419,11 +419,13 @@ function addCollateralLine() {
     notes: document.getElementById("colNotes").value.trim(),
   });
   renderCollateralList();
+  saveOrderDraft();
 }
 
 function removeCollateral(idx) {
   state.collateral.splice(idx, 1);
   renderCollateralList();
+  saveOrderDraft();
 }
 
 function proceedFromCollateral() {
@@ -556,6 +558,7 @@ function renderFormItemRows() {
 function changeItemQty(idx, delta) {
   formItemRows[idx].qty = Math.max(1, formItemRows[idx].qty + delta);
   renderFormItemRows();
+  saveOrderDraft();
 }
 
 function openMainSkuDropdown() {
@@ -592,6 +595,7 @@ function addSkuToOrder(skuId) {
   closeAllSkuDropdowns();
   document.getElementById("skuSearchInput").value = "";
   renderFormItemRows();
+  saveOrderDraft();
 }
 
 function closeAllSkuDropdowns() {
@@ -610,6 +614,7 @@ function addFormItemRow() {
 function removeFormItemRow(idx) {
   formItemRows.splice(idx, 1);
   renderFormItemRows();
+  saveOrderDraft();
 }
 
 function submitFormOrder() {
@@ -632,6 +637,7 @@ function submitFormOrder() {
   hide("step-paste");
   renderCart();
   show("step-cart");
+  saveOrderDraft();
 }
 
 async function loadFlavourOptions() {
@@ -768,6 +774,7 @@ function selectPayment(mode) {
   document.querySelectorAll("#paymentBtns .btn-option")
     .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
   if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
+  saveOrderDraft();
   hide("step-payment");
   if (_returningToConfirm) {
     _returningToConfirm = false;
@@ -852,7 +859,8 @@ async function selectClient(client) {
 
   hide("step-client");
   show("step-paste");
-  switchOrderMode("form");
+  await switchOrderMode("form");
+  saveOrderDraft();
 }
 
 async function loadAddresses(clientId) {
@@ -1030,6 +1038,7 @@ async function selectAddress(id, label, city, addrState) {
       } catch (e) { /* keep original prices on error */ }
     }
   }
+  saveOrderDraft();
   hide("step-address");
   showConfirm();
 }
@@ -1595,6 +1604,7 @@ async function restoreOrderDraft() {
 }
 
 window.addEventListener("beforeunload", saveOrderDraft);
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveOrderDraft(); });
 </script>
 </body>
 </html>
