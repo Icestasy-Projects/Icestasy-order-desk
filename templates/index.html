@@ -60,6 +60,25 @@
   padding: 4px; display: flex; align-items: center; transition: color .15s;
 }
 .item-card-remove:hover { color: var(--red, #ef4444); }
+.order-summary {
+  background: var(--slate-50); border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.summary-line {
+  display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--slate-600);
+}
+.summary-label {
+  font-weight: 600; color: var(--slate-500); text-transform: uppercase;
+  font-size: 11px; letter-spacing: .04em; min-width: 56px; flex-shrink: 0;
+}
+.summary-value { font-weight: 500; color: var(--slate-800); }
+.summary-items-list { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.summary-chip {
+  display: inline-block; background: var(--white); border: 1px solid var(--slate-200);
+  border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--slate-700);
+  white-space: nowrap;
+}
 </style>
 </head>
 <body>
@@ -71,7 +90,7 @@
         <span class="brand-text"><strong>Icestasy</strong><small>ORDER DESK</small></span>
       </a>
       <div class="header-right menu-wrap">
-        <span class="user-email">{{ user_email }}</span>
+        <span class="user-email">Hi, {{ (full_name.split(" ")[0] if full_name else user_email) }}</span>
         <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
         </button>
@@ -141,6 +160,8 @@
 
   <main class="main">
 
+    <div id="orderSummary" class="order-summary hidden"></div>
+
     <!-- STEP 0: Paste / Form -->
     <section class="step hidden" id="step-paste">
       {# Paste Message tab hidden — re-enable when ready #}
@@ -202,16 +223,15 @@
     <!-- STEP 3: Client -->
     <section class="step" id="step-client">
       <div class="step-label">Client</div>
-      <div class="search-row">
-        <input id="clientSearch" class="search-input" type="text" placeholder="Search by name or phone…"
-               autocomplete="off" oninput="debounceSearch(this.value)">
+      <div class="sku-picker" id="clientPickerWrap">
+        <input class="search-input sku-picker-input" type="text" autocomplete="off"
+          id="clientPickerInput" placeholder="Type to search client…"
+          onfocus="openClientDropdown()"
+          oninput="filterClientDropdown(this.value)">
+        <div class="sku-picker-list hidden" id="clientPickerList"></div>
       </div>
       <div class="opt-muted mt8">New client? Ask your Admin to add them from the Clients tab first.</div>
-      <div id="clientResults" class="option-list mt8"></div>
-      <div class="opt-muted mt16" id="clientDropdownLabel">Or pick from the full client list:</div>
-      <select id="clientDropdown" class="search-input mt8" onchange="selectClientFromDropdown(this.value)">
-        <option value="">Select client…</option>
-      </select>
+      <div id="clientSelectedPill" class="mt8"></div>
     </section>
 
     <!-- STEP 4: Address -->
@@ -331,7 +351,6 @@ let state = {
   collateral: [],    // [{type, quantity, notes}]
   collateralOnly: false,
 };
-let searchTimer = null;
 let flavourOptionsCache = null;  // lazy-loaded full active-SKU list, for manual not_found fallback
 const COLLATERAL_TYPES = ["Tent Cards","Acrylic Tent Cards","Acrylic Stands","Inserts (for Acrylic)","Posters","Flyers"];
 
@@ -346,12 +365,9 @@ function resetAll() {
   ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm","step-done"]
     .forEach(hide);
   document.getElementById("orderText").value = "";
-  document.getElementById("clientSearch").value = "";
-  document.getElementById("clientSearch").style.display = "";
-  document.getElementById("clientResults").innerHTML = "";
-  document.getElementById("clientDropdownLabel").style.display = "";
-  document.getElementById("clientDropdown").style.display = "";
-  document.getElementById("clientDropdown").value = "";
+  document.getElementById("clientPickerWrap").style.display = "";
+  document.getElementById("clientSelectedPill").innerHTML = "";
+  document.getElementById("clientPickerInput").value = "";
   document.getElementById("addressList").innerHTML = "";
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
@@ -363,6 +379,7 @@ function resetAll() {
   show("step-client");
   loadClientOptions();
   clearOrderDraft();
+  renderOrderSummary();
 }
 
 // ── Marketing Collateral ────────────────────────────────────────────────────
@@ -469,6 +486,7 @@ function _afterCollateralStep() {
 async function showAddressStep() {
   await loadAddresses(state.client.id);
   show("step-address");
+  renderOrderSummary();
 }
 
 // ── STEP 0: Parse ───────────────────────────────────────────────────────────
@@ -505,7 +523,7 @@ async function parseOrder() {
 
   // Pre-fill client search if hint provided
   if (res.client_hint) {
-    document.getElementById("clientSearch").value = res.client_hint;
+    document.getElementById("clientPickerInput").value = res.client_hint;
   }
 }
 
@@ -558,6 +576,7 @@ function renderFormItemRows() {
 function changeItemQty(idx, delta) {
   formItemRows[idx].qty = Math.max(1, formItemRows[idx].qty + delta);
   renderFormItemRows();
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -595,6 +614,7 @@ function addSkuToOrder(skuId) {
   closeAllSkuDropdowns();
   document.getElementById("skuSearchInput").value = "";
   renderFormItemRows();
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -614,6 +634,7 @@ function addFormItemRow() {
 function removeFormItemRow(idx) {
   formItemRows.splice(idx, 1);
   renderFormItemRows();
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -637,6 +658,7 @@ function submitFormOrder() {
   hide("step-paste");
   renderCart();
   show("step-cart");
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -776,6 +798,7 @@ function selectPayment(mode) {
   if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
   saveOrderDraft();
   hide("step-payment");
+  renderOrderSummary();
   if (_returningToConfirm) {
     _returningToConfirm = false;
     showConfirm();
@@ -791,51 +814,16 @@ function markPayment(mode) {
 }
 
 // ── STEP 3: Client ───────────────────────────────────────────────────────────
-function debounceSearch(val) {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => _searchClients(val), 300);
-}
-
-async function _searchClients(q) {
-  const box = document.getElementById("clientResults");
-  if (q.length < 2) { box.innerHTML = ""; return; }
-  box.innerHTML = `<div class="searching">Searching…</div>`;
-  const data = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`).then(r => r.json());
-  if (data.error) {
-    box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
-    return;
-  }
-  const clients = data.clients || [];
-  if (!clients.length) {
-    box.innerHTML = `<div class="opt-muted">No match for "<strong>${q}</strong>" — try business name, phone, or contact name, or ask your Admin to add this client from the Clients tab</div>`;
-    return;
-  }
-  box.innerHTML = clients.map(c => `
-    <button class="option-btn" onclick='selectClient(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-      <span class="opt-name">${c.business_name}</span>
-      <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}</span>
-    </button>`).join("");
-}
-
 let clientOptionsCache = null;
 
 async function loadClientOptions() {
-  if (clientOptionsCache) { renderClientDropdown(); return; }
+  if (clientOptionsCache) return;
   try {
     const res = await fetch("/api/clients/all-lite").then(r => r.json());
     clientOptionsCache = res.clients || [];
   } catch {
     clientOptionsCache = [];
   }
-  renderClientDropdown();
-}
-
-function renderClientDropdown() {
-  const sel = document.getElementById("clientDropdown");
-  const opts = (clientOptionsCache || []).map(c =>
-    `<option value="${c.id}">${c.business_name}${c.primary_contact_phone ? " — " + c.primary_contact_phone : ""}</option>`
-  ).join("");
-  sel.innerHTML = `<option value="">Select client…</option>${opts}`;
 }
 
 function showClientStep() {
@@ -843,23 +831,51 @@ function showClientStep() {
   loadClientOptions();
 }
 
-function selectClientFromDropdown(clientId) {
-  if (!clientId) return;
+function openClientDropdown() {
+  filterClientDropdown(document.getElementById("clientPickerInput").value);
+}
+
+function filterClientDropdown(query) {
+  const listEl = document.getElementById("clientPickerList");
+  if (!listEl) return;
+  const clients = clientOptionsCache || [];
+  const q = query.toLowerCase().trim();
+  const filtered = q
+    ? clients.filter(c => {
+        const hay = `${c.business_name} ${c.primary_contact_name || ""} ${c.primary_contact_phone || ""}`.toLowerCase();
+        return hay.includes(q);
+      })
+    : clients;
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="sku-picker-empty">${q ? "No matches" : "No clients loaded"}</div>`;
+  } else {
+    listEl.innerHTML = filtered.map(c =>
+      `<div class="sku-picker-option" onmousedown="selectClientFromList('${c.id}')">
+        <span class="sku-name">${c.business_name}</span>
+        <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}</span>
+      </div>`
+    ).join("");
+  }
+  listEl.classList.remove("hidden");
+}
+
+function selectClientFromList(clientId) {
   const client = (clientOptionsCache || []).find(c => String(c.id) === String(clientId));
   if (client) selectClient(client);
 }
 
 async function selectClient(client) {
   state.client = client;
-  document.getElementById("clientResults").innerHTML =
+  closeAllSkuDropdowns();
+  document.getElementById("clientPickerWrap").style.display = "none";
+  document.getElementById("clientSelectedPill").innerHTML =
     `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
-  document.getElementById("clientSearch").style.display = "none";
-  document.getElementById("clientDropdownLabel").style.display = "none";
-  document.getElementById("clientDropdown").style.display = "none";
+  document.getElementById("clientPickerInput").value = "";
 
   hide("step-client");
   show("step-paste");
   await switchOrderMode("form");
+  renderOrderSummary();
   saveOrderDraft();
 }
 
@@ -998,15 +1014,13 @@ async function submitAddress() {
 
 function changeClient() {
   state.client = null;
-  document.getElementById("clientSearch").style.display = "";
-  document.getElementById("clientResults").innerHTML = "";
-  document.getElementById("clientSearch").value = "";
-  document.getElementById("clientSearch").focus();
-  document.getElementById("clientDropdownLabel").style.display = "";
-  document.getElementById("clientDropdown").style.display = "";
-  document.getElementById("clientDropdown").value = "";
+  document.getElementById("clientPickerWrap").style.display = "";
+  document.getElementById("clientSelectedPill").innerHTML = "";
+  document.getElementById("clientPickerInput").value = "";
+  document.getElementById("clientPickerInput").focus();
   ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"].forEach(hide);
   show("step-client");
+  renderOrderSummary();
 }
 
 // ── STEP 4: Address ──────────────────────────────────────────────────────────
@@ -1040,6 +1054,7 @@ async function selectAddress(id, label, city, addrState) {
   }
   saveOrderDraft();
   hide("step-address");
+  renderOrderSummary();
   showConfirm();
 }
 
@@ -1140,6 +1155,7 @@ async function showConfirm() {
   } catch (e) { holdEl.classList.add("hidden"); }
 
   show("step-confirm");
+  renderOrderSummary();
 }
 
 let _baseDiscPct = 0;
@@ -1531,7 +1547,8 @@ function getVisibleStep() {
 function saveOrderDraft() {
   try {
     const step = getVisibleStep();
-    if (step === "step-done" || step === "step-client") return;
+    if (step === "step-done") return;
+    if (step === "step-client" && !state.client) return;
     const draft = {
       state: {
         items: state.items,
@@ -1576,11 +1593,9 @@ async function restoreOrderDraft() {
   formItemRows = (draft.formItemRows || []).filter(r => r.skuId);
 
   // Restore client pill
-  document.getElementById("clientResults").innerHTML =
+  document.getElementById("clientPickerWrap").style.display = "none";
+  document.getElementById("clientSelectedPill").innerHTML =
     `<div class="selected-pill">${icon("check")} ${state.client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
-  document.getElementById("clientSearch").style.display = "none";
-  document.getElementById("clientDropdownLabel").style.display = "none";
-  document.getElementById("clientDropdown").style.display = "none";
 
   // Show the step the user was on
   hide("step-client");
@@ -1601,10 +1616,61 @@ async function restoreOrderDraft() {
     if (state.payment) markPayment(state.payment);
     showConfirm();
   }
+  renderOrderSummary();
 }
 
 window.addEventListener("beforeunload", saveOrderDraft);
 document.addEventListener("visibilitychange", () => { if (document.hidden) saveOrderDraft(); });
+
+// Save draft when clicking any nav link (anchor navigation can skip beforeunload on some browsers)
+document.querySelectorAll("a[href]").forEach(a => {
+  a.addEventListener("click", saveOrderDraft);
+});
+
+// ── Order summary (progressive visibility of selections) ─────────────────────
+function renderOrderSummary() {
+  const box = document.getElementById("orderSummary");
+  const step = getVisibleStep();
+  const pastClient = ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"];
+  const pastItems = ["step-cart","step-collateral","step-payment","step-address","step-confirm"];
+  const pastPayment = ["step-address","step-confirm"];
+  const lines = [];
+
+  if (state.client && pastClient.includes(step)) {
+    lines.push(`<div class="summary-line"><span class="summary-label">Client</span><span class="summary-value">${state.client.business_name}</span></div>`);
+  }
+  if (state.items.length && pastItems.includes(step)) {
+    const chips = state.items.map(it => {
+      const name = it.resolved_sku ? it.resolved_sku.flavour_name : "Item";
+      return `<span class="summary-chip">${name} x${it.qty}</span>`;
+    }).join("");
+    lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
+  }
+  if (formItemRows.length && step === "step-paste") {
+    const options = flavourOptionsCache || [];
+    const chosen = formItemRows.filter(r => r.skuId);
+    if (chosen.length) {
+      const chips = chosen.map(r => {
+        const sku = options.find(s => String(s.id) === String(r.skuId));
+        return `<span class="summary-chip">${sku ? sku.flavour_name : "Item"} x${r.qty}</span>`;
+      }).join("");
+      lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
+    }
+  }
+  if (state.payment && pastPayment.includes(step)) {
+    lines.push(`<div class="summary-line"><span class="summary-label">Payment</span><span class="summary-value" style="text-transform:capitalize">${state.payment}</span></div>`);
+  }
+  if (state.address_label && step === "step-confirm") {
+    lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${state.address_label}</span></div>`);
+  }
+
+  if (lines.length) {
+    box.innerHTML = lines.join("");
+    box.classList.remove("hidden");
+  } else {
+    box.classList.add("hidden");
+  }
+}
 </script>
 </body>
 </html>
