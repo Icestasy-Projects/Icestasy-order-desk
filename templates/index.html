@@ -36,6 +36,30 @@
 .sku-picker-option .sku-name { font-size: 14px; font-weight: 500; color: var(--slate-800); }
 .sku-picker-option .sku-meta { font-size: 12px; color: var(--slate-500); }
 .sku-picker-empty { padding: 14px; text-align: center; color: var(--slate-400); font-size: 13px; }
+.item-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; background: var(--white); border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-sm); margin-bottom: 8px; transition: border-color .15s;
+}
+.item-card:hover { border-color: var(--slate-300); }
+.item-card-info { flex: 1; min-width: 0; }
+.item-card-name { font-size: 14px; font-weight: 600; color: var(--slate-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-card-meta { font-size: 12px; color: var(--slate-500); margin-top: 2px; }
+.item-card-controls { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.item-card-qty { display: flex; align-items: center; gap: 0; border: 1.5px solid var(--slate-200); border-radius: var(--radius-sm); overflow: hidden; }
+.item-card-qty .qty-btn {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  background: var(--slate-50); border: none; cursor: pointer; font-size: 16px; font-weight: 600;
+  color: var(--slate-600); transition: background .15s;
+}
+.item-card-qty .qty-btn:hover { background: var(--slate-100); }
+.item-card-qty .qty-val { width: 36px; text-align: center; font-size: 14px; font-weight: 600; background: var(--white); }
+.item-card-total { font-size: 14px; font-weight: 600; color: var(--slate-700); min-width: 80px; text-align: right; }
+.item-card-remove {
+  background: none; border: none; cursor: pointer; color: var(--slate-400);
+  padding: 4px; display: flex; align-items: center; transition: color .15s;
+}
+.item-card-remove:hover { color: var(--red, #ef4444); }
 </style>
 </head>
 <body>
@@ -134,8 +158,14 @@
 
       <div id="orderModeBox-form" class="mt16">
         <div class="step-label">Order items</div>
-        <div id="formItemRows"></div>
-        <button class="btn-ghost mt8" onclick="addFormItemRow()">+ Add another item</button>
+        <div class="sku-picker" style="position:relative">
+          <input class="search-input sku-picker-input" type="text" autocomplete="off"
+            id="skuSearchInput" placeholder="Type to search and add flavour…"
+            onfocus="openMainSkuDropdown()"
+            oninput="filterMainSkuDropdown(this.value)">
+          <div class="sku-picker-list hidden" id="skuMainList"></div>
+        </div>
+        <div id="formItemCards" class="mt16"></div>
         <button class="btn-primary mt16" onclick="submitFormOrder()">Continue <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
       </div>
 
@@ -325,8 +355,10 @@ function resetAll() {
   document.getElementById("addressList").innerHTML = "";
   document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
-  formItemRows = [{skuId: "", qty: 1}];
+  formItemRows = [];
   _returningToConfirm = false;
+  const skuInput = document.getElementById("skuSearchInput");
+  if (skuInput) skuInput.value = "";
   switchOrderMode("form");
   show("step-client");
   loadClientOptions();
@@ -476,7 +508,7 @@ async function parseOrder() {
 }
 
 // ── STEP 0b: Fill Form (dropdown-only item entry) ────────────────────────────
-let formItemRows = [{skuId: "", qty: 1}];
+let formItemRows = [];
 
 async function switchOrderMode(mode) {
   document.getElementById("orderModeTab-paste").classList.toggle("active", mode === "paste");
@@ -490,51 +522,61 @@ async function switchOrderMode(mode) {
 }
 
 function renderFormItemRows() {
-  const box = document.getElementById("formItemRows");
+  const box = document.getElementById("formItemCards");
   const options = flavourOptionsCache || [];
-  box.innerHTML = formItemRows.map((row, idx) => {
-    const selected = options.find(s => String(s.id) === String(row.skuId));
-    const displayVal = selected ? `${selected.flavour_name} — ${selected.pack_format_name} (${fmt(selected.unit_price)})` : "";
-    const removeBtn = formItemRows.length > 1
-      ? `<button class="qty-btn" onclick="removeFormItemRow(${idx})" title="Remove">${icon("x")}</button>` : "";
+  const chosen = formItemRows.filter(r => r.skuId);
+  if (!chosen.length) {
+    box.innerHTML = `<div class="opt-muted" style="text-align:center;padding:16px 0">No items added yet — search above to add flavours</div>`;
+    return;
+  }
+  box.innerHTML = chosen.map((row, idx) => {
+    const realIdx = formItemRows.indexOf(row);
+    const sku = options.find(s => String(s.id) === String(row.skuId));
+    if (!sku) return "";
+    const lineTotal = (sku.unit_price || 0) * row.qty;
     return `
-      <div class="ci-right" style="margin-bottom:8px;gap:8px;display:flex;align-items:center">
-        <div class="sku-picker" style="flex:1;position:relative">
-          <input class="search-input sku-picker-input" type="text" autocomplete="off"
-            placeholder="Type to search flavour…"
-            value="${displayVal.replace(/"/g, '&quot;')}"
-            onfocus="openSkuDropdown(${idx})"
-            oninput="filterSkuDropdown(${idx}, this.value)">
-          ${displayVal ? `<button class="sku-picker-clear" type="button" onclick="clearSkuPick(${idx})" title="Clear">${icon("x")}</button>` : ""}
-          <div class="sku-picker-list hidden" id="skuList-${idx}"></div>
+      <div class="item-card">
+        <div class="item-card-info">
+          <div class="item-card-name">${sku.flavour_name}</div>
+          <div class="item-card-meta">${sku.pack_format_name} · ${fmt(sku.unit_price)} each</div>
         </div>
-        <input class="search-input" type="number" min="1" value="${row.qty}" style="width:70px;text-align:center"
-          onchange="formItemRows[${idx}].qty = Math.max(1, parseInt(this.value)||1)">
-        ${removeBtn}
+        <div class="item-card-controls">
+          <div class="item-card-qty">
+            <button class="qty-btn" onclick="changeItemQty(${realIdx}, -1)">−</button>
+            <span class="qty-val">${row.qty}</span>
+            <button class="qty-btn" onclick="changeItemQty(${realIdx}, 1)">+</button>
+          </div>
+          <div class="item-card-total">${fmt(lineTotal)}</div>
+          <button class="item-card-remove" onclick="removeFormItemRow(${realIdx})" title="Remove">${icon("x")}</button>
+        </div>
       </div>`;
   }).join("");
 }
 
-function openSkuDropdown(idx) {
-  const input = document.querySelector(`#skuList-${idx}`).previousElementSibling?.previousElementSibling
-    || document.querySelector(`.sku-picker:nth-child(1) input`);
-  filterSkuDropdown(idx, document.querySelectorAll(".sku-picker-input")[idx]?.value || "");
+function changeItemQty(idx, delta) {
+  formItemRows[idx].qty = Math.max(1, formItemRows[idx].qty + delta);
+  renderFormItemRows();
 }
 
-function filterSkuDropdown(idx, query) {
-  const listEl = document.getElementById(`skuList-${idx}`);
+function openMainSkuDropdown() {
+  filterMainSkuDropdown(document.getElementById("skuSearchInput").value);
+}
+
+function filterMainSkuDropdown(query) {
+  const listEl = document.getElementById("skuMainList");
   if (!listEl) return;
   const options = flavourOptionsCache || [];
   const q = query.toLowerCase().trim();
-  const filtered = q
+  const alreadyAdded = new Set(formItemRows.filter(r => r.skuId).map(r => String(r.skuId)));
+  const filtered = (q
     ? options.filter(s => `${s.flavour_name} ${s.pack_format_name}`.toLowerCase().includes(q))
-    : options;
+    : options
+  ).filter(s => !alreadyAdded.has(String(s.id)));
   if (!filtered.length) {
-    listEl.innerHTML = `<div class="sku-picker-empty">No matches</div>`;
+    listEl.innerHTML = `<div class="sku-picker-empty">${q ? "No matches" : "All flavours added"}</div>`;
   } else {
     listEl.innerHTML = filtered.map(s =>
-      `<div class="sku-picker-option${String(s.id) === String(formItemRows[idx]?.skuId) ? " selected" : ""}"
-            onmousedown="pickSku(${idx}, '${s.id}')">
+      `<div class="sku-picker-option" onmousedown="addSkuToOrder('${s.id}')">
         <span class="sku-name">${s.flavour_name}</span>
         <span class="sku-meta">${s.pack_format_name} · ${fmt(s.unit_price)}</span>
       </div>`
@@ -543,16 +585,13 @@ function filterSkuDropdown(idx, query) {
   listEl.classList.remove("hidden");
 }
 
-function pickSku(idx, skuId) {
-  formItemRows[idx].skuId = skuId;
+function addSkuToOrder(skuId) {
+  const existing = formItemRows.find(r => String(r.skuId) === String(skuId));
+  if (existing) { existing.qty++; }
+  else { formItemRows.push({skuId, qty: 1}); }
   closeAllSkuDropdowns();
+  document.getElementById("skuSearchInput").value = "";
   renderFormItemRows();
-}
-
-function clearSkuPick(idx) {
-  formItemRows[idx].skuId = "";
-  renderFormItemRows();
-  setTimeout(() => document.querySelectorAll(".sku-picker-input")[idx]?.focus(), 0);
 }
 
 function closeAllSkuDropdowns() {
@@ -1432,7 +1471,7 @@ async function submitOrderWithOptions(options) {
 }
 
 loadClientOptions();
-restoreOrderDraft();
+(async () => { await restoreOrderDraft(); })();
 
 function renderDoneOrders(orders, title) {
   hide("step-confirm");
@@ -1525,7 +1564,7 @@ async function restoreOrderDraft() {
   state.address_state = draft.state.address_state;
   state.collateral = draft.state.collateral || [];
   state.collateralOnly = draft.state.collateralOnly || false;
-  formItemRows = draft.formItemRows || [{skuId: "", qty: 1}];
+  formItemRows = (draft.formItemRows || []).filter(r => r.skuId);
 
   // Restore client pill
   document.getElementById("clientResults").innerHTML =
