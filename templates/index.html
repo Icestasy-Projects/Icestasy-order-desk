@@ -79,6 +79,29 @@
   border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--slate-700);
   white-space: nowrap;
 }
+.bu-bar {
+  display: flex; align-items: center; gap: 6px; padding: 8px 16px;
+  background: var(--white); border-bottom: 1px solid var(--slate-200);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.bu-bar::-webkit-scrollbar { display: none; }
+.bu-label {
+  font-size: 11px; font-weight: 600; color: var(--slate-400);
+  text-transform: uppercase; letter-spacing: .04em; margin-right: 4px;
+  flex-shrink: 0;
+}
+.bu-pill {
+  display: inline-flex; align-items: center; padding: 4px 12px;
+  border-radius: 999px; font-size: 12px; font-weight: 500;
+  border: 1.5px solid var(--slate-200); background: var(--white);
+  color: var(--slate-600); cursor: pointer; white-space: nowrap;
+  transition: all .15s;
+}
+.bu-pill:hover { border-color: var(--slate-300); background: var(--slate-50); }
+.bu-pill.active {
+  background: var(--brand, #2563eb); border-color: var(--brand, #2563eb);
+  color: #fff; font-weight: 600;
+}
 </style>
 </head>
 <body>
@@ -142,6 +165,17 @@
       {% endif %}
     </div>
   </nav>
+
+  <div class="bu-bar" id="buBar">
+    <span class="bu-label">BU</span>
+    <button class="bu-pill active" data-bu="all" onclick="selectBU('all')">All</button>
+    <button class="bu-pill" data-bu="mumbai" onclick="selectBU('mumbai')">Mumbai</button>
+    <button class="bu-pill" data-bu="pune" onclick="selectBU('pune')">Pune</button>
+    <button class="bu-pill" data-bu="bangalore" onclick="selectBU('bangalore')">Bangalore</button>
+    <button class="bu-pill" data-bu="hyderabad" onclick="selectBU('hyderabad')">Hyderabad</button>
+    <button class="bu-pill" data-bu="delhi" onclick="selectBU('delhi')">Delhi</button>
+    <button class="bu-pill" data-bu="roi" onclick="selectBU('roi')">ROI</button>
+  </div>
 
   <div class="menu-backdrop" id="menuBackdrop" onclick="toggleMenu()"></div>
   <script>
@@ -830,17 +864,48 @@ function markPayment(mode) {
     .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
 }
 
+// ── BU location selector ─────────────────────────────────────────────────────
+let selectedBU = "all";
+(function initBU() {
+  try { selectedBU = localStorage.getItem("icestasy_bu") || "all"; } catch (_) {}
+  document.querySelectorAll("#buBar .bu-pill").forEach(b => {
+    b.classList.toggle("active", b.dataset.bu === selectedBU);
+  });
+})();
+
+function selectBU(bu) {
+  selectedBU = bu;
+  try { localStorage.setItem("icestasy_bu", bu); } catch (_) {}
+  document.querySelectorAll("#buBar .bu-pill").forEach(b => {
+    b.classList.toggle("active", b.dataset.bu === bu);
+  });
+  if (_allClientsCache) {
+    clientOptionsCache = bu === "all"
+      ? _allClientsCache
+      : _allClientsCache.filter(c => c.price_region === bu);
+  }
+  if (state.client && bu !== "all" && state.client.price_region !== bu) {
+    changeClient();
+  }
+  renderOrderSummary();
+}
+
 // ── STEP 3: Client ───────────────────────────────────────────────────────────
+let _allClientsCache = null;
 let clientOptionsCache = null;
 
 async function loadClientOptions() {
-  if (clientOptionsCache) return;
-  try {
-    const res = await fetch("/api/clients/all-lite").then(r => r.json());
-    clientOptionsCache = res.clients || [];
-  } catch {
-    clientOptionsCache = [];
+  if (!_allClientsCache) {
+    try {
+      const res = await fetch("/api/clients/all-lite").then(r => r.json());
+      _allClientsCache = res.clients || [];
+    } catch {
+      _allClientsCache = [];
+    }
   }
+  clientOptionsCache = selectedBU === "all"
+    ? _allClientsCache
+    : _allClientsCache.filter(c => c.price_region === selectedBU);
 }
 
 function showClientStep() {
@@ -869,7 +934,7 @@ function filterClientDropdown(query) {
     listEl.innerHTML = filtered.map(c =>
       `<div class="sku-picker-option" onmousedown="selectClientFromList('${c.id}')">
         <span class="sku-name">${c.business_name}</span>
-        <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}</span>
+        <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}</span>
       </div>`
     ).join("");
   }
@@ -1580,6 +1645,7 @@ function saveOrderDraft() {
       },
       formItemRows: formItemRows,
       step: step,
+      bu: selectedBU,
       ts: Date.now(),
     };
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -1609,6 +1675,14 @@ async function restoreOrderDraft() {
   state.collateral = draft.state.collateral || [];
   state.collateralOnly = draft.state.collateralOnly || false;
   formItemRows = (draft.formItemRows || []).filter(r => r.skuId);
+
+  if (draft.bu) {
+    selectedBU = draft.bu;
+    try { localStorage.setItem("icestasy_bu", draft.bu); } catch (_) {}
+    document.querySelectorAll("#buBar .bu-pill").forEach(b => {
+      b.classList.toggle("active", b.dataset.bu === draft.bu);
+    });
+  }
 
   // Restore client pill
   document.getElementById("clientPickerWrap").style.display = "none";
@@ -1654,6 +1728,10 @@ function renderOrderSummary() {
   const pastPayment = ["step-address","step-confirm"];
   const lines = [];
 
+  if (selectedBU !== "all") {
+    const buLabels = {mumbai:"Mumbai",pune:"Pune",bangalore:"Bangalore",hyderabad:"Hyderabad",delhi:"Delhi",roi:"ROI"};
+    lines.push(`<div class="summary-line"><span class="summary-label">BU</span><span class="summary-value">${buLabels[selectedBU] || selectedBU}</span></div>`);
+  }
   if (state.client && pastClient.includes(step)) {
     lines.push(`<div class="summary-line"><span class="summary-label">Client</span><span class="summary-value">${state.client.business_name}</span></div>`);
   }

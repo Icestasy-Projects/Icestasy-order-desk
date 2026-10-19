@@ -211,16 +211,25 @@ def search_clients(query: str) -> list:
 
 
 def list_clients_lite() -> list:
-    """Every active client's id/name/contact — lightweight (no order counts or
-    address joins, unlike list_clients) so it's cheap to fetch just to
-    populate a "browse all clients" dropdown, e.g. when a pasted order's
-    client hint doesn't match anyone via search."""
+    """Every active client's id/name/contact plus derived city from default
+    address — lightweight enough for a 'browse all clients' dropdown while
+    still supporting BU-level filtering."""
     sb = _sb()
     result = (
         sb.schema("sales").from_("clients")
-        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin")
+        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin, addresses(city, locality, is_default)")
         .eq("status", "active").order("business_name").execute()
     )
+    for c in result.data:
+        addrs = c.pop("addresses", None) or []
+        default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
+        if default_addr:
+            place = default_addr.get("locality") or default_addr.get("city") or ""
+            raw_city = default_addr.get("city") or ""
+            c["city"] = city_for_place(place) if place else (raw_city or "Unassigned")
+        else:
+            c["city"] = "Unassigned"
+        c["price_region"] = _CITY_TO_PRICE_REGION.get(c["city"], "roi")
     return result.data
 
 
