@@ -62,16 +62,10 @@
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
         Team
       </a>
-      <a class="tab-btn" href="/insights">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
-        Insights
-      </a>
+      {# Insights tab hidden — re-enable when ready #}
       {% endif %}
       {% if is_admin %}
-      <a class="tab-btn" href="/stock">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
-        Stock
-      </a>
+      {# Stock tab hidden — re-enable when ready #}
       <a class="tab-btn" href="/flavours">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17c5 0 8-2.69 8-6H4c0 3.31 3 6 8 6m-4 4h8m-4-3v3M5.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M12.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M15.5 6.5a3.5 3.5 0 1 0-7 0"/></svg>
         Flavours
@@ -307,9 +301,10 @@ function resetAll() {
   document.getElementById("collateralList").innerHTML = "";
   formItemRows = [{skuId: "", qty: 1}];
   _returningToConfirm = false;
-  switchOrderMode("paste");
+  switchOrderMode("form");
   show("step-client");
   loadClientOptions();
+  clearOrderDraft();
 }
 
 // ── Marketing Collateral ────────────────────────────────────────────────────
@@ -1359,6 +1354,7 @@ async function submitOrderWithOptions(options) {
 }
 
 loadClientOptions();
+restoreOrderDraft();
 
 function renderDoneOrders(orders, title) {
   hide("step-confirm");
@@ -1390,7 +1386,98 @@ function renderDoneOrders(orders, title) {
     ${cards}
     <button class="btn-primary mt16" onclick="resetAll()">New Order</button>`;
   show("step-done");
+  clearOrderDraft();
 }
+
+// ── Order draft persistence (sessionStorage) ────────────────────────────────
+const DRAFT_KEY = "icestasy_order_draft";
+
+function getVisibleStep() {
+  const steps = ["step-done","step-confirm","step-address","step-payment",
+                 "step-collateral","step-cart","step-paste","step-client"];
+  for (const id of steps) {
+    const el = document.getElementById(id);
+    if (el && !el.classList.contains("hidden")) return id;
+  }
+  return "step-client";
+}
+
+function saveOrderDraft() {
+  try {
+    const step = getVisibleStep();
+    if (step === "step-done" || step === "step-client") return;
+    const draft = {
+      state: {
+        items: state.items,
+        payment: state.payment,
+        client: state.client,
+        address_id: state.address_id,
+        address_label: state.address_label,
+        address_state: state.address_state,
+        collateral: state.collateral,
+        collateralOnly: state.collateralOnly,
+      },
+      formItemRows: formItemRows,
+      step: step,
+      ts: Date.now(),
+    };
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch (_) {}
+}
+
+function clearOrderDraft() {
+  try { sessionStorage.removeItem(DRAFT_KEY); } catch (_) {}
+}
+
+async function restoreOrderDraft() {
+  let draft;
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return;
+    draft = JSON.parse(raw);
+    if (!draft || !draft.state || !draft.state.client) return;
+    if (Date.now() - draft.ts > 3600000) { clearOrderDraft(); return; }
+  } catch (_) { return; }
+
+  state.items = draft.state.items || [];
+  state.payment = draft.state.payment;
+  state.client = draft.state.client;
+  state.address_id = draft.state.address_id;
+  state.address_label = draft.state.address_label;
+  state.address_state = draft.state.address_state;
+  state.collateral = draft.state.collateral || [];
+  state.collateralOnly = draft.state.collateralOnly || false;
+  formItemRows = draft.formItemRows || [{skuId: "", qty: 1}];
+
+  // Restore client pill
+  document.getElementById("clientResults").innerHTML =
+    `<div class="selected-pill">${icon("check")} ${state.client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+  document.getElementById("clientSearch").style.display = "none";
+  document.getElementById("clientDropdownLabel").style.display = "none";
+  document.getElementById("clientDropdown").style.display = "none";
+
+  // Show the step the user was on
+  hide("step-client");
+  const target = draft.step || "step-paste";
+  show(target);
+
+  if (target === "step-paste") {
+    await switchOrderMode("form");
+  } else if (target === "step-cart") {
+    renderCart();
+  } else if (target === "step-collateral") {
+    renderCollateralList();
+  } else if (target === "step-payment") {
+    if (state.payment) markPayment(state.payment);
+  } else if (target === "step-address") {
+    if (state.client) loadAddresses(state.client.id);
+  } else if (target === "step-confirm") {
+    if (state.payment) markPayment(state.payment);
+    showConfirm();
+  }
+}
+
+window.addEventListener("beforeunload", saveOrderDraft);
 </script>
 </body>
 </html>
