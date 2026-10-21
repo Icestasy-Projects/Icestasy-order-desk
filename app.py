@@ -131,6 +131,7 @@ def login():
         session["full_name"] = staff["full_name"]
         session["auth_user_id"] = result.user.id
         session["must_change_password"] = staff["must_change_password"]
+        session["region"] = staff.get("region") or ""
     except Exception:
         return redirect(url_for("login", error="Invalid email or password"))
     return redirect(url_for("index"))
@@ -282,7 +283,7 @@ def api_clients():
 @app.route("/api/clients")
 def api_clients_list():
     try:
-        return jsonify({"clients": list_clients(role=session.get("role"))})
+        return jsonify({"clients": list_clients(role=session.get("role"), region=session.get("region", ""))})
     except Exception as e:
         return jsonify({"clients": [], "error": str(e)}), 200
 
@@ -299,7 +300,7 @@ def api_clients_all_lite():
 @app.route("/api/clients/export")
 def api_clients_export():
     from reports import build_clients_workbook
-    clients = list_clients(role=session.get("role"))
+    clients = list_clients(role=session.get("role"), region=session.get("region", ""))
     buf = build_clients_workbook(clients)
     filename = f"icestasy-clients-{date.today().isoformat()}.xlsx"
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -312,7 +313,7 @@ def api_client_dues():
     if role not in BROAD_VIEW_ROLES:
         return jsonify({"clients": [], "error": "forbidden"}), 403
     try:
-        return jsonify({"clients": client_dues(role=role)})
+        return jsonify({"clients": client_dues(role=role, region=session.get("region", ""))})
     except Exception as e:
         return jsonify({"clients": [], "error": str(e)}), 200
 
@@ -435,7 +436,8 @@ def api_stock_check():
 @app.route("/api/dashboard/orders")
 def api_dashboard_orders():
     try:
-        orders = list_dashboard_orders(user_id=session["user_id"], role=session["role"])
+        orders = list_dashboard_orders(user_id=session["user_id"], role=session["role"],
+                                       region=session.get("region", ""))
         return jsonify({"orders": orders})
     except Exception as e:
         return jsonify({"orders": [], "error": str(e)}), 200
@@ -451,13 +453,15 @@ def api_dashboard_export():
     role_label = ROLE_LABELS.get(role, role)
     full_name = session.get("full_name") or ""
     if report_type in ("flavour", "sku"):
-        summary = flavour_sales_summary(user_id=session["user_id"], role=role)
+        summary = flavour_sales_summary(user_id=session["user_id"], role=role,
+                                        region=session.get("region", ""))
         buf = build_flavour_sales_workbook(summary["lines"], role_label=role_label, full_name=full_name,
                                             report_type=report_type, date_from=date_from, date_to=date_to,
                                             orders_without_lines=summary["orders_without_lines"],
                                             value_without_lines=summary["value_without_lines"])
     else:
-        orders = list_dashboard_orders(user_id=session["user_id"], role=role)
+        orders = list_dashboard_orders(user_id=session["user_id"], role=role,
+                                       region=session.get("region", ""))
         order_ids = [o["id"] for o in orders]
         lines_by_order = fetch_report_order_lines(order_ids)
         paid_by_order = fetch_payment_summaries(order_ids)
@@ -474,7 +478,8 @@ def api_dashboard_export():
 @app.route("/api/dashboard/orders/<int:order_id>/lines")
 def api_order_lines(order_id):
     try:
-        lines = get_order_lines(order_id, user_id=session["user_id"], role=session["role"])
+        lines = get_order_lines(order_id, user_id=session["user_id"], role=session["role"],
+                                region=session.get("region", ""))
         return jsonify({"ok": True, "lines": lines})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 403
@@ -497,7 +502,8 @@ def api_complete_order(order_id):
 @broad_view_required
 def api_flavour_sales():
     try:
-        summary = flavour_sales_summary(user_id=session["user_id"], role=session["role"])
+        summary = flavour_sales_summary(user_id=session["user_id"], role=session["role"],
+                                        region=session.get("region", ""))
         return jsonify(summary)
     except Exception as e:
         return jsonify({"lines": [], "orders_without_lines": 0, "value_without_lines": 0, "error": str(e)}), 200

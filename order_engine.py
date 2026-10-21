@@ -190,7 +190,7 @@ def get_staff_by_email(email: str) -> dict | None:
     sb = _sb()
     result = (
         sb.schema("sales").from_("users")
-        .select("id, full_name, role, email, is_active, must_change_password")
+        .select("id, full_name, role, email, is_active, must_change_password, region")
         .eq("email", email.strip().lower()).limit(1).execute()
     )
     return result.data[0] if result.data else None
@@ -598,7 +598,10 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     return result
 
 
-def list_dashboard_orders(user_id: int, role: str) -> list:
+_REGION_LABEL_TO_HEAD_ROLE = {v: k for k, v in REGION_HEAD_ROLES.items()}
+
+
+def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
     sb = _sb()
     rows = sb.rpc("get_dashboard_orders", {"p_user_id": user_id, "p_role": role}).execute().data
     if not rows:
@@ -621,6 +624,9 @@ def list_dashboard_orders(user_id: int, role: str) -> list:
         })
     if role in REGION_HEAD_ROLES:
         out = [o for o in out if _CITY_TO_REGION_ROLE.get(o["city"], "roi_head") == role]
+    elif role == "salesperson" and region:
+        head_role = _REGION_LABEL_TO_HEAD_ROLE.get(region, "roi_head")
+        out = [o for o in out if _CITY_TO_REGION_ROLE.get(o["city"], "roi_head") == head_role]
     return out
 
 
@@ -645,7 +651,7 @@ _TERMINAL_ORDER_STATUSES = {"invoiced", "rejected", "cancelled", "delivered"}
 _COMPLETABLE_BLOCKED_STATUSES = {"delivered", "rejected", "cancelled", "hold"}
 
 
-def get_order_lines(order_id: int, user_id: int, role: str) -> list:
+def get_order_lines(order_id: int, user_id: int, role: str, region: str = "") -> list:
     sb = _sb()
     order = (
         sb.schema("sales").from_("orders")
@@ -663,6 +669,16 @@ def get_order_lines(order_id: int, user_id: int, role: str) -> list:
         )
         place = (addr.data[0].get("locality") or addr.data[0].get("city")) if addr and addr.data else None
         if _region_role_for_city(place) != role:
+            raise ValueError("Not authorized to view this order")
+    elif role == "salesperson" and region:
+        addr = (
+            sb.schema("sales").from_("addresses").select("city,locality")
+            .eq("id", o["shipping_address_id"]).limit(1).execute()
+            if o.get("shipping_address_id") else None
+        )
+        place = (addr.data[0].get("locality") or addr.data[0].get("city")) if addr and addr.data else None
+        head_role = _REGION_LABEL_TO_HEAD_ROLE.get(region, "roi_head")
+        if _region_role_for_city(place) != head_role:
             raise ValueError("Not authorized to view this order")
     elif role != "admin":
         if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
@@ -711,7 +727,7 @@ def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
     return res.data[0]
 
 
-def flavour_sales_summary(user_id: int, role: str) -> dict:
+def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
     """Line-item sales data for the Insights view / flavour & SKU reports.
 
     Returns pre-tax product revenue (order_lines.line_total has no GST in it —
@@ -727,7 +743,7 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
             sb.schema("sales").from_("orders")
             .select("id, created_at, total_amount, tax_amount, shipping_address_id, created_by_user_id, salesperson_id")
         )
-        if role != "admin" and role not in REGION_HEAD_ROLES:
+        if role != "admin" and role not in REGION_HEAD_ROLES and not (role == "salesperson" and region):
             q = q.eq("created_by_user_id", user_id)
         return q.range(start, end)
 
@@ -758,6 +774,9 @@ def flavour_sales_summary(user_id: int, role: str) -> dict:
 
     if role in REGION_HEAD_ROLES:
         orders = [o for o in orders if _region_role_for_city(_addr_place(o)) == role]
+    elif role == "salesperson" and region:
+        head_role = _REGION_LABEL_TO_HEAD_ROLE.get(region, "roi_head")
+        orders = [o for o in orders if _region_role_for_city(_addr_place(o)) == head_role]
 
     orders_by_id = {o["id"]: o for o in orders}
     order_ids = list(orders_by_id.keys())
@@ -898,7 +917,7 @@ def reject_order(order_id: int, rejected_by: int) -> dict:
     return res.data[0]
 
 
-def list_clients(role: str | None = None) -> list:
+def list_clients(role: str | None = None, region: str = "") -> list:
     sb = _sb()
     clients = (
         sb.schema("sales").from_("clients")
@@ -924,13 +943,15 @@ def list_clients(role: str | None = None) -> list:
         c["gst_status"] = "registered" if c.get("gstin") else (c.get("gst_status") or "unknown")
     if role in REGION_HEAD_ROLES:
         clients = [c for c in clients if c["city"] == REGION_HEAD_ROLES[role]]
+    elif role == "salesperson" and region:
+        clients = [c for c in clients if c["city"] == region]
     return clients
 
 
 _DUES_ORDER_STATUSES = {"invoiced", "delivered"}
 
 
-def client_dues(role: str | None = None) -> list:
+def client_dues(role: str | None = None, region: str = "") -> list:
     """Per-client outstanding balance: (invoiced + delivered order totals) minus
     payments received, for clients who still owe money."""
     sb = _sb()
@@ -988,6 +1009,8 @@ def client_dues(role: str | None = None) -> list:
         })
     if role in REGION_HEAD_ROLES:
         dues = [d for d in dues if d["city"] == REGION_HEAD_ROLES[role]]
+    elif role == "salesperson" and region:
+        dues = [d for d in dues if d["city"] == region]
     dues.sort(key=lambda d: d["balance"], reverse=True)
     return dues
 
