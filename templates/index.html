@@ -12,6 +12,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 <style>
+.step-back {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer;
+  color: var(--slate-500); font-size: 13px; font-weight: 500;
+  padding: 4px 0; margin-bottom: 8px;
+}
+.step-back:hover { color: var(--brand); }
+.step-back svg { width: 16px; height: 16px; }
 .sku-picker { position: relative; }
 .sku-picker-input { padding-right: 36px !important; }
 .sku-picker-clear {
@@ -234,6 +242,7 @@
       </div>
 
       <div id="orderModeBox-form" class="mt16">
+        <button class="step-back" onclick="goBackToClient()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Back to Client</button>
         <div class="step-label">Pack format</div>
         <div class="btn-group" id="skuFormatBtns"></div>
         <div id="skuFormSection" class="mt16" style="display:none">
@@ -272,6 +281,7 @@
 
     <!-- STEP 2: Payment -->
     <section class="step hidden" id="step-payment">
+      <button class="step-back" onclick="goBackToItems()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Back to Items</button>
       <div class="step-label">Payment Mode</div>
       <div class="btn-group" id="paymentBtns">
         <button class="btn-option" onclick="selectPayment('advance')">Advance</button>
@@ -296,6 +306,7 @@
 
     <!-- STEP 4: Address -->
     <section class="step hidden" id="step-address">
+      <button class="step-back" onclick="goBackToPayment()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Back to Payment</button>
       <div class="step-label">Shipping Address</div>
       <div id="addressList" class="option-list"></div>
       <button class="btn-option btn-sm mt8" id="addAddressToggleBtn" onclick="showAddressForm()">+ Add new address</button>
@@ -1177,6 +1188,35 @@ function changeClient() {
   document.getElementById("clientPickerInput").focus();
   ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"].forEach(hide);
   show("step-client");
+  renderOrderSummary();
+}
+
+function goBackToClient() {
+  hide("step-paste");
+  changeClient();
+}
+
+async function goBackToItems() {
+  hide("step-payment");
+  formItemRows = state.items
+    .filter(i => !i.not_found && i.resolved_sku)
+    .map(i => ({skuId: String(i.resolved_sku.id), qty: i.qty}));
+  const formats = new Set(state.items.filter(i => i.resolved_sku).map(i => i.resolved_sku.pack_format_id));
+  selectedPackFormat = formats.size === 1 ? [...formats][0] : (selectedPackFormat || null);
+  state.items = [];
+  show("step-paste");
+  await switchOrderMode("form");
+  renderOrderSummary();
+}
+
+function goBackToPayment() {
+  hide("step-address");
+  document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
+  if (state.payment) {
+    document.querySelectorAll("#paymentBtns .btn-option")
+      .forEach(b => { if (b.textContent.toLowerCase().trim() === state.payment) b.classList.add("active"); });
+  }
+  show("step-payment");
   renderOrderSummary();
 }
 
