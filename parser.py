@@ -382,19 +382,19 @@ def _get_price(sku):
         return MOCK_PRICES.get(sku["pack_format_id"], 0.0)
 
 
-def _get_prices(skus):
+def _get_prices(skus, region="default"):
     try:
         from order_engine import get_sku_prices
-        return get_sku_prices(skus)
+        return get_sku_prices(skus, region=region)
     except Exception:
         return {s["id"]: MOCK_PRICES.get(s["pack_format_id"], 0.0) for s in skus}
 
 
-def all_flavour_options() -> list:
+def all_flavour_options(region="default") -> list:
     """Every active SKU, priced the same way any other candidate is — used to
     let staff manually pick a flavour when auto-detection finds nothing at
     all (parse_order_text returned not_found for that line)."""
-    prices = _get_prices(ACTIVE_SKUS)
+    prices = _get_prices(ACTIVE_SKUS, region=region)
     options = [{**s, "unit_price": prices.get(s["id"], 0.0)} for s in ACTIVE_SKUS]
     options.sort(key=lambda s: (s["flavour_name"], s["pack_format_id"]))
     return options
