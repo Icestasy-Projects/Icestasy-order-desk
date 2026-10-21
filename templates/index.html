@@ -279,17 +279,6 @@
       <button class="btn-primary mt16" onclick="proceedFromCollateral()">Continue <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
     </section>
 
-    <!-- STEP 2: Payment -->
-    <section class="step hidden" id="step-payment">
-      <button class="step-back" onclick="goBackToItems()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Back to Items</button>
-      <div class="step-label">Payment Mode</div>
-      <div class="btn-group" id="paymentBtns">
-        <button class="btn-option" onclick="selectPayment('advance')">Advance</button>
-        <button class="btn-option" onclick="selectPayment('invoice')">Invoice</button>
-        <button class="btn-option" onclick="selectPayment('credit')">Credit</button>
-      </div>
-    </section>
-
     <!-- STEP 3: Client -->
     <section class="step hidden" id="step-client">
       <div class="step-label">Client</div>
@@ -304,18 +293,25 @@
       <div id="clientSelectedPill" class="mt8"></div>
     </section>
 
-    <!-- STEP 4: Address -->
-    <section class="step hidden" id="step-address">
-      <button class="step-back" onclick="goBackToPayment()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Back to Payment</button>
-      <div class="step-label">Shipping Address</div>
-      <div id="addressList" class="option-list"></div>
-      <button class="btn-option btn-sm mt8" id="addAddressToggleBtn" onclick="showAddressForm()">+ Add new address</button>
-    </section>
-
     <!-- STEP 5: Confirm -->
     <section class="step hidden" id="step-confirm">
       <div class="step-label">Order Summary</div>
       <div id="summaryBox" class="summary-box"></div>
+
+      <div class="hidden" id="inlinePaymentPicker" style="margin-top:12px">
+        <div class="step-label">Payment Mode</div>
+        <div class="btn-group" id="inlinePaymentBtns">
+          <button class="btn-option" onclick="inlineSelectPayment('advance')">Advance</button>
+          <button class="btn-option" onclick="inlineSelectPayment('invoice')">Invoice</button>
+          <button class="btn-option" onclick="inlineSelectPayment('credit')">Credit</button>
+        </div>
+      </div>
+
+      <div class="hidden" id="inlineAddressPicker" style="margin-top:12px">
+        <div class="step-label">Shipping Address</div>
+        <div id="inlineAddressList" class="option-list"></div>
+        <button class="btn-option btn-sm mt8" id="inlineAddAddressBtn" onclick="showInlineAddressForm()">+ Add new address</button>
+      </div>
 
       <div class="confirm-extras">
         <div class="confirm-row" style="flex-direction:column;align-items:stretch">
@@ -429,14 +425,12 @@ const hide = id => document.getElementById(id).classList.add("hidden");
 function resetAll() {
   state = {items: [], payment: null, client: null, address_id: null, address_label: null,
            address_state: null, collateral: [], collateralOnly: false};
-  ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm","step-done"]
+  ["step-paste","step-cart","step-collateral","step-confirm","step-done"]
     .forEach(hide);
   document.getElementById("orderText").value = "";
   document.getElementById("clientPickerWrap").style.display = "";
   document.getElementById("clientSelectedPill").innerHTML = "";
   document.getElementById("clientPickerInput").value = "";
-  document.getElementById("addressList").innerHTML = "";
-  document.getElementById("addAddressToggleBtn").style.display = "";
   document.getElementById("collateralList").innerHTML = "";
   formItemRows = [];
   selectedPackFormat = null;
@@ -525,36 +519,31 @@ function proceedFromCollateral() {
 // Shared continuation after the collateral step — also used by
 // renderNextAfterCart() to skip that step entirely in the main order flow
 // (deferred for now, will come back once collateral tracking is ready).
-function _afterCollateralStep() {
+async function _afterCollateralStep() {
   if (state.collateralOnly) {
     state.payment = null;
-    showAddressStep();
-    return;
+  } else if (!state.payment) {
+    state.payment = "invoice";
   }
-
-  show("step-payment");
-  if (state.payment) {
-    markPayment(state.payment);
-    const label = document.getElementById("paymentBtns");
-    if (!document.getElementById("payment-auto-note")) {
-      const note = document.createElement("div");
-      note.id = "payment-auto-note";
-      note.style.cssText = "font-size:12px;color:#1D9E75;margin-top:6px";
-      note.textContent = "Auto-detected from message — tap to change";
-      label.parentNode.appendChild(note);
-    }
-    setTimeout(() => {
-      hide("step-payment");
-      document.getElementById("payment-auto-note")?.remove();
-      showAddressStep();
-    }, 1500);
-  }
+  await autoSelectAddressAndConfirm();
 }
 
-async function showAddressStep() {
-  await loadAddresses(state.client.id);
-  show("step-address");
-  renderOrderSummary();
+async function autoSelectAddressAndConfirm() {
+  if (!state.address_id && state.client) {
+    try {
+      const data = await fetch(`/api/clients/${state.client.id}/addresses`).then(r => r.json());
+      const addrs = data.addresses || [];
+      if (addrs.length) {
+        const a = addrs[0];
+        state.address_id = a.id;
+        state.address_label = a.label;
+        state.address_state = a.state || "";
+        state._address_city = a.city || "";
+      }
+    } catch (e) {}
+  }
+  saveOrderDraft();
+  showConfirm();
 }
 
 // ── STEP 0: Parse ───────────────────────────────────────────────────────────
@@ -769,7 +758,7 @@ function submitFormOrder() {
     _returningToConfirm = false;
     showConfirm();
   } else {
-    state.payment = null;
+    if (!state.payment) state.payment = "invoice";
     renderNextAfterCart();
   }
   renderOrderSummary();
@@ -892,7 +881,7 @@ function renderNextAfterCart() {
   _afterCollateralStep();
 }
 
-// ── STEP 2: Payment ──────────────────────────────────────────────────────────
+// ── Inline payment & address editing (confirm step) ─────────────────────────
 let _returningToConfirm = false;
 
 async function changeItems() {
@@ -910,37 +899,21 @@ async function changeItems() {
 }
 
 function changePayment() {
-  _returningToConfirm = true;
-  hide("step-confirm");
-  document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
-  if (state.payment) {
-    document.querySelectorAll("#paymentBtns .btn-option")
-      .forEach(b => { if (b.textContent.toLowerCase().trim() === state.payment) b.classList.add("active"); });
+  const picker = document.getElementById("inlinePaymentPicker");
+  const isHidden = picker.classList.contains("hidden");
+  picker.classList.toggle("hidden");
+  if (isHidden) {
+    document.querySelectorAll("#inlinePaymentBtns .btn-option").forEach(b => {
+      b.classList.toggle("active", b.textContent.toLowerCase().trim() === state.payment);
+    });
   }
-  show("step-payment");
 }
 
-function selectPayment(mode) {
+function inlineSelectPayment(mode) {
   state.payment = mode;
-  document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
-  document.querySelectorAll("#paymentBtns .btn-option")
-    .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
-  if (typeof updateDiscountPreview === "function" && document.getElementById("discountPct")) updateDiscountPreview();
+  document.getElementById("inlinePaymentPicker").classList.add("hidden");
   saveOrderDraft();
-  hide("step-payment");
-  renderOrderSummary();
-  if (_returningToConfirm) {
-    _returningToConfirm = false;
-    showConfirm();
-  } else {
-    showAddressStep();
-  }
-}
-
-function markPayment(mode) {
-  // Payment was pre-filled — don't show step but mark label
-  document.querySelectorAll("#paymentBtns .btn-option")
-    .forEach(b => { if (b.textContent.toLowerCase().trim() === mode) b.classList.add("active"); });
+  showConfirm();
 }
 
 // ── BU location selector ─────────────────────────────────────────────────────
@@ -1066,29 +1039,6 @@ async function selectClient(client) {
   saveOrderDraft();
 }
 
-async function loadAddresses(clientId) {
-  const data = await fetch(`/api/clients/${clientId}/addresses`).then(r => r.json());
-  const addrs = data.addresses || [];
-  const box = document.getElementById("addressList");
-  if (!addrs.length) {
-    box.innerHTML = `<div class="opt-muted">No addresses found — add one below, or skip</div>
-      <button class="btn-ghost mt8" onclick="skipAddress()">Skip for now</button>`;
-  } else {
-    box.innerHTML = addrs.map(a => `
-      <button class="option-btn" onclick="selectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}', '${(a.city||"").replace(/'/g,"\\'")}', '${(a.state||"").replace(/'/g,"\\'")}')">
-        ${a.label}
-      </button>`).join("");
-  }
-}
-
-function skipAddress() {
-  state.address_id = null;
-  state.address_label = null;
-  state.address_state = null;
-  hide("step-address");
-  showConfirm();
-}
-
 const CITIES_BY_STATE = {
   "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Nashik", "Thane", "Aurangabad", "Vile Parle", "Andheri", "Navi Mumbai"],
   "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar"],
@@ -1122,90 +1072,13 @@ const INDIA_STATES = ["Maharashtra","Gujarat","Karnataka","Delhi","Tamil Nadu","
   "Chandigarh","Puducherry","Sikkim","Arunachal Pradesh","Nagaland","Manipur","Mizoram","Tripura",
   "Meghalaya","Daman and Diu","Dadra and Nagar Haveli","Lakshadweep","Andaman and Nicobar Islands","Ladakh"];
 
-function showAddressForm() {
-  const box = document.getElementById("addressList");
-  document.getElementById("addAddressToggleBtn").style.display = "none";
-  const stateOpts = `<option value="">Select state *</option>` +
-    INDIA_STATES.map(s => `<option value="${s}">${s}</option>`).join("");
-  box.innerHTML = `
-    <div class="register-form">
-      <input id="addrLine1" class="search-input" placeholder="Address line 1 *">
-      <input id="addrLine2" class="search-input mt8" placeholder="Address line 2 (optional)">
-      <select id="addrState" class="search-input mt8" onchange="updateCityOptions()">${stateOpts}</select>
-      <select id="addrCity" class="search-input mt8"><option value="">Select state first</option></select>
-      <input id="addrCityOther" class="search-input mt8" placeholder="City name" style="display:none">
-      <input id="addrPincode" class="search-input mt8" placeholder="Pincode *">
-      <select id="addrType" class="search-input mt8">
-        <option value="shipping">Shipping</option>
-        <option value="billing">Billing</option>
-      </select>
-      <div id="addrError" class="opt-error mt8"></div>
-      <div class="btn-group mt8">
-        <button class="btn-primary" onclick="submitAddress()">Save &amp; Select</button>
-        <button class="btn-ghost" onclick="cancelAddressForm()">Cancel</button>
-      </div>
-    </div>`;
-}
-
-function updateCityOptions() {
-  const stateName = document.getElementById("addrState").value;
-  const citySel = document.getElementById("addrCity");
-  const cityOther = document.getElementById("addrCityOther");
-  cityOther.style.display = "none";
-  cityOther.value = "";
-  const cities = CITIES_BY_STATE[stateName] || [];
-  citySel.innerHTML = `<option value="">Select city *</option>` +
-    cities.map(c => `<option value="${c}">${c}</option>`).join("") +
-    `<option value="__other__">Other (type manually)</option>`;
-  citySel.onchange = () => {
-    if (citySel.value === "__other__") {
-      cityOther.style.display = "";
-    } else {
-      cityOther.style.display = "none";
-      cityOther.value = "";
-    }
-  };
-}
-
-function cancelAddressForm() {
-  document.getElementById("addAddressToggleBtn").style.display = "";
-  loadAddresses(state.client.id);
-}
-
-async function submitAddress() {
-  const errBox = document.getElementById("addrError");
-  const citySel = document.getElementById("addrCity").value;
-  const city = citySel === "__other__" ? document.getElementById("addrCityOther").value.trim() : citySel;
-  const payload = {
-    line1: document.getElementById("addrLine1").value.trim(),
-    line2: document.getElementById("addrLine2").value.trim(),
-    city: city,
-    state: document.getElementById("addrState").value.trim(),
-    pincode: document.getElementById("addrPincode").value.trim(),
-    address_type: document.getElementById("addrType").value,
-  };
-  if (!payload.line1 || !payload.city || !payload.state || !payload.pincode) {
-    errBox.textContent = "Address line, city, state, and pincode are required";
-    return;
-  }
-  const res = await fetch(`/api/clients/${state.client.id}/addresses`, {
-    method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify(payload),
-  }).then(r => r.json());
-  if (!res.ok) {
-    errBox.textContent = res.error || "Could not save address";
-    return;
-  }
-  selectAddress(res.address.id, res.address.label, res.address.city || "", res.address.state || "");
-}
-
 function changeClient() {
   state.client = null;
   document.getElementById("clientPickerWrap").style.display = "";
   document.getElementById("clientSelectedPill").innerHTML = "";
   document.getElementById("clientPickerInput").value = "";
   document.getElementById("clientPickerInput").focus();
-  ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"].forEach(hide);
+  ["step-paste","step-cart","step-collateral","step-confirm"].forEach(hide);
   show("step-client");
   renderOrderSummary();
 }
@@ -1215,38 +1088,35 @@ function goBackToClient() {
   changeClient();
 }
 
-async function goBackToItems() {
-  hide("step-payment");
-  formItemRows = state.items
-    .filter(i => !i.not_found && i.resolved_sku)
-    .map(i => ({skuId: String(i.resolved_sku.id), qty: i.qty}));
-  const formats = new Set(state.items.filter(i => i.resolved_sku).map(i => i.resolved_sku.pack_format_id));
-  selectedPackFormat = formats.size === 1 ? [...formats][0] : (selectedPackFormat || null);
-  state.items = [];
-  show("step-paste");
-  await switchOrderMode("form");
-  renderOrderSummary();
-}
-
-function goBackToPayment() {
-  hide("step-address");
-  document.querySelectorAll("#paymentBtns .btn-option").forEach(b => b.classList.remove("active"));
-  if (state.payment) {
-    document.querySelectorAll("#paymentBtns .btn-option")
-      .forEach(b => { if (b.textContent.toLowerCase().trim() === state.payment) b.classList.add("active"); });
+// ── STEP 4: Address (inline in confirm) ─────────────────────────────────────
+function changeAddress() {
+  const picker = document.getElementById("inlineAddressPicker");
+  if (!picker.classList.contains("hidden")) {
+    picker.classList.add("hidden");
+    return;
   }
-  show("step-payment");
-  renderOrderSummary();
+  fetch(`/api/clients/${state.client.id}/addresses`).then(r => r.json()).then(data => {
+    const addrs = data.addresses || [];
+    const list = document.getElementById("inlineAddressList");
+    if (!addrs.length) {
+      list.innerHTML = `<div class="opt-muted">No addresses found</div>`;
+    } else {
+      list.innerHTML = addrs.map(a => `
+        <button class="option-btn${a.id === state.address_id ? ' active' : ''}" style="text-align:left"
+          onclick="inlineSelectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}', '${(a.city||"").replace(/'/g,"\\'")}', '${(a.state||"").replace(/'/g,"\\'")}')">
+          ${a.label}
+        </button>`).join("");
+    }
+    picker.classList.remove("hidden");
+  });
 }
 
-// ── STEP 4: Address ──────────────────────────────────────────────────────────
-async function selectAddress(id, label, city, addrState) {
+async function inlineSelectAddress(id, label, city, addrState) {
   state.address_id = id;
   state.address_label = label;
   state.address_state = addrState || "";
-  document.getElementById("addressList").innerHTML =
-    `<div class="selected-pill">${icon("check")} ${label} <button class="pill-change" onclick="changeAddress()">change</button></div>`;
-  document.getElementById("addAddressToggleBtn").style.display = "none";
+  state._address_city = city || "";
+  document.getElementById("inlineAddressPicker").classList.add("hidden");
   if (city) {
     const items = state.items
       .filter(i => !i.not_found && i.resolved_sku)
@@ -1265,21 +1135,53 @@ async function selectAddress(id, label, city, addrState) {
               i.unit_price = priceMap[i.resolved_sku.id];
           });
         }
-      } catch (e) { /* keep original prices on error */ }
+      } catch (e) {}
     }
   }
   saveOrderDraft();
-  hide("step-address");
-  renderOrderSummary();
   showConfirm();
 }
 
-function changeAddress() {
-  state.address_id = null;
-  document.getElementById("addAddressToggleBtn").style.display = "";
-  loadAddresses(state.client.id);
-  show("step-address");
-  hide("step-confirm");
+function showInlineAddressForm() {
+  const list = document.getElementById("inlineAddressList");
+  document.getElementById("inlineAddAddressBtn").style.display = "none";
+  const stateOpts = `<option value="">Select state *</option>` +
+    INDIA_STATES.map(s => `<option value="${s}">${s}</option>`).join("");
+  list.innerHTML += `
+    <div class="register-form" style="margin-top:8px">
+      <input id="inlineAddrLine1" class="search-input" placeholder="Address line 1 *">
+      <input id="inlineAddrLine2" class="search-input mt8" placeholder="Address line 2 (optional)">
+      <select id="inlineAddrState" class="search-input mt8" onchange="updateInlineAddrCities()">${stateOpts}</select>
+      <select id="inlineAddrCity" class="search-input mt8"><option value="">Select city *</option></select>
+      <input id="inlineAddrPincode" class="search-input mt8" placeholder="Pincode *" maxlength="6">
+      <button class="btn-primary mt8" onclick="saveInlineAddress()">Save Address</button>
+    </div>`;
+}
+
+function updateInlineAddrCities() {
+  const st = document.getElementById("inlineAddrState").value;
+  const sel = document.getElementById("inlineAddrCity");
+  const cities = CITIES_BY_STATE[st] || [];
+  sel.innerHTML = `<option value="">Select city *</option>` +
+    cities.map(c => `<option value="${c}">${c}</option>`).join("") +
+    `<option value="__other">Other</option>`;
+}
+
+async function saveInlineAddress() {
+  const line1 = document.getElementById("inlineAddrLine1").value.trim();
+  const addrState = document.getElementById("inlineAddrState").value;
+  const city = document.getElementById("inlineAddrCity").value;
+  const pincode = document.getElementById("inlineAddrPincode").value.trim();
+  if (!line1 || !addrState || !city || !pincode) { alert("Fill all required fields"); return; }
+  const line2 = document.getElementById("inlineAddrLine2").value.trim();
+  const label = `${line1}, ${city} ${pincode}`;
+  const res = await fetch(`/api/clients/${state.client.id}/addresses`, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({line1, line2, city, state: addrState, pincode, label}),
+  }).then(r => r.json());
+  if (res.address) {
+    await inlineSelectAddress(res.address.id, res.address.label, city, addrState);
+  }
 }
 
 // ── STEP 5: Confirm ──────────────────────────────────────────────────────────
@@ -1738,7 +1640,7 @@ function renderDoneOrders(orders, title) {
 const DRAFT_KEY = "icestasy_order_draft";
 
 function getVisibleStep() {
-  const steps = ["step-done","step-confirm","step-address","step-payment",
+  const steps = ["step-done","step-confirm",
                  "step-collateral","step-cart","step-paste","step-client"];
   for (const id of steps) {
     const el = document.getElementById(id);
@@ -1812,8 +1714,9 @@ async function restoreOrderDraft() {
     document.getElementById("clientSelectedPill").innerHTML =
       `<div class="selected-pill">${icon("check")} ${state.client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
 
-    // Show the step the user was on
-    const target = draft.step || "step-paste";
+    // Show the step the user was on (redirect removed steps to confirm)
+    let target = draft.step || "step-paste";
+    if (target === "step-payment" || target === "step-address") target = "step-confirm";
     show(target);
 
     if (target === "step-paste") {
@@ -1822,12 +1725,8 @@ async function restoreOrderDraft() {
       renderCart();
     } else if (target === "step-collateral") {
       renderCollateralList();
-    } else if (target === "step-payment") {
-      if (state.payment) markPayment(state.payment);
-    } else if (target === "step-address") {
-      if (state.client) loadAddresses(state.client.id);
     } else if (target === "step-confirm") {
-      if (state.payment) markPayment(state.payment);
+      if (!state.payment) state.payment = "invoice";
       showConfirm();
     }
     renderOrderSummary();
@@ -1851,9 +1750,9 @@ document.querySelectorAll("a[href]").forEach(a => {
 function renderOrderSummary() {
   const box = document.getElementById("orderSummary");
   const step = getVisibleStep();
-  const pastClient = ["step-paste","step-cart","step-collateral","step-payment","step-address","step-confirm"];
-  const pastItems = ["step-cart","step-collateral","step-payment","step-address","step-confirm"];
-  const pastPayment = ["step-address","step-confirm"];
+  const pastClient = ["step-paste","step-cart","step-collateral","step-confirm"];
+  const pastItems = ["step-cart","step-collateral","step-confirm"];
+  const pastPayment = ["step-confirm"];
   const lines = [];
 
   if (state.client && pastClient.includes(step)) {
