@@ -85,7 +85,7 @@ def require_login():
 def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if session.get("role") != ADMIN_ROLE:
+        if session.get("role") not in BROAD_VIEW_ROLES:
             return jsonify({"ok": False, "error": "Admin access required"}), 403
         return view(*args, **kwargs)
     return wrapped
@@ -192,7 +192,7 @@ def _render_dashboard(initial_page):
     return render_template("dashboard.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=role,
                             role_label=ROLE_LABELS.get(role, role),
-                            is_admin=role == ADMIN_ROLE,
+                            is_admin=role in BROAD_VIEW_ROLES,
                             can_view_team=role in BROAD_VIEW_ROLES,
                             role_labels_json=ROLE_LABELS_JSON,
                             region_options_json=json.dumps(list(REGION_HEAD_ROLES.values())),
@@ -215,7 +215,7 @@ def new_order():
     role = session.get("role")
     return render_template("index.html", user_email=session.get("user_email"),
                             full_name=session.get("full_name"), role=role,
-                            is_admin=role == ADMIN_ROLE,
+                            is_admin=role in BROAD_VIEW_ROLES,
                             can_view_team=role in BROAD_VIEW_ROLES)
 
 

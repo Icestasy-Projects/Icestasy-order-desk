@@ -88,10 +88,12 @@
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/></svg>
             New Order
           </a>
+          {% if is_admin %}
           <button type="button" class="menu-item" onclick="toggleMenu(); openReportModal();">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
             Download Excel Report
           </button>
+          {% endif %}
           <a class="menu-item" href="/change-password">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
             Change Password
@@ -112,10 +114,12 @@
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>
         Orders
       </button>
+      {% if is_admin %}
       <button class="tab-btn" id="page-tab-clients" onclick="switchPage('clients', this)">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
         Clients
       </button>
+      {% endif %}
       <a class="tab-btn" href="/new-order">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
         New Order
@@ -143,12 +147,11 @@
         <div class="greeting-sub">What would you like to do today? · {{ role_label }}</div>
       </section>
 
+      {% if is_admin %}
       <section>
         <div class="section-label">Overview</div>
         <div id="overviewRow" class="overview-row"></div>
       </section>
-
-      {% if is_admin %}
       <section>
         <div class="section-label">Revenue Trends</div>
         <div class="trend-card">
@@ -179,6 +182,7 @@
               <div class="ops-sub">Parse and create a new sales order</div>
             </div>
           </a>
+          {% if is_admin %}
           <button type="button" class="ops-row" onclick="switchPage('clients', document.getElementById('page-tab-clients'))">
             <div class="ops-icon ops-green">
               <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
@@ -208,6 +212,7 @@
               <div class="ops-sub">Export current orders to a spreadsheet</div>
             </div>
           </button>
+          {% endif %}
         </div>
       </section>
 
@@ -219,6 +224,7 @@
           </div>
         </div>
 
+        {% if is_admin %}
         <div class="tab-bar-flat" id="groupTabs">
           <button class="tab-btn-flat active" onclick="setGrouping('none', this)">All Orders</button>
           <button class="tab-btn-flat" onclick="setGrouping('month', this)">Month on Month</button>
@@ -228,42 +234,43 @@
           <button class="tab-btn-flat" onclick="setGrouping('salesperson', this)">By Salesperson</button>
           {% endif %}
         </div>
+        {% endif %}
 
         <input id="dashSearch" class="search-input mt16" type="text"
-               placeholder="Search by client, city, salesperson, or order no…" oninput="handleSearchInput(this.value)">
+               placeholder="Search by client, city, or order no…" oninput="handleSearchInput(this.value)">
 
+        {% if is_admin %}
         <div class="tab-bar-flat mt16" id="paymentFilterTabs">
           <button class="tab-btn-flat active" onclick="setPaymentFilter('all', this)">All Payments</button>
           <button class="tab-btn-flat" onclick="setPaymentFilter('paid', this)">Paid</button>
           <button class="tab-btn-flat" onclick="setPaymentFilter('unpaid', this)">Unpaid</button>
         </div>
+        {% endif %}
 
         <div id="ordersBox" class="mt16"></div>
         <div id="ordersPagination" class="mt8"></div>
       </section>
     </div>
 
+    {% if is_admin %}
     <div id="page-clients" class="hidden">
       <section class="step">
         <div class="step-label">Clients</div>
         <input id="clientSearch" class="search-input mt16" type="text"
                placeholder="Search by name, contact, phone, or GSTIN…" oninput="handleClientSearchInput(this.value)">
         <div class="btn-group mt8" style="gap:8px">
-          {% if is_admin %}
           <button id="addClientBtn" type="button" class="btn-option btn-sm" onclick="showAddClientForm()">+ Add Client</button>
-          {% endif %}
           <button type="button" class="btn-option btn-sm" onclick="downloadClientList()">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
             Download List
           </button>
         </div>
         <div class="tab-bar-flat mt8" id="clientGstFilterTabs"></div>
-        {% if is_admin %}
         <div id="addClientFormBox"></div>
-        {% endif %}
         <div id="clientsList" class="option-list mt16"></div>
       </section>
     </div>
+    {% endif %}
 
     {% if can_view_team %}
     <div id="page-team" class="hidden">
@@ -581,7 +588,8 @@ function activatePage(page, pushState) {
   const btn = document.getElementById("page-tab-" + page) || document.getElementById("page-tab-orders");
   if (btn) btn.classList.add("active");
   document.getElementById("page-orders").classList.toggle("hidden", page !== "orders");
-  document.getElementById("page-clients").classList.toggle("hidden", page !== "clients");
+  const clientsPage = document.getElementById("page-clients");
+  if (clientsPage) clientsPage.classList.toggle("hidden", page !== "clients");
   const teamPage = document.getElementById("page-team");
   if (teamPage) teamPage.classList.toggle("hidden", page !== "team");
   const stockPage = document.getElementById("page-stock");
@@ -592,7 +600,7 @@ function activatePage(page, pushState) {
   if (insightsPage) insightsPage.classList.toggle("hidden", page !== "insights");
   const duesPage = document.getElementById("page-dues");
   if (duesPage) duesPage.classList.toggle("hidden", page !== "dues");
-  if (page === "clients" && !clientsData.length) loadClients();
+  if (page === "clients" && !clientsData.length && document.getElementById("clientsList")) loadClients();
   if (page === "stock" && !cityStockData.length) loadCityStock();
   if (page === "flavours" && !flavoursData.length) loadFlavours();
   if (page === "insights" && !flavourSalesLines.length) loadFlavourSales();
@@ -713,11 +721,13 @@ async function loadOrders() {
 }
 
 function renderStats(orders) {
+  const el = document.getElementById("overviewRow");
+  if (!el) return;
   const total = orders.length;
   const totalValue = orders.reduce((s, o) => s + o.total_amount, 0);
   const paid = orders.filter(o => o.payment_status === "received").length;
   const due = orders.filter(o => o.payment_status === "pending" || o.payment_status === "not_recorded").length;
-  document.getElementById("overviewRow").innerHTML = `
+  el.innerHTML = `
     <div class="overview-card">
       <div class="overview-icon">${icon("package", "icon-lg")}</div>
       <div class="overview-label">Orders</div>
