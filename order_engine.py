@@ -460,7 +460,7 @@ def check_pending_orders(client_id: int) -> list:
         sb.schema("sales").from_("orders")
         .select("id, order_no, status, total_amount, created_at")
         .eq("client_id", client_id)
-        .not_.in_("status", ["invoiced", "rejected", "cancelled", "delivered"])
+        .not_.in_("status", ["approved", "invoiced", "rejected", "cancelled", "delivered"])
         .gte("created_at", cutoff)
         .order("created_at", desc=True)
         .execute()
@@ -473,7 +473,7 @@ def cancel_order(order_id: int) -> dict:
     order = sb.schema("sales").from_("orders").select("id, status").eq("id", order_id).limit(1).execute()
     if not order.data:
         raise ValueError("Order not found")
-    if order.data[0]["status"] in ("invoiced", "delivered", "cancelled", "rejected"):
+    if order.data[0]["status"] in ("approved", "invoiced", "delivered", "cancelled", "rejected"):
         raise ValueError(f"Cannot cancel — order is already {order.data[0]['status']}")
     res = (
         sb.schema("sales").from_("orders")
@@ -521,6 +521,17 @@ def should_auto_hold(client_id: int) -> dict:
     if _client_has_unpaid_orders(sb, client_id):
         return {"hold": True, "reason": "Previous order unpaid past the 15th of the month"}
     return {"hold": False}
+
+
+def put_on_hold(order_id: int) -> dict:
+    sb = _sb()
+    order = sb.schema("sales").from_("orders").select("id, status").eq("id", order_id).limit(1).execute()
+    if not order.data:
+        raise ValueError("Order not found")
+    if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
+        raise ValueError(f"Order is already {order.data[0]['status']}")
+    res = sb.schema("sales").from_("orders").update({"status": "hold"}).eq("id", order_id).execute()
+    return res.data[0]
 
 
 def release_hold(order_id: int) -> dict:
@@ -619,6 +630,7 @@ def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
             "salesperson_name": r.get("salesperson_name", "—"),
             "source": r.get("source", ""),
             "payment_status": r.get("payment_status", "not_recorded"),
+            "payment_mode": r.get("payment_mode", "advance"),
             "has_lines": r.get("has_lines", False),
             "notes": r.get("notes", ""),
         })
@@ -642,7 +654,7 @@ def mark_payment_received(order_id: int, received_by: int) -> dict:
     return res.data[0]
 
 
-_TERMINAL_ORDER_STATUSES = {"invoiced", "rejected", "cancelled", "delivered"}
+_TERMINAL_ORDER_STATUSES = {"approved", "invoiced", "rejected", "cancelled", "delivered"}
 _COMPLETABLE_BLOCKED_STATUSES = {"delivered", "rejected", "cancelled", "hold"}
 
 
@@ -872,7 +884,7 @@ def approve_order(order_id: int, approved_by: int) -> dict:
         raise ValueError("Order not found")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
-    res = sb.schema("sales").from_("orders").update({"status": "invoiced"}).eq("id", order_id).execute()
+    res = sb.schema("sales").from_("orders").update({"status": "approved"}).eq("id", order_id).execute()
     return res.data[0]
 
 
@@ -914,7 +926,7 @@ def list_clients(role: str | None = None, region: str = "") -> list:
     return clients
 
 
-_DUES_ORDER_STATUSES = {"invoiced", "delivered"}
+_DUES_ORDER_STATUSES = {"approved", "invoiced", "delivered"}
 
 
 def client_dues(role: str | None = None, region: str = "") -> list:
@@ -1045,7 +1057,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
             sb.schema("sales").from_("orders")
             .select("id, order_no, created_at, client_id, billing_address_id, "
                     "shipping_address_id, status")
-            .in_("status", ["invoiced", "delivered"])
+            .in_("status", list(_DUES_ORDER_STATUSES))
             .order("created_at")
         )
         if from_date:
@@ -1386,7 +1398,7 @@ def list_sku_stock() -> list:
 # of the ledger. The "used" side comes from order_lines on orders that have
 # reached invoiced/delivered status.
 STOCK_REQUEST_CITIES = list(REGION_HEAD_ROLES.values())
-_CITY_USED_ORDER_STATUSES = {"invoiced", "delivered"}
+_CITY_USED_ORDER_STATUSES = {"approved", "invoiced", "delivered"}
 
 
 def city_for_stock_request(place: str) -> str:
