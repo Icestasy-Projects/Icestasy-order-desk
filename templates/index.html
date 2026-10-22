@@ -347,10 +347,12 @@
         <button class="btn-primary mt16" onclick="submitFormOrder()">Continue <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
       </div>
 
+      {% if is_admin %}
       <button class="btn-ghost mt16" style="width:100%" onclick="startCollateralOnly()">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>
         Marketing Collateral Only (no product order)
       </button>
+      {% endif %}
     </section>
 
     <!-- STEP 1: Cart review + SKU disambiguation -->
@@ -386,6 +388,7 @@
       <div class="step-label">Order Summary</div>
       <div id="summaryBox" class="summary-box"></div>
 
+      {% if is_admin %}
       <div class="hidden" id="inlinePaymentPicker" style="margin-top:12px">
         <div class="step-label">Payment Mode</div>
         <div class="btn-group" id="inlinePaymentBtns">
@@ -394,6 +397,7 @@
           <button class="btn-option" onclick="inlineSelectPayment('credit')">Credit</button>
         </div>
       </div>
+      {% endif %}
 
       <!-- Address picker disabled for now -->
       <div class="hidden" id="inlineAddressPicker" style="margin-top:12px"></div>
@@ -473,6 +477,8 @@ const ICON_PATHS = {
 function icon(name, cls) {
   return `<svg class="icon${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
 }
+
+const IS_ADMIN = {{ "true" if is_admin else "false" }};
 
 // ── State ───────────────────────────────────────────────────────────────────
 let state = {
@@ -1327,7 +1333,7 @@ async function showConfirm() {
 
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
-    ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
+    ${state.collateralOnly || !IS_ADMIN ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
     <!-- Address row disabled for now -->
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
     <table class="summary-table">
@@ -1809,7 +1815,7 @@ function renderOrderSummary() {
       lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
     }
   }
-  if (state.payment && pastPayment.includes(step)) {
+  if (IS_ADMIN && state.payment && pastPayment.includes(step)) {
     lines.push(`<div class="summary-line"><span class="summary-label">Payment</span><span class="summary-value" style="text-transform:capitalize">${state.payment}</span></div>`);
   }
   if (state.address_label && step === "step-confirm") {
