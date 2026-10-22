@@ -4,6 +4,7 @@ depending on interstate vs intrastate, running client balance, UPI QR)."""
 import io
 import os
 from datetime import datetime, timezone
+from xml.sax.saxutils import escape as xml_escape
 
 import qrcode
 from reportlab.lib import colors
@@ -85,7 +86,7 @@ def _client_ledger(sb, client_id: int, as_of_iso: str) -> dict:
     )
     total_invoiced = sum(
         float(o["total_amount"]) for o in orders
-        if o["status"] in ("invoiced", "delivered") and o["created_at"] <= as_of_iso
+        if o["status"] in ("approved", "invoiced", "delivered") and o["created_at"] <= as_of_iso
     )
     order_ids = [o["id"] for o in orders]
     payments = []
@@ -106,12 +107,17 @@ def _client_ledger(sb, client_id: int, as_of_iso: str) -> dict:
     }
 
 
+def _esc(value) -> str:
+    """Escape text for reportlab Paragraph markup (names like "A & B" or "<x>" otherwise break the PDF)."""
+    return xml_escape(str(value)) if value is not None else ""
+
+
 def _addr_block(addr: dict | None) -> str:
     if not addr:
         return ""
-    parts = [p for p in [addr.get("line1"), addr.get("line2")] if p]
+    parts = [_esc(p) for p in [addr.get("line1"), addr.get("line2")] if p]
     line1 = ", ".join(parts)
-    city_state = ", ".join(p for p in [addr.get("locality") or addr.get("city"), addr.get("state"), addr.get("pincode")] if p)
+    city_state = ", ".join(_esc(p) for p in [addr.get("locality") or addr.get("city"), addr.get("state"), addr.get("pincode")] if p)
     return "<br/>".join(p for p in [line1, city_state] if p)
 
 
@@ -138,8 +144,8 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
     if not order_res.data:
         raise ValueError("Order not found")
     order = order_res.data[0]
-    if order["status"] not in ("invoiced", "delivered"):
-        raise ValueError("Order must be invoiced or completed before an invoice can be generated")
+    if order["status"] not in ("approved", "invoiced", "delivered"):
+        raise ValueError("Order must be approved or completed before an invoice can be generated")
 
     client = (
         sb.schema("sales").from_("clients")
@@ -184,7 +190,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
         total_qty += qty
         subtotal += net
         line_rows.append([
-            str(i), f"{flavour_name} - {format_name}", sku.get("hsn_code") or "—",
+            str(i), f"{_esc(flavour_name)} - {_esc(format_name)}", sku.get("hsn_code") or "—",
             f"{disc_pct:.0f}" if disc_pct else "", f"{qty:g}", f"{rate:,.2f}", f"{net:,.2f}",
         ])
 
@@ -236,24 +242,24 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
 
     # Consignee / Buyer / Invoice meta
     consignee = Paragraph(
-        f"<b>Consignee (Shipped To)</b><br/><b>{client['business_name']}</b><br/>"
+        f"<b>Consignee (Shipped To)</b><br/><b>{_esc(client['business_name'])}</b><br/>"
         f"{_addr_block(shipping_addr)}<br/>"
-        f"State : {(shipping_addr or {}).get('state', '')}   "
+        f"State : {_esc((shipping_addr or {}).get('state', ''))}   "
         f"State Code : {(shipping_addr or {}).get('state_code', '')}<br/>"
-        f"GSTIN No : {(shipping_addr or {}).get('gstin') or client.get('gstin') or '—'}<br/>"
-        f"Fssai No : {client.get('fssai_no') or '—'}", styles["small"])
+        f"GSTIN No : {_esc((shipping_addr or {}).get('gstin') or client.get('gstin') or '—')}<br/>"
+        f"Fssai No : {_esc(client.get('fssai_no') or '—')}", styles["small"])
     buyer = Paragraph(
-        f"<b>Buyer (Billed To)</b><br/><b>{client['business_name']}</b><br/>"
+        f"<b>Buyer (Billed To)</b><br/><b>{_esc(client['business_name'])}</b><br/>"
         f"{_addr_block(billing_addr)}<br/>"
-        f"State : {(billing_addr or {}).get('state', '')}   "
+        f"State : {_esc((billing_addr or {}).get('state', ''))}   "
         f"State Code : {(billing_addr or {}).get('state_code', '')}<br/>"
-        f"GSTIN No : {(billing_addr or {}).get('gstin') or client.get('gstin') or '—'}<br/>"
-        f"Fssai No : {client.get('fssai_no') or '—'}", styles["small"])
+        f"GSTIN No : {_esc((billing_addr or {}).get('gstin') or client.get('gstin') or '—')}<br/>"
+        f"Fssai No : {_esc(client.get('fssai_no') or '—')}", styles["small"])
     meta = Paragraph(
-        f"Invoice No<br/><b>{order['order_no']}</b><br/>Dated<br/>"
+        f"Invoice No<br/><b>{_esc(order['order_no'])}</b><br/>Dated<br/>"
         f"<b>{datetime.fromisoformat(order['created_at']).strftime('%d-%b-%y')}</b><br/>"
         f"Godown<br/><b>{COMPANY['godown']}</b><br/>Destination<br/>"
-        f"<b>{(shipping_addr or {}).get('locality') or (shipping_addr or {}).get('city') or '—'}</b>", styles["small"])
+        f"<b>{_esc((shipping_addr or {}).get('locality') or (shipping_addr or {}).get('city') or '—')}</b>", styles["small"])
     story.append(Table([[consignee, buyer, meta]], colWidths=[76 * mm, 76 * mm, 38 * mm],
                         style=TableStyle([("BOX", (0, 0), (-1, -1), 0.75, colors.black),
                                            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.grey),
