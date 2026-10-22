@@ -941,8 +941,8 @@ function orderRow(o) {
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.source === "sheet_sync" ? "Auto Synced" : o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
-        <span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
-        ${IS_ADMIN ? `<span class="badge badge-pay ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>` : ""}
+        ${IS_ADMIN ? `<span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
+        <span class="badge badge-pay ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>` : ""}
         <span class="ci-price">${fmt(o.total_amount)}</span>
         ${initialActions}
         ${holdAction}
