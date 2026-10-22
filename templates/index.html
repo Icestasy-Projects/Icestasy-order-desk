@@ -437,6 +437,7 @@ function resetAll() {
   formItemRows = [];
   selectedPackFormat = null;
   _returningToConfirm = false;
+  _returningToConfirmFromClient = false;
   const skuInput = document.getElementById("skuSearchInput");
   if (skuInput) skuInput.value = "";
   switchOrderMode("form");
@@ -885,6 +886,7 @@ function renderNextAfterCart() {
 
 // ── Inline payment & address editing (confirm step) ─────────────────────────
 let _returningToConfirm = false;
+let _returningToConfirmFromClient = false;
 
 async function changeItems() {
   _returningToConfirm = true;
@@ -908,6 +910,7 @@ function changePayment() {
     document.querySelectorAll("#inlinePaymentBtns .btn-option").forEach(b => {
       b.classList.toggle("active", b.textContent.toLowerCase().trim() === state.payment);
     });
+    setTimeout(() => picker.scrollIntoView({behavior:"smooth", block:"center"}), 50);
   }
 }
 
@@ -1031,10 +1034,19 @@ async function selectClient(client) {
     `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientPickerInput").value = "";
 
-  hide("step-client");
-  show("step-paste");
   const region = client.price_region || "default";
   await loadFlavourOptions(region);
+
+  if (_returningToConfirmFromClient) {
+    _returningToConfirmFromClient = false;
+    hide("step-client");
+    repriceCartItems(region);
+    await autoSelectAddressAndConfirm();
+    return;
+  }
+
+  hide("step-client");
+  show("step-paste");
   renderFormatButtons();
   renderFormItemRows();
   repriceCartItems(region);
@@ -1076,19 +1088,25 @@ const INDIA_STATES = ["Maharashtra","Gujarat","Karnataka","Delhi","Tamil Nadu","
   "Meghalaya","Daman and Diu","Dadra and Nagar Haveli","Lakshadweep","Andaman and Nicobar Islands","Ladakh"];
 
 function changeClient() {
+  _returningToConfirmFromClient = true;
   state.client = null;
+  state.address_id = null;
+  state.address_label = null;
+  state.address_state = "";
+  state._address_city = "";
   document.getElementById("clientPickerWrap").style.display = "";
   document.getElementById("clientSelectedPill").innerHTML = "";
   document.getElementById("clientPickerInput").value = "";
-  document.getElementById("clientPickerInput").focus();
-  ["step-paste","step-cart","step-collateral","step-confirm"].forEach(hide);
+  hide("step-confirm");
   show("step-client");
+  document.getElementById("clientPickerInput").focus();
   renderOrderSummary();
 }
 
 function goBackToClient() {
   hide("step-paste");
   changeClient();
+  _returningToConfirmFromClient = false;
 }
 
 // ── STEP 4: Address (inline in confirm) ─────────────────────────────────────
@@ -1111,6 +1129,7 @@ function changeAddress() {
         </button>`).join("");
     }
     picker.classList.remove("hidden");
+    setTimeout(() => picker.scrollIntoView({behavior:"smooth", block:"center"}), 50);
   });
 }
 
@@ -1237,7 +1256,7 @@ async function showConfirm() {
   }
 
   document.getElementById("summaryBox").innerHTML = `
-    <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"}</strong></div>
+    <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
     ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
     <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"} <button class="pill-change" onclick="changeAddress()">change</button></strong></div>
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
