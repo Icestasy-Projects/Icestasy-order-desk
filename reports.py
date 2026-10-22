@@ -22,8 +22,10 @@ PAY_LABELS = {
     "refunded": "Refunded", "not_recorded": "Not Recorded",
 }
 
-COLUMNS = ["Date", "Voucher No", "Party Name", "Item Name", "Qty", "Rate", "Amount"]
-COLUMN_WIDTHS = [14, 18, 28, 28, 10, 14, 16]
+COLUMNS = ["Date", "B-Type", "Party Name", "Item Name", "Qty", "Rate", "Amount"]
+COLUMN_WIDTHS = [14, 20, 28, 28, 10, 14, 16]
+
+CLIENT_TYPE_LABELS = {"horeca": "B2B", "distributor": "Distributor", "retail": "Retail"}
 
 # Mumbai Metropolitan Region: reported as a single "Mumbai" group, matching the dashboard's By City tab.
 MMR_CITIES = {"Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"}
@@ -180,7 +182,9 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
     total_value = 0.0
     for o in orders:
         order_date = _format_date(o.get("created_at", ""))
-        order_no = o.get("order_no")
+        city = _report_city(o)
+        type_label = CLIENT_TYPE_LABELS.get(o.get("client_type", "horeca"), "B2B")
+        b_type = f"{city} - {type_label}"
         client = o.get("client_name")
         lines = o.get("lines") or []
         if lines:
@@ -188,7 +192,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 qty = ln.get("quantity", 0) or 0
                 rate = ln.get("unit_price", 0) or 0
                 amt = ln.get("line_total", 0) or 0
-                values = [order_date, order_no, client, ln.get("flavour_name"), qty, rate, amt]
+                values = [order_date, b_type, client, ln.get("flavour_name"), qty, rate, amt]
                 for col, val in enumerate(values, start=1):
                     cell = ws.cell(row=row, column=col, value=val)
                     if col == 5:
@@ -200,7 +204,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 row += 1
         else:
             amt = o.get("total_amount", 0) or 0
-            values = [order_date, order_no, client, "", "", "", amt]
+            values = [order_date, b_type, client, "", "", "", amt]
             for col, val in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=col, value=val)
                 if col == 7:

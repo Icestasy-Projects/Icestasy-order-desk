@@ -625,6 +625,7 @@ def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
             "id": r["id"], "order_no": r["order_no"], "status": r["status"],
             "total_amount": float(r["total_amount"]), "created_at": r["created_at"],
             "client_name": r.get("client_name", "—"),
+            "client_type": r.get("client_type", "horeca"),
             "place": place,
             "city": city,
             "salesperson_name": r.get("salesperson_name", "—"),
