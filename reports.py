@@ -23,8 +23,8 @@ PAY_LABELS = {
     "refunded": "Refunded", "not_recorded": "Not Recorded",
 }
 
-COLUMNS = ["Order No", "Date", "Client", "Locality", "City", "Salesperson", "Amount (INR)"]
-COLUMN_WIDTHS = [16, 14, 28, 20, 16, 18, 14]
+COLUMNS = ["Order No", "Date", "Client", "Locality", "City", "Amount (INR)"]
+COLUMN_WIDTHS = [18, 14, 28, 20, 16, 16]
 LINE_FILL = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")
 LINE_FONT = Font(size=10, color="555555")
 ORDER_HEADER_FILL = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
@@ -188,7 +188,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
     for o in orders:
         values = [
             o.get("order_no"), _format_date(o.get("created_at", "")), o.get("client_name"),
-            o.get("place"), o.get("city"), o.get("salesperson_name"),
+            o.get("place"), o.get("city"),
             o.get("total_amount", 0),
         ]
         for col, val in enumerate(values, start=1):
@@ -204,14 +204,13 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         if lines:
             for ln in lines:
                 ws.cell(row=row, column=3, value=ln.get("flavour_name")).font = LINE_FONT
-                ws.cell(row=row, column=4, value=ln.get("sku_code")).font = LINE_FONT
-                qty_cell = ws.cell(row=row, column=5, value=ln.get("quantity"))
+                qty_cell = ws.cell(row=row, column=4, value=ln.get("quantity"))
                 qty_cell.font = LINE_FONT
                 qty_cell.number_format = "#,##0"
-                up_cell = ws.cell(row=row, column=6, value=ln.get("unit_price"))
+                up_cell = ws.cell(row=row, column=5, value=ln.get("unit_price"))
                 up_cell.font = LINE_FONT
                 up_cell.number_format = "#,##0.00"
-                lt_cell = ws.cell(row=row, column=7, value=ln.get("line_total"))
+                lt_cell = ws.cell(row=row, column=amount_col, value=ln.get("line_total"))
                 lt_cell.font = LINE_FONT
                 lt_cell.number_format = "#,##0.00"
                 for c in range(1, len(COLUMNS) + 1):
