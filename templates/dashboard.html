@@ -443,6 +443,8 @@ const ICON_PATHS = {
   "chevron-left": '<path d="m15 18-6-6 6-6"/>',
   "chevron-right": '<path d="m9 18 6-6-6-6"/>',
   "rotate-ccw": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
 };
 function icon(name, cls) {
   return `<svg class="icon${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
@@ -938,22 +940,41 @@ function orderRow(o) {
     </div>`;
 }
 
+let _actionInProgress = null;
+function _setBusy(orderId) {
+  _actionInProgress = orderId;
+  document.querySelectorAll(`.dash-order-row .btn-option`).forEach(b => {
+    if (b.closest(".dash-order-row")?.querySelector(`[onclick*="(${orderId})"]`)) {
+      b.disabled = true;
+      b.style.opacity = "0.5";
+      b.style.pointerEvents = "none";
+    }
+  });
+}
+function _clearBusy() { _actionInProgress = null; }
+
 async function putOnHold(orderId) {
   if (!confirm("Put this order on hold?")) return;
+  _setBusy(orderId);
   const res = await fetch(`/api/orders/${orderId}/put-on-hold`, {method: "POST"}).then(r => r.json());
+  _clearBusy();
   if (!res.ok) { alert(res.error || "Could not put order on hold"); return; }
   loadOrders();
 }
 
 async function releaseHold(orderId) {
   if (!confirm("Release this order from hold?")) return;
+  _setBusy(orderId);
   const res = await fetch(`/api/orders/${orderId}/release-hold`, {method: "POST"}).then(r => r.json());
+  _clearBusy();
   if (!res.ok) { alert(res.error || "Could not release hold"); return; }
   loadOrders();
 }
 
 async function markCompleted(orderId) {
+  _setBusy(orderId);
   const res = await fetch(`/api/dashboard/orders/${orderId}/complete`, {method: "POST"}).then(r => r.json());
+  _clearBusy();
   if (!res.ok) {
     alert(res.error || "Could not mark order completed");
     return;
@@ -1086,7 +1107,9 @@ function toggleGroup(name) {
 }
 
 async function markPaid(orderId) {
+  _setBusy(orderId);
   const res = await fetch(`/api/dashboard/orders/${orderId}/mark-paid`, {method: "POST"}).then(r => r.json());
+  _clearBusy();
   if (!res.ok) {
     alert(res.error || "Could not mark payment");
     return;
@@ -1095,12 +1118,13 @@ async function markPaid(orderId) {
 }
 
 async function approveOrder(orderId) {
+  _setBusy(orderId);
   const res = await fetch(`/api/dashboard/orders/${orderId}/approve`, {method: "POST"}).then(r => r.json());
+  _clearBusy();
   if (!res.ok) {
     alert(res.error || "Could not approve order");
     return;
   }
-  window.open(`/api/dashboard/orders/${orderId}/invoice`, "_blank");
   loadOrders();
 }
 
