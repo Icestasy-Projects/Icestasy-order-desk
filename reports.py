@@ -23,10 +23,8 @@ PAY_LABELS = {
     "refunded": "Refunded", "not_recorded": "Not Recorded",
 }
 
-COLUMNS = ["Order No", "Date", "Client", "Locality", "City", "Salesperson", "Status", "Payment Status", "Amount (INR)"]
-COLUMN_WIDTHS = [16, 14, 28, 20, 16, 18, 16, 18, 14]
-
-ORDER_LINE_COLUMNS = ["", "", "Flavour", "Format", "SKU Code", "Qty", "Unit Price", "Line Total", ""]
+COLUMNS = ["Order No", "Date", "Client", "Locality", "City", "Salesperson", "Amount (INR)"]
+COLUMN_WIDTHS = [16, 14, 28, 20, 16, 18, 14]
 LINE_FILL = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")
 LINE_FONT = Font(size=10, color="555555")
 ORDER_HEADER_FILL = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
@@ -191,8 +189,6 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         values = [
             o.get("order_no"), _format_date(o.get("created_at", "")), o.get("client_name"),
             o.get("place"), o.get("city"), o.get("salesperson_name"),
-            STATUS_LABELS.get(o.get("status"), o.get("status")),
-            PAY_LABELS.get(o.get("payment_status"), o.get("payment_status")),
             o.get("total_amount", 0),
         ]
         for col, val in enumerate(values, start=1):
@@ -208,15 +204,14 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         if lines:
             for ln in lines:
                 ws.cell(row=row, column=3, value=ln.get("flavour_name")).font = LINE_FONT
-                ws.cell(row=row, column=4, value=ln.get("format_name")).font = LINE_FONT
-                ws.cell(row=row, column=5, value=ln.get("sku_code")).font = LINE_FONT
-                qty_cell = ws.cell(row=row, column=6, value=ln.get("quantity"))
+                ws.cell(row=row, column=4, value=ln.get("sku_code")).font = LINE_FONT
+                qty_cell = ws.cell(row=row, column=5, value=ln.get("quantity"))
                 qty_cell.font = LINE_FONT
                 qty_cell.number_format = "#,##0"
-                up_cell = ws.cell(row=row, column=7, value=ln.get("unit_price"))
+                up_cell = ws.cell(row=row, column=6, value=ln.get("unit_price"))
                 up_cell.font = LINE_FONT
                 up_cell.number_format = "#,##0.00"
-                lt_cell = ws.cell(row=row, column=8, value=ln.get("line_total"))
+                lt_cell = ws.cell(row=row, column=7, value=ln.get("line_total"))
                 lt_cell.font = LINE_FONT
                 lt_cell.number_format = "#,##0.00"
                 for c in range(1, len(COLUMNS) + 1):
@@ -452,9 +447,6 @@ def build_orders_workbook(orders: list, role_label: str, full_name: str,
         _write_summary_sheet(summary_ws, orders, report_type, subtitle_text)
         detail_ws = wb.create_sheet("Orders")
         _write_orders_sheet(detail_ws, orders, subtitle_text)
-
-    client_ws = wb.create_sheet("Client Summary")
-    _write_client_summary_sheet(client_ws, orders, subtitle_text)
 
     buf = io.BytesIO()
     wb.save(buf)
