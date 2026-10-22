@@ -1,7 +1,7 @@
 import hmac
 import json
 import os
-from datetime import date
+from datetime import date, timedelta
 from functools import lru_cache, wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 
@@ -40,9 +40,12 @@ from order_engine import (
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
 if not app.secret_key:
-    # A random fallback breaks sessions on serverless: each request can hit a different
-    # cold-started instance with its own random key, invalidating every other instance's cookies.
     raise RuntimeError("SECRET_KEY environment variable must be set to a persistent value")
+
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 PUBLIC_ENDPOINTS = {"login", "static"}
 PASSWORD_CHANGE_ENDPOINTS = {"login", "static", "change_password", "logout"}
@@ -126,6 +129,7 @@ def login():
         staff = get_staff_by_email(result.user.email)
         if not staff or not staff["is_active"]:
             return redirect(url_for("login", error="Your account is not registered as staff. Contact your Head of Sales."))
+        session.permanent = True
         session["user_email"] = result.user.email
         session["user_id"] = staff["id"]
         session["role"] = staff["role"]
