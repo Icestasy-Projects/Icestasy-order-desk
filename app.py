@@ -24,7 +24,7 @@ from order_engine import (
     get_order_lines, mark_order_completed, flavour_sales_summary,
     fetch_report_order_lines, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
-    check_pending_orders, cancel_order, should_auto_hold, release_hold,
+    check_pending_orders, cancel_order, should_auto_hold, put_on_hold, release_hold,
     check_stock_for_order,
     STOCK_REQUEST_CITIES, create_stock_request, list_stock_requests,
     approve_stock_request, reject_stock_request, city_stock_summary,
@@ -389,6 +389,19 @@ def api_hold_check(client_id):
         return jsonify(should_auto_hold(client_id))
     except Exception as e:
         return jsonify({"hold": False, "error": str(e)}), 200
+
+
+@app.route("/api/orders/<int:order_id>/put-on-hold", methods=["POST"])
+def api_put_on_hold(order_id):
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "Only admins can hold orders"}), 403
+    try:
+        put_on_hold(order_id)
+        return jsonify({"ok": True})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/orders/<int:order_id>/release-hold", methods=["POST"])
