@@ -87,6 +87,46 @@
   border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--slate-700);
   white-space: nowrap;
 }
+.bu-select-wrap {
+  position: relative; display: inline-flex; align-items: center;
+}
+.bu-trigger {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px 5px 8px; border-radius: 6px;
+  background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
+  color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .15s; white-space: nowrap; line-height: 1;
+}
+.bu-trigger:hover { background: rgba(255,255,255,.25); }
+.bu-trigger .bu-icon {
+  width: 14px; height: 14px; opacity: .8; flex-shrink: 0;
+}
+.bu-trigger .bu-chevron {
+  width: 12px; height: 12px; opacity: .6; flex-shrink: 0;
+  transition: transform .15s;
+}
+.bu-trigger.open .bu-chevron { transform: rotate(180deg); }
+.bu-dropdown {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 150px; background: var(--white); border: 1px solid var(--slate-200);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  z-index: 100; overflow: hidden;
+}
+.bu-dropdown.open { display: block; }
+.bu-dropdown-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; font-size: 13px; font-weight: 500;
+  color: var(--slate-700); cursor: pointer; transition: background .1s;
+  border: none; background: none; width: 100%; text-align: left;
+}
+.bu-dropdown-item:hover { background: var(--slate-50); }
+.bu-dropdown-item.active {
+  color: var(--brand); font-weight: 600; background: var(--brand-soft);
+}
+.bu-dropdown-item .bu-check {
+  width: 16px; height: 16px; color: var(--brand); opacity: 0;
+}
+.bu-dropdown-item.active .bu-check { opacity: 1; }
 </style>
 </head>
 <body>
@@ -98,6 +138,22 @@
         <span class="brand-text"><strong>Icestasy</strong><small>ORDER DESK</small></span>
       </a>
       <div class="header-right menu-wrap">
+        <div class="bu-select-wrap" id="buWrap">
+          <button class="bu-trigger" id="buTrigger" type="button" onclick="toggleBUDropdown()">
+            <svg class="bu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+            <span id="buLabel">All Locations</span>
+            <svg class="bu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="bu-dropdown" id="buDropdown">
+            <button class="bu-dropdown-item active" data-bu="all" onclick="selectBU('all')">All Locations <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="mumbai" onclick="selectBU('mumbai')">Mumbai <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="pune" onclick="selectBU('pune')">Pune <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="bangalore" onclick="selectBU('bangalore')">Bangalore <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="hyderabad" onclick="selectBU('hyderabad')">Hyderabad <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="delhi" onclick="selectBU('delhi')">Delhi <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="roi" onclick="selectBU('roi')">ROI <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+        </div>
         <span class="user-email">Hi, {{ (full_name.split(" ")[0] if full_name else user_email) }}</span>
         <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
@@ -863,6 +919,54 @@ function inlineSelectPayment(mode) {
 }
 
 
+// ── BU location selector (client-side filter only) ──────────────────────────
+const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",bangalore:"Bangalore",hyderabad:"Hyderabad",delhi:"Delhi",roi:"ROI"};
+let selectedBU = "all";
+
+(function initBU() {
+  try { selectedBU = localStorage.getItem("icestasy_bu") || "all"; } catch (_) {}
+  _syncBUui(selectedBU);
+})();
+
+function _syncBUui(bu) {
+  document.getElementById("buLabel").textContent = _buLabels[bu] || bu;
+  document.querySelectorAll("#buDropdown .bu-dropdown-item").forEach(b => {
+    b.classList.toggle("active", b.dataset.bu === bu);
+  });
+}
+
+function toggleBUDropdown() {
+  const dd = document.getElementById("buDropdown");
+  const trigger = document.getElementById("buTrigger");
+  const open = dd.classList.toggle("open");
+  trigger.classList.toggle("open", open);
+}
+
+document.addEventListener("click", (e) => {
+  const wrap = document.getElementById("buWrap");
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById("buDropdown").classList.remove("open");
+    document.getElementById("buTrigger").classList.remove("open");
+  }
+});
+
+function selectBU(bu) {
+  selectedBU = bu;
+  try { localStorage.setItem("icestasy_bu", bu); } catch (_) {}
+  _syncBUui(bu);
+  document.getElementById("buDropdown").classList.remove("open");
+  document.getElementById("buTrigger").classList.remove("open");
+  if (_allClientsCache) {
+    clientOptionsCache = bu === "all"
+      ? _allClientsCache
+      : _allClientsCache.filter(c => c.price_region === bu);
+  }
+  if (state.client && bu !== "all" && state.client.price_region !== bu) {
+    changeClient();
+  }
+  renderOrderSummary();
+}
+
 // ── STEP 3: Client ───────────────────────────────────────────────────────────
 let _allClientsCache = null;
 let clientOptionsCache = null;
@@ -876,7 +980,9 @@ async function loadClientOptions() {
       _allClientsCache = [];
     }
   }
-  clientOptionsCache = _allClientsCache;
+  clientOptionsCache = selectedBU === "all"
+    ? _allClientsCache
+    : _allClientsCache.filter(c => c.price_region === selectedBU);
 }
 
 function showClientStep() {
@@ -1565,6 +1671,7 @@ function saveOrderDraft() {
       formItemRows: formItemRows,
       packFormat: selectedPackFormat,
       step: step,
+      bu: selectedBU,
       ts: Date.now(),
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -1598,6 +1705,12 @@ async function restoreOrderDraft() {
     state.collateralOnly = draft.state.collateralOnly || false;
     formItemRows = (draft.formItemRows || []).filter(r => r.skuId);
     if (draft.packFormat) selectedPackFormat = draft.packFormat;
+
+    if (draft.bu) {
+      selectedBU = draft.bu;
+      try { localStorage.setItem("icestasy_bu", draft.bu); } catch (_) {}
+      _syncBUui(draft.bu);
+    }
 
     // Restore client pill
     document.getElementById("clientPickerWrap").style.display = "none";

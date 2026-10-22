@@ -11,6 +11,48 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
+<style>
+.bu-select-wrap {
+  position: relative; display: inline-flex; align-items: center;
+}
+.bu-trigger {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px 5px 8px; border-radius: 6px;
+  background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
+  color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .15s; white-space: nowrap; line-height: 1;
+}
+.bu-trigger:hover { background: rgba(255,255,255,.25); }
+.bu-trigger .bu-icon {
+  width: 14px; height: 14px; opacity: .8; flex-shrink: 0;
+}
+.bu-trigger .bu-chevron {
+  width: 12px; height: 12px; opacity: .6; flex-shrink: 0;
+  transition: transform .15s;
+}
+.bu-trigger.open .bu-chevron { transform: rotate(180deg); }
+.bu-dropdown {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 150px; background: var(--white); border: 1px solid var(--slate-200);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  z-index: 100; overflow: hidden;
+}
+.bu-dropdown.open { display: block; }
+.bu-dropdown-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; font-size: 13px; font-weight: 500;
+  color: var(--slate-700); cursor: pointer; transition: background .1s;
+  border: none; background: none; width: 100%; text-align: left;
+}
+.bu-dropdown-item:hover { background: var(--slate-50); }
+.bu-dropdown-item.active {
+  color: var(--brand); font-weight: 600; background: var(--brand-soft);
+}
+.bu-dropdown-item .bu-check {
+  width: 16px; height: 16px; color: var(--brand); opacity: 0;
+}
+.bu-dropdown-item.active .bu-check { opacity: 1; }
+</style>
 </head>
 <body>
 <div class="app">
@@ -21,6 +63,22 @@
         <span class="brand-text"><strong>Icestasy</strong><small>ORDER DESK</small></span>
       </button>
       <div class="header-right menu-wrap">
+        <div class="bu-select-wrap" id="buWrap">
+          <button class="bu-trigger" id="buTrigger" type="button" onclick="toggleBUDropdown()">
+            <svg class="bu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+            <span id="buLabel">All Locations</span>
+            <svg class="bu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="bu-dropdown" id="buDropdown">
+            <button class="bu-dropdown-item active" data-bu="all" onclick="selectBU('all')">All Locations <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="mumbai" onclick="selectBU('mumbai')">Mumbai <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="pune" onclick="selectBU('pune')">Pune <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="bangalore" onclick="selectBU('bangalore')">Bangalore <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="hyderabad" onclick="selectBU('hyderabad')">Hyderabad <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="delhi" onclick="selectBU('delhi')">Delhi <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <button class="bu-dropdown-item" data-bu="roi" onclick="selectBU('roi')">ROI <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+        </div>
         <span class="user-email">Hi, {{ (full_name.split(" ")[0] if full_name else user_email) }}</span>
         <button class="hamburger-btn" type="button" onclick="toggleMenu()" aria-label="Menu">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
@@ -407,6 +465,61 @@ let paymentFilter = "all";
 let ordersPage = 1;
 const ORDERS_PAGE_SIZE = 30;
 
+// ── BU / Location selector (client-side filter only) ────────────────────────
+const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",bangalore:"Bangalore",hyderabad:"Hyderabad",delhi:"Delhi",roi:"ROI"};
+const _BU_CITIES = {
+  mumbai: new Set(["Mumbai","Vasai-Virar","Thane","Navi Mumbai"]),
+  pune: new Set(["Pune"]),
+  bangalore: new Set(["Bangalore"]),
+  hyderabad: new Set(["Hyderabad"]),
+  delhi: new Set(["Delhi"]),
+};
+let selectedBU = "all";
+
+(function initBU() {
+  try { selectedBU = localStorage.getItem("icestasy_bu") || "all"; } catch (_) {}
+  _syncBUui(selectedBU);
+})();
+function _syncBUui(bu) {
+  document.getElementById("buLabel").textContent = _buLabels[bu] || bu;
+  document.querySelectorAll("#buDropdown .bu-dropdown-item").forEach(b => {
+    b.classList.toggle("active", b.dataset.bu === bu);
+  });
+}
+function toggleBUDropdown() {
+  const dd = document.getElementById("buDropdown");
+  const trigger = document.getElementById("buTrigger");
+  const isOpen = dd.classList.contains("open");
+  dd.classList.toggle("open", !isOpen);
+  trigger.classList.toggle("open", !isOpen);
+  if (!isOpen) {
+    const wrap = document.getElementById("buWrap");
+    const closer = e => { if (!wrap.contains(e.target)) { document.getElementById("buDropdown").classList.remove("open"); document.getElementById("buTrigger").classList.remove("open"); document.removeEventListener("click", closer); } };
+    setTimeout(() => document.addEventListener("click", closer), 0);
+  }
+}
+function selectBU(bu) {
+  selectedBU = bu;
+  try { localStorage.setItem("icestasy_bu", bu); } catch (_) {}
+  _syncBUui(bu);
+  document.getElementById("buDropdown").classList.remove("open");
+  document.getElementById("buTrigger").classList.remove("open");
+  ordersPage = 1;
+  renderOrders();
+}
+function _orderMatchesBU(o) {
+  if (selectedBU === "all") return true;
+  const c = o.city;
+  if (!c || c === "—") {
+    const prefix = (o.order_no || "").replace(/[0-9].*/,"").toUpperCase();
+    const mapped = {MU:"mumbai",PU:"pune",BA:"bangalore",HY:"hyderabad",DL:"delhi",ROI:"roi"}[prefix];
+    return mapped === selectedBU;
+  }
+  const citySet = _BU_CITIES[selectedBU];
+  if (citySet) return citySet.has(c);
+  return selectedBU === "roi";
+}
+
 let _searchDebounce = null;
 
 // Typing re-filters/re-renders the whole list — with thousands of orders that's expensive
@@ -439,6 +552,7 @@ function goToOrdersPage(p) {
 
 function filteredOrders() {
   let base = allOrders;
+  if (selectedBU !== "all") base = base.filter(_orderMatchesBU);
   if (paymentFilter === "paid") base = base.filter(o => o.payment_status === "received");
   if (paymentFilter === "unpaid") base = base.filter(o => o.payment_status !== "received");
   if (!searchQuery) return base;
@@ -866,14 +980,14 @@ function renderOrders() {
   if (!allOrders.length) {
     box.innerHTML = `<div class="opt-muted">No orders yet</div>`;
     pagBox.innerHTML = "";
-    renderStats(allOrders);
+    renderStats(selectedBU === "all" ? allOrders : allOrders.filter(_orderMatchesBU));
     return;
   }
   const source = filteredOrders();
   if (!source.length) {
     box.innerHTML = `<div class="opt-muted">No orders match "${searchQuery}"</div>`;
     pagBox.innerHTML = "";
-    renderStats(allOrders);
+    renderStats(selectedBU === "all" ? allOrders : allOrders.filter(_orderMatchesBU));
     return;
   }
   if (grouping === "none") {
@@ -890,7 +1004,7 @@ function renderOrders() {
         <span>Page ${ordersPage} of ${totalPages} · ${source.length} orders</span>
         <button class="btn-option btn-sm" ${ordersPage >= totalPages ? "disabled" : ""} onclick="goToOrdersPage(${ordersPage + 1})">Next ›</button>
       </div>` : "";
-    renderStats(allOrders);
+    renderStats(selectedBU === "all" ? allOrders : allOrders.filter(_orderMatchesBU));
     return;
   }
   pagBox.innerHTML = "";
@@ -924,7 +1038,7 @@ function renderOrders() {
       </div>`;
   }).join("");
 
-  renderStats(allOrders);
+  renderStats(selectedBU === "all" ? allOrders : allOrders.filter(_orderMatchesBU));
 }
 
 // Second drill-down level under a City group: by locality ("place"), since
