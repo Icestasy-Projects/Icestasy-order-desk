@@ -677,7 +677,7 @@ const STATUS_CLASS = {
   in_production: "badge-blue", dispatched: "badge-purple", delivered: "badge-green",
   rejected: "badge-red", cancelled: "badge-red", invoiced: "badge-blue",
 };
-const PAY_LABELS = { received: "Payment Completed", pending: "Payment Pending", failed: "Payment Failed", refunded: "Refunded", not_recorded: "Not Recorded" };
+const PAY_LABELS = { received: "Paid", pending: "Not Paid", failed: "Not Paid", refunded: "Refunded", not_recorded: "Not Paid" };
 const PAY_CLASS = { received: "badge-green", pending: "badge-amber", failed: "badge-red", refunded: "badge-red", not_recorded: "badge-gray" };
 
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
