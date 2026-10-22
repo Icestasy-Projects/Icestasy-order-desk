@@ -448,21 +448,6 @@
 </div>
 
 
-<!-- Stock availability modal -->
-<div class="modal-overlay hidden" id="stockModal">
-  <div class="modal-card">
-    <div class="modal-title" style="color:var(--brand)">
-      <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-      Partial Stock Available
-    </div>
-    <div id="stockModalBody"></div>
-    <div class="modal-actions">
-      <button class="btn-primary" style="background:var(--red)" id="stockHoldBtn">Keep Whole Order On Hold</button>
-      <button class="btn-primary" id="stockSplitBtn">Split Order</button>
-      <button class="btn-ghost" onclick="closeStockModal()">Go Back</button>
-    </div>
-  </div>
-</div>
 
 <script>
 // ── Icons (inline Lucide SVGs — no external dependency) ─────────────────────
@@ -1476,7 +1461,7 @@ async function placeOrder() {
 
 
 async function submitNewOrder() {
-  return submitOrderWithOptions({});
+  return submitOrderWithOptions({stockMode: "skip"});
 }
 
 function buildOrderLines(sourceItems) {
