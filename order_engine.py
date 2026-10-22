@@ -835,7 +835,7 @@ def fetch_report_order_lines(order_ids: list) -> dict:
             return (
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, unit_price, line_total, line_discount_amount, status, "
-                        "skus(sku_code, flavours(name), pack_formats(name))")
+                        "skus(sku_code, gst_rate, flavours(name), pack_formats(name))")
                 .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
             )
 
@@ -844,13 +844,18 @@ def fetch_report_order_lines(order_ids: list) -> dict:
     out = {}
     for l in lines:
         sku = l.get("skus") or {}
+        gst_rate = float(sku.get("gst_rate") or 5.0)
+        line_total = float(l["line_total"])
+        gst_amt = round(line_total * gst_rate / (100 + gst_rate), 2)
         row = {
             "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
             "format_name": (sku.get("pack_formats") or {}).get("name", "—"),
             "sku_code": sku.get("sku_code", "—"),
             "quantity": float(l["quantity"]),
             "unit_price": float(l["unit_price"]),
-            "line_total": float(l["line_total"]),
+            "line_total": line_total,
+            "gst_rate": gst_rate,
+            "gst_amount": gst_amt,
         }
         out.setdefault(l["order_id"], []).append(row)
     return out
