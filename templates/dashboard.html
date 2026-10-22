@@ -408,9 +408,12 @@
   <label class="login-label">Report type</label>
   <select id="reportType" class="search-input mt8" onchange="onReportTypeChange()">
     <option value="all">All Orders</option>
+    <option value="today">Today's Orders</option>
+    {% if is_admin %}
     <option value="month">Month on Month</option>
     <option value="city">City-wise</option>
     <option value="client">Client-wise</option>
+    {% endif %}
     {% if can_view_team %}<option value="salesperson">Salesperson-wise</option>
     <option value="flavour">Flavour-wise</option>
     <option value="sku">SKU-wise (units sold)</option>{% endif %}
@@ -653,14 +656,19 @@ function closeReportModal() {
 }
 // Month on Month always covers the last 12 months server-side — no date range to pick.
 function onReportTypeChange() {
-  const isMonth = document.getElementById("reportType").value === "month";
-  document.getElementById("reportDateRange").classList.toggle("hidden", isMonth);
-  document.getElementById("reportMonthNote").classList.toggle("hidden", !isMonth);
+  const val = document.getElementById("reportType").value;
+  const hideDates = val === "month" || val === "today";
+  document.getElementById("reportDateRange").classList.toggle("hidden", hideDates);
+  document.getElementById("reportMonthNote").classList.toggle("hidden", val !== "month");
 }
 function downloadReport() {
   const type = document.getElementById("reportType").value;
-  const params = new URLSearchParams({type});
-  if (type !== "month") {
+  const params = new URLSearchParams({type: type === "today" ? "all" : type});
+  if (type === "today") {
+    const today = new Date().toISOString().slice(0, 10);
+    params.set("from", today);
+    params.set("to", today);
+  } else if (type !== "month") {
     params.set("from", document.getElementById("reportFrom").value);
     params.set("to", document.getElementById("reportTo").value);
   }
