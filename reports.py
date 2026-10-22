@@ -5,7 +5,6 @@ from datetime import date, datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.properties import Outline
 
 BRAND_FILL = PatternFill(start_color="1D4ED8", end_color="1D4ED8", fill_type="solid")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
@@ -23,12 +22,8 @@ PAY_LABELS = {
     "refunded": "Refunded", "not_recorded": "Not Recorded",
 }
 
-COLUMNS = ["Order No", "Date", "Client", "Locality", "City", "Amount (INR)"]
-COLUMN_WIDTHS = [18, 14, 28, 20, 16, 16]
-LINE_FILL = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")
-LINE_FONT = Font(size=10, color="555555")
-ORDER_HEADER_FILL = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
-ORDER_HEADER_FONT = Font(bold=True, size=11)
+COLUMNS = ["Date", "Voucher No", "Party Name", "Item Name", "Qty", "Rate", "Amount"]
+COLUMN_WIDTHS = [14, 18, 28, 28, 10, 14, 16]
 
 # Mumbai Metropolitan Region: reported as a single "Mumbai" group, matching the dashboard's By City tab.
 MMR_CITIES = {"Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"}
@@ -51,7 +46,7 @@ LINE_COLUMN_WIDTHS = [14, 30, 16, 16, 12, 16]
 
 def _format_date(created_at: str) -> str:
     try:
-        return datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d %b %Y")
+        return datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d-%m-%Y")
     except (ValueError, AttributeError):
         return created_at or ""
 
@@ -173,8 +168,6 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
     last_col_letter = get_column_letter(len(COLUMNS))
     _sheet_header(ws, "Icestasy Order Desk — Orders Report", subtitle_text, last_col_letter)
 
-    ws.sheet_properties.outlinePr = Outline(summaryBelow=False)
-
     header_row = 4
     for col, title in enumerate(COLUMNS, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
@@ -182,46 +175,44 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         cell.fill = BRAND_FILL
         cell.alignment = Alignment(horizontal="center")
 
-    amount_col = len(COLUMNS)
     row = header_row + 1
+    total_qty = 0.0
     total_value = 0.0
     for o in orders:
-        values = [
-            o.get("order_no"), _format_date(o.get("created_at", "")), o.get("client_name"),
-            o.get("place"), o.get("city"),
-            o.get("total_amount", 0),
-        ]
-        for col, val in enumerate(values, start=1):
-            cell = ws.cell(row=row, column=col, value=val)
-            if col == amount_col:
-                cell.number_format = "#,##0.00"
-            cell.fill = ORDER_HEADER_FILL
-            cell.font = ORDER_HEADER_FONT
-        total_value += o.get("total_amount", 0) or 0
-        row += 1
-
+        order_date = _format_date(o.get("created_at", ""))
+        order_no = o.get("order_no")
+        client = o.get("client_name")
         lines = o.get("lines") or []
         if lines:
             for ln in lines:
-                ws.cell(row=row, column=3, value=ln.get("flavour_name")).font = LINE_FONT
-                qty_cell = ws.cell(row=row, column=4, value=ln.get("quantity"))
-                qty_cell.font = LINE_FONT
-                qty_cell.number_format = "#,##0"
-                up_cell = ws.cell(row=row, column=5, value=ln.get("unit_price"))
-                up_cell.font = LINE_FONT
-                up_cell.number_format = "#,##0.00"
-                lt_cell = ws.cell(row=row, column=amount_col, value=ln.get("line_total"))
-                lt_cell.font = LINE_FONT
-                lt_cell.number_format = "#,##0.00"
-                for c in range(1, len(COLUMNS) + 1):
-                    ws.cell(row=row, column=c).fill = LINE_FILL
-                ws.row_dimensions[row].outline_level = 1
-                ws.row_dimensions[row].hidden = True
+                qty = ln.get("quantity", 0) or 0
+                rate = ln.get("unit_price", 0) or 0
+                amt = ln.get("line_total", 0) or 0
+                values = [order_date, order_no, client, ln.get("flavour_name"), qty, rate, amt]
+                for col, val in enumerate(values, start=1):
+                    cell = ws.cell(row=row, column=col, value=val)
+                    if col == 5:
+                        cell.number_format = "#,##0"
+                    elif col in (6, 7):
+                        cell.number_format = "#,##0.00"
+                total_qty += qty
+                total_value += amt
                 row += 1
+        else:
+            amt = o.get("total_amount", 0) or 0
+            values = [order_date, order_no, client, "", "", "", amt]
+            for col, val in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=col, value=val)
+                if col == 7:
+                    cell.number_format = "#,##0.00"
+            total_value += amt
+            row += 1
 
-    total_label_col = amount_col - 1
-    ws.cell(row=row, column=total_label_col, value="Total").font = TOTAL_FONT
-    total_cell = ws.cell(row=row, column=amount_col, value=total_value)
+    ws.cell(row=row, column=4, value="Total").font = TOTAL_FONT
+    qty_cell = ws.cell(row=row, column=5, value=total_qty)
+    qty_cell.font = TOTAL_FONT
+    qty_cell.number_format = "#,##0"
+    total_cell = ws.cell(row=row, column=7, value=total_value)
     total_cell.font = TOTAL_FONT
     total_cell.number_format = "#,##0.00"
 
@@ -229,6 +220,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         ws.column_dimensions[get_column_letter(i)].width = width
 
     ws.freeze_panes = f"A{header_row + 1}"
+    ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
 
 
 def _write_flavour_summary_sheet(ws, lines: list, report_type: str, subtitle_text: str):
