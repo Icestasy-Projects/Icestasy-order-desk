@@ -145,6 +145,7 @@
         <div class="greeting-sub">What would you like to do today? · {{ role_label }}</div>
       </section>
 
+      {% if is_admin %}
       <section>
         <div class="section-label">Overview</div>
         <div id="overviewRow" class="overview-row"></div>
@@ -165,6 +166,7 @@
         <div class="section-label">Sales Breakdown</div>
         <div id="breakdownRow" class="breakdown-row"></div>
       </section>
+      {% endif %}
 
       <section>
         <div class="section-label">Quick Actions</div>
@@ -233,11 +235,13 @@
         <input id="dashSearch" class="search-input mt16" type="text"
                placeholder="Search by client, city, or order no…" oninput="handleSearchInput(this.value)">
 
+        {% if is_admin %}
         <div class="tab-bar-flat mt16" id="paymentFilterTabs">
           <button class="tab-btn-flat active" onclick="setPaymentFilter('all', this)">All Payments</button>
           <button class="tab-btn-flat" onclick="setPaymentFilter('paid', this)">Paid</button>
           <button class="tab-btn-flat" onclick="setPaymentFilter('unpaid', this)">Unpaid</button>
         </div>
+        {% endif %}
 
         <div id="ordersBox" class="mt16"></div>
         <div id="ordersPagination" class="mt8"></div>
@@ -928,7 +932,7 @@ function orderRow(o) {
       </div>
       <div class="dash-order-side">
         <span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
-        <span class="badge badge-pay ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>
+        ${IS_ADMIN ? `<span class="badge badge-pay ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>` : ""}
         <span class="ci-price">${fmt(o.total_amount)}</span>
         ${initialActions}
         ${holdAction}
