@@ -668,10 +668,6 @@ def get_order_lines(order_id: int, user_id: int, role: str, region: str = "") ->
     if not order.data:
         raise ValueError("Order not found")
     o = order.data[0]
-    if role != "admin" and role not in REGION_HEAD_ROLES:
-        if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
-            raise ValueError("Not authorized to view this order")
-
     lines = (
         sb.schema("sales").from_("order_lines")
         .select("id, quantity, unit_price, line_total, status, "
