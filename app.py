@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 from datetime import date
@@ -104,7 +105,7 @@ def tally_api_key_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         # Deny-by-default: an unset key must never be treated as "no key required".
-        if not TALLY_API_KEY or request.headers.get("X-API-Key") != TALLY_API_KEY:
+        if not TALLY_API_KEY or not hmac.compare_digest(request.headers.get("X-API-Key", ""), TALLY_API_KEY):
             return jsonify({"error": "unauthorized"}), 401
         return view(*args, **kwargs)
     return wrapped
@@ -375,7 +376,7 @@ def api_pending_orders(client_id):
 @app.route("/api/orders/<int:order_id>/cancel", methods=["POST"])
 def api_cancel_order(order_id):
     try:
-        cancel_order(order_id)
+        cancel_order(order_id, user_id=session["user_id"], role=session["role"])
         return jsonify({"ok": True})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -433,6 +434,8 @@ def api_orders():
             discount_pct=float(body.get("discount_pct") or 0),
         )
         return jsonify({"ok": True, "order": order})
+    except (ValueError, KeyError, TypeError) as e:
+        return jsonify({"ok": False, "error": f"Invalid order: {e}"}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

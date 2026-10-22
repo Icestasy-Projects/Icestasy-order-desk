@@ -196,8 +196,13 @@ def get_staff_by_email(email: str) -> dict | None:
     return result.data[0] if result.data else None
 
 
+def _postgrest_term(value: str) -> str:
+    """Strip characters that would break out of a PostgREST or_() filter value."""
+    return re.sub(r"[,()*\\]", " ", value or "").strip()
+
+
 def search_clients(query: str) -> list:
-    q = query.strip()
+    q = _postgrest_term(query)
     if not q:
         return []
     sb = _sb()
@@ -236,9 +241,9 @@ def list_clients_lite() -> list:
 def register_client(data: dict, registered_by: int) -> dict:
     sb = _sb()
     business_name = (data.get("business_name") or "").strip()
-    phone = (data.get("primary_contact_phone") or "").strip() or None
-    gstin = (data.get("gstin") or "").strip() or None
-    fssai_no = (data.get("fssai_no") or "").strip() or None
+    phone = _postgrest_term(data.get("primary_contact_phone")) or None
+    gstin = _postgrest_term(data.get("gstin")) or None
+    fssai_no = _postgrest_term(data.get("fssai_no")) or None
 
     if not business_name:
         raise ValueError("Business name is required")
@@ -468,11 +473,16 @@ def check_pending_orders(client_id: int) -> list:
     return pending.data
 
 
-def cancel_order(order_id: int) -> dict:
+def cancel_order(order_id: int, user_id: int | None = None, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("id, status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders").select("id, status, created_by_user_id, salesperson_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    if role is not None and role != "admin" and role not in REGION_HEAD_ROLES:
+        o = order.data[0]
+        if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
+            raise ValueError("Not authorized to cancel this order")
     if order.data[0]["status"] in ("approved", "invoiced", "delivered", "cancelled", "rejected"):
         raise ValueError(f"Cannot cancel — order is already {order.data[0]['status']}")
     res = (
@@ -548,11 +558,20 @@ def release_hold(order_id: int) -> dict:
 def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0):
     sb = _sb()
     payment_mode = payment_mode or "advance"
-    subtotal = sum(l["quantity"] * l["unit_price"] for l in lines)
+    if not lines:
+        raise ValueError("At least one order line is required")
+    for l in lines:
+        if not l["quantity"] > 0:
+            raise ValueError("Line quantity must be positive")
+        if not l["unit_price"] >= 0 or not l.get("line_discount", 0.0) >= 0:
+            raise ValueError("Line price and discount must not be negative")
+    if not 0 <= discount_pct <= 100:
+        raise ValueError("Discount % must be between 0 and 100")
+    subtotal = round(sum(l["quantity"] * l["unit_price"] for l in lines), 2)
     line_discount = sum(l.get("line_discount", 0.0) * l["quantity"] for l in lines)
     pct_discount = round(subtotal * (discount_pct / 100), 2) if discount_pct else 0.0
-    discount = line_discount + pct_discount
-    total = subtotal - discount
+    discount = round(line_discount + pct_discount, 2)
+    total = round(subtotal - discount, 2)
 
     city_code = "ROI"
     if shipping_address_id:
@@ -644,6 +663,10 @@ def mark_payment_received(order_id: int, received_by: int) -> dict:
         raise ValueError("Order not found")
     if order.data[0]["status"] in ("rejected", "cancelled"):
         raise ValueError(f"Order is {order.data[0]['status']} — nothing to collect payment for")
+    already = (sb.schema("sales").from_("payments").select("id")
+               .eq("order_id", order_id).eq("status", "received").limit(1).execute())
+    if already.data:
+        raise ValueError("Payment already recorded for this order")
     row = {
         "order_id": order_id, "payment_type": "full",
         "amount": order.data[0]["total_amount"],
@@ -729,7 +752,7 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
     def build_orders_query(start, end):
         q = (
             sb.schema("sales").from_("orders")
-            .select("id, created_at, total_amount, tax_amount, shipping_address_id, created_by_user_id, salesperson_id")
+            .select("id, order_no, client_id, created_at, total_amount, tax_amount, shipping_address_id, created_by_user_id, salesperson_id")
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
             q = q.eq("created_by_user_id", user_id)
@@ -1494,6 +1517,8 @@ def approve_stock_request(request_id: int, line_approvals: dict, approved_by: in
         .select("id, requested_qty").eq("request_id", request_id).execute().data
     )
     overrides = {int(k): float(v) for k, v in (line_approvals or {}).items()}
+    if any(not v >= 0 for v in overrides.values()):
+        raise ValueError("Approved quantity must not be negative")
     for l in lines:
         approved_qty = overrides.get(l["id"], float(l["requested_qty"]))
         sb.schema("sales").from_("stock_request_lines").update({"approved_qty": approved_qty}).eq("id", l["id"]).execute()
@@ -1546,7 +1571,7 @@ def city_stock_summary() -> list:
     # backdated records of stock already consumed in the past, not new demand
     # against today's physical stock, so they must never subtract from it here.
     orders = _fetch_all_pages(lambda start, end: (
-        sb.schema("sales").from_("orders").select("id, shipping_address_id")
+        sb.schema("sales").from_("orders").select("id, client_id, shipping_address_id")
         .in_("status", list(_CITY_USED_ORDER_STATUSES))
         .neq("source", "historical_import").range(start, end)
     ))
@@ -1763,8 +1788,8 @@ def update_flavour(flavour_id: int, data: dict) -> dict:
 
 
 def set_sku_price(sku_id: int, price: float, set_by: int, region: str = "default") -> dict:
-    if price < 0:
-        raise ValueError("Price must be non-negative")
+    if not price >= 0 or price == float("inf"):
+        raise ValueError("Price must be a non-negative number")
     if region not in ("default", *PRICE_REGIONS):
         raise ValueError("Invalid pricing region")
     sb = _sb()
