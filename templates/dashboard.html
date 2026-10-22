@@ -224,8 +224,8 @@
 
         <div class="tab-bar-flat" id="groupTabs">
           <button class="tab-btn-flat active" onclick="setGrouping('none', this)">All Orders</button>
-          <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
           {% if is_admin %}
+          <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
           <button class="tab-btn-flat" onclick="setGrouping('month', this)">Month on Month</button>
           <button class="tab-btn-flat" onclick="setGrouping('city', this)">By City</button>
           {% endif %}

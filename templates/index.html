@@ -399,6 +399,7 @@
       <div class="hidden" id="inlineAddressPicker" style="margin-top:12px"></div>
 
       <div class="confirm-extras">
+        {% if is_admin %}
         <div class="confirm-row" style="flex-direction:column;align-items:stretch">
           <label class="confirm-label">Discount</label>
           <div class="disc-chip-row" id="discChips">
@@ -420,6 +421,7 @@
             <span class="disc-summary-total">After discount: <strong id="discSumTotal">₹0</strong></span>
           </div>
         </div>
+        {% endif %}
         <div class="confirm-row" style="flex-direction:column;align-items:stretch">
           <label class="confirm-label" for="orderComment">Comments</label>
           <textarea id="orderComment" class="paste-box" rows="2" placeholder="Add any notes or comments for this order…" style="margin-top:4px"></textarea>
@@ -1339,14 +1341,18 @@ async function showConfirm() {
     ${resolved.length ? `<div class="summary-total" style="font-size:18px;border-top:2px solid var(--slate-200);padding-top:8px;margin-top:4px">Grand Total <strong id="grandTotalAmt">${fmt(grandTotal)}</strong></div>` : ""}`;
 
   _baseDiscPct = 0;
-  document.querySelectorAll("#discChips .disc-chip").forEach(b => b.classList.remove("active"));
-  document.querySelector("#discChips .disc-chip").classList.add("active");
-  document.getElementById("discCustomWrap").classList.add("hidden");
-  document.getElementById("discountPct").value = "0";
-  document.getElementById("discountPreview").textContent = "";
-  document.getElementById("discountTotalRow").style.display = "none";
-  document.getElementById("discSummary").classList.add("hidden");
-  document.getElementById("discAdvanceNote").classList.toggle("hidden", state.payment !== "advance");
+  const _discChips = document.getElementById("discChips");
+  if (_discChips) {
+    _discChips.querySelectorAll(".disc-chip").forEach(b => b.classList.remove("active"));
+    const first = _discChips.querySelector(".disc-chip");
+    if (first) first.classList.add("active");
+    const cw = document.getElementById("discCustomWrap"); if (cw) cw.classList.add("hidden");
+    const dp = document.getElementById("discountPct"); if (dp) dp.value = "0";
+    const dpr = document.getElementById("discountPreview"); if (dpr) dpr.textContent = "";
+    const dtr = document.getElementById("discountTotalRow"); if (dtr) dtr.style.display = "none";
+    const ds = document.getElementById("discSummary"); if (ds) ds.classList.add("hidden");
+    const an = document.getElementById("discAdvanceNote"); if (an) an.classList.toggle("hidden", state.payment !== "advance");
+  }
   document.getElementById("orderComment").value = "";
   updateDiscountPreview();
 
