@@ -309,11 +309,8 @@
         </div>
       </div>
 
-      <div class="hidden" id="inlineAddressPicker" style="margin-top:12px">
-        <div class="step-label">Shipping Address</div>
-        <div id="inlineAddressList" class="option-list"></div>
-        <button class="btn-option btn-sm mt8" id="inlineAddAddressBtn" onclick="showInlineAddressForm()">+ Add new address</button>
-      </div>
+      <!-- Address picker disabled for now -->
+      <div class="hidden" id="inlineAddressPicker" style="margin-top:12px"></div>
 
       <div class="confirm-extras">
         <div class="confirm-row" style="flex-direction:column;align-items:stretch">
@@ -1258,7 +1255,7 @@ async function showConfirm() {
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
     ${state.collateralOnly ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
-    <div class="summary-row"><span>Address</span><strong>${state.address_label || "Not set"} <button class="pill-change" onclick="changeAddress()">change</button></strong></div>
+    <!-- Address row disabled for now -->
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
     <table class="summary-table">
       <thead><tr><th>Item</th><th>Format</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>

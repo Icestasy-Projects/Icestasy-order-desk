@@ -909,8 +909,7 @@ function orderRow(o) {
   // Available to both the order's own salesperson and admins — the backend re-checks ownership.
   const completeAction = !_COMPLETABLE_BLOCKED_STATUSES.has(o.status)
     ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">${icon("check-check")} Mark Completed</button>` : "";
-  const invoiceAction = (o.status === "invoiced" || o.status === "delivered")
-    ? `<a class="btn-option btn-sm" href="/api/dashboard/orders/${o.id}/invoice" target="_blank">${icon("receipt")} Invoice</a>` : "";
+  const invoiceAction = ""; // Invoice button disabled for now
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
   const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
   const isOpen = expandedOrderId === o.id;
