@@ -137,7 +137,14 @@ body {
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 .btn-green { background: var(--green); box-shadow: 0 6px 18px rgba(22,163,74,.25); }
 .btn-green:hover { background: #15803D; }
+.btn-outline {
+  padding: 14px 24px; border: 2px solid var(--brand); color: var(--brand); background: transparent;
+  border-radius: 26px; font-weight: 700; font-size: 15px; cursor: pointer; transition: background .15s, color .15s;
+  min-height: 48px;
+}
+.btn-outline:hover { background: var(--brand); color: #fff; }
 .mt8 { margin-top: 8px; }
+.mt10 { margin-top: 10px; }
 .mt16 { margin-top: 16px; }
 
 #step-confirm .btn-ghost {
