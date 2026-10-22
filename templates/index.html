@@ -1818,7 +1818,7 @@ function renderOrderSummary() {
   if (IS_ADMIN && state.payment && pastPayment.includes(step)) {
     lines.push(`<div class="summary-line"><span class="summary-label">Payment</span><span class="summary-value" style="text-transform:capitalize">${state.payment}</span></div>`);
   }
-  if (state.address_label && step === "step-confirm") {
+  if (IS_ADMIN && state.address_label && step === "step-confirm") {
     lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${state.address_label}</span></div>`);
   }
 
