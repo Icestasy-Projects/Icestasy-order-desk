@@ -906,8 +906,7 @@ function orderRow(o) {
   const approvalActions = (IS_ADMIN && !_TERMINAL_STATUSES.has(o.status) && o.status !== "hold")
     ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">${icon("check")} Approve</button>
        <button class="btn-option btn-sm" onclick="rejectOrder(${o.id})">${icon("x")} Reject</button>` : "";
-  // Available to both the order's own salesperson and admins — the backend re-checks ownership.
-  const completeAction = !_COMPLETABLE_BLOCKED_STATUSES.has(o.status)
+  const completeAction = IS_ADMIN && !_COMPLETABLE_BLOCKED_STATUSES.has(o.status)
     ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">${icon("check-check")} Mark Completed</button>` : "";
   const invoiceAction = ""; // Invoice button disabled for now
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
