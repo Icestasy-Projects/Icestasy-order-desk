@@ -405,8 +405,8 @@
 <div class="modal-backdrop" id="reportModalBackdrop" onclick="closeReportModal()"></div>
 <div class="modal-box" id="reportModal">
   <div class="modal-title">Download Excel Report</div>
-  <label class="login-label">Report type</label>
-  <select id="reportType" class="search-input mt8" onchange="onReportTypeChange()">
+  <label class="rpt-label">Report type</label>
+  <select id="reportType" class="rpt-input" onchange="onReportTypeChange()">
     <option value="all">All Orders</option>
     <option value="today">Today's Orders</option>
     {% if is_admin %}
@@ -418,18 +418,22 @@
     <option value="flavour">Flavour-wise</option>
     <option value="sku">SKU-wise (units sold)</option>{% endif %}
   </select>
-  <div id="reportDateRange">
-    <label class="login-label mt16">From</label>
-    <input type="date" id="reportFrom" class="search-input mt8">
-    <label class="login-label mt16">To</label>
-    <input type="date" id="reportTo" class="search-input mt8">
+  <div id="reportDateRange" class="rpt-date-row">
+    <div class="rpt-date-col">
+      <label class="rpt-label">From</label>
+      <input type="date" id="reportFrom" class="rpt-input">
+    </div>
+    <div class="rpt-date-col">
+      <label class="rpt-label">To</label>
+      <input type="date" id="reportTo" class="rpt-input">
+    </div>
   </div>
-  <div id="reportMonthNote" class="opt-muted mt16 hidden">Covers the last 12 months.</div>
-  <button type="button" class="btn-primary" onclick="downloadReport()">
+  <div id="reportMonthNote" class="opt-muted hidden" style="margin-top:8px">Covers the last 12 months.</div>
+  <button type="button" class="btn-primary" style="margin-top:14px" onclick="downloadReport()">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
     Download
   </button>
-  <button type="button" class="btn-ghost mt8" style="width:100%" onclick="closeReportModal()">Cancel</button>
+  <button type="button" class="btn-ghost" style="width:100%;margin-top:6px" onclick="closeReportModal()">Cancel</button>
 </div>
 
 <script>
