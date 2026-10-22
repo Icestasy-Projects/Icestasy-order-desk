@@ -224,8 +224,8 @@
 
         <div class="tab-bar-flat" id="groupTabs">
           <button class="tab-btn-flat active" onclick="setGrouping('none', this)">All Orders</button>
-          {% if is_admin %}
           <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
+          {% if is_admin %}
           <button class="tab-btn-flat" onclick="setGrouping('month', this)">Month on Month</button>
           <button class="tab-btn-flat" onclick="setGrouping('city', this)">By City</button>
           {% endif %}
@@ -729,7 +729,13 @@ async function loadOrders() {
   // Historical bulk-imported orders with no recorded line items skew every figure on
   // this page (see Insights gap note). Excluded from all dashboard views for now —
   // nothing is deleted server-side, this is a display-only filter.
-  allOrders = (data.orders || []).filter(o => o.has_lines !== false);
+  let filtered = (data.orders || []).filter(o => o.has_lines !== false);
+  if (!IS_ADMIN) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    filtered = filtered.filter(o => new Date(o.created_at) >= cutoff);
+  }
+  allOrders = filtered;
   renderOrders();
 }
 
