@@ -459,6 +459,8 @@ const ICON_PATHS = {
   "circle-check-big": '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
   "arrow-right": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
 };
+const escapeHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
 function icon(name, cls) {
   return `<svg class="icon${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
 }
@@ -527,7 +529,7 @@ function renderCollateralList() {
     <div class="cart-item-card">
       <div class="ci-info">
         <span class="ci-name">${c.type}</span>
-        <span class="ci-fmt">Qty: ${c.quantity}${c.notes ? " · " + c.notes : ""}</span>
+        <span class="ci-fmt">Qty: ${c.quantity}${c.notes ? " · " + escapeHtml(c.notes) : ""}</span>
       </div>
       <button class="qty-btn" onclick="removeCollateral(${idx})">${icon("x")}</button>
     </div>`).join("");
@@ -1074,8 +1076,8 @@ function filterClientDropdown(query) {
   } else {
     listEl.innerHTML = filtered.map(c =>
       `<div class="sku-picker-option" onmousedown="selectClientFromList('${c.id}')">
-        <span class="sku-name">${c.business_name}</span>
-        <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}</span>
+        <span class="sku-name">${escapeHtml(c.business_name)}</span>
+        <span class="sku-meta">${c.primary_contact_name ? escapeHtml(c.primary_contact_name) + " · " : ""}${escapeHtml(c.primary_contact_phone || "")}${c.city && c.city !== "Unassigned" ? " · " + escapeHtml(c.city) : ""}</span>
       </div>`
     ).join("");
   }
@@ -1092,7 +1094,7 @@ async function selectClient(client) {
   closeAllSkuDropdowns();
   document.getElementById("clientPickerWrap").style.display = "none";
   document.getElementById("clientSelectedPill").innerHTML =
-    `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+    `<div class="selected-pill">${icon("check")} ${escapeHtml(client.business_name)} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientPickerInput").value = "";
 
   const region = client.price_region || "default";
@@ -1185,8 +1187,8 @@ function changeAddress() {
     } else {
       list.innerHTML = addrs.map(a => `
         <button class="option-btn${a.id === state.address_id ? ' active' : ''}" style="text-align:left"
-          onclick="inlineSelectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}', '${(a.city||"").replace(/'/g,"\\'")}', '${(a.state||"").replace(/'/g,"\\'")}')">
-          ${a.label}
+          onclick="inlineSelectAddress(${a.id}, ${escapeHtml(JSON.stringify(a.label))}, ${escapeHtml(JSON.stringify(a.city||""))}, ${escapeHtml(JSON.stringify(a.state||""))})">
+          ${escapeHtml(a.label)}
         </button>`).join("");
     }
     picker.classList.remove("hidden");
@@ -1279,7 +1281,7 @@ async function showConfirm() {
   ).join("");
 
   const collateralRows = state.collateral.map(c =>
-    `<div class="summary-row"><span>${c.type}${c.notes ? " (" + c.notes + ")" : ""}</span><strong>Qty ${c.quantity}</strong></div>`
+    `<div class="summary-row"><span>${escapeHtml(c.type)}${c.notes ? " (" + escapeHtml(c.notes) + ")" : ""}</span><strong>Qty ${c.quantity}</strong></div>`
   ).join("");
 
   const isInterstate = state.address_state
@@ -1317,7 +1319,7 @@ async function showConfirm() {
   }
 
   document.getElementById("summaryBox").innerHTML = `
-    <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
+    <div class="summary-row"><span>Client</span><strong>${escapeHtml(state.client?.business_name) || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
     ${state.collateralOnly || !IS_ADMIN ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
     <!-- Address row disabled for now -->
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
@@ -1638,14 +1640,14 @@ function renderDoneOrders(orders, title) {
     const linesList = (order.lines || []).map(l =>
       `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
     ).join("") + (order.collateral || []).map(c =>
-      `<li>${c.quantity} × ${c.type}${c.notes ? " — " + c.notes : ""}</li>`
+      `<li>${c.quantity} × ${escapeHtml(c.type)}${c.notes ? " — " + escapeHtml(c.notes) : ""}</li>`
     ).join("");
     return `
       <div class="done-order-card">
       <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
       <div class="done-title">Order Confirmed</div>
       <a class="done-no" href="/orders?order=${order.id}" style="text-decoration:none">${order.order_no}</a>
-      <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
+      <div class="done-meta">${escapeHtml(state.client.business_name)}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
       ${discLine}
       <ul class="done-lines">${linesList}</ul>
       <div class="done-total">Total: <strong>${total}</strong></div>
@@ -1736,7 +1738,7 @@ async function restoreOrderDraft() {
     // Restore client pill
     document.getElementById("clientPickerWrap").style.display = "none";
     document.getElementById("clientSelectedPill").innerHTML =
-      `<div class="selected-pill">${icon("check")} ${state.client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+      `<div class="selected-pill">${icon("check")} ${escapeHtml(state.client.business_name)} <button class="pill-change" onclick="changeClient()">change</button></div>`;
 
     // Show the step the user was on (redirect removed steps to confirm)
     let target = draft.step || "step-paste";
@@ -1780,7 +1782,7 @@ function renderOrderSummary() {
   const lines = [];
 
   if (state.client && pastClient.includes(step)) {
-    lines.push(`<div class="summary-line"><span class="summary-label">Client</span><span class="summary-value">${state.client.business_name}</span></div>`);
+    lines.push(`<div class="summary-line"><span class="summary-label">Client</span><span class="summary-value">${escapeHtml(state.client.business_name)}</span></div>`);
   }
   if (state.items.length && pastItems.includes(step)) {
     const chips = state.items.map(it => {
@@ -1804,7 +1806,7 @@ function renderOrderSummary() {
     lines.push(`<div class="summary-line"><span class="summary-label">Payment</span><span class="summary-value" style="text-transform:capitalize">${state.payment}</span></div>`);
   }
   if (IS_ADMIN && state.address_label && step === "step-confirm") {
-    lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${state.address_label}</span></div>`);
+    lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${escapeHtml(state.address_label)}</span></div>`);
   }
 
   if (lines.length) {

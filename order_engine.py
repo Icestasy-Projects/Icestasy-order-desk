@@ -572,6 +572,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     pct_discount = round(subtotal * (discount_pct / 100), 2) if discount_pct else 0.0
     discount = round(line_discount + pct_discount, 2)
     total = round(subtotal - discount, 2)
+    if total < 0:
+        raise ValueError("Discount cannot exceed the order subtotal")
 
     city_code = "ROI"
     if shipping_address_id:
@@ -598,6 +600,24 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     }
     order_res = sb.schema("sales").from_("orders").insert(order_row).execute()
     order_id = order_res.data[0]["id"]
+    try:
+        return _finish_order(sb, order_res.data[0], lines, collateral, subtotal, discount, total, discount_pct)
+    except Exception:
+        # Don't leave a header-only order behind if its lines/collateral failed.
+        for table in ("order_collateral", "order_lines"):
+            try:
+                sb.schema("sales").from_(table).delete().eq("order_id", order_id).execute()
+            except Exception:
+                pass
+        try:
+            sb.schema("sales").from_("orders").delete().eq("id", order_id).execute()
+        except Exception:
+            pass
+        raise
+
+
+def _finish_order(sb, order_row, lines, collateral, subtotal, discount, total, discount_pct):
+    order_id = order_row["id"]
     line_rows = []
     for l in lines:
         qty = l["quantity"]; price = l["unit_price"]
@@ -617,10 +637,10 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
         collateral_out = [{"type": c["collateral_type"], "quantity": c["quantity"], "notes": c.get("notes")}
                            for c in saved]
 
-    result = {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
+    result = {**order_row, "subtotal": subtotal, "discount": discount, "total": total,
             "discount_pct": discount_pct,
-            "lines": [{"sku_code": l["sku_code"], "flavour_name": l["flavour_name"],
-                       "format_name": l["format_name"], "quantity": l["quantity"],
+            "lines": [{"sku_code": l.get("sku_code"), "flavour_name": l.get("flavour_name"),
+                       "format_name": l.get("format_name"), "quantity": l["quantity"],
                        "unit_price": l["unit_price"],
                        "line_total": l["quantity"] * l["unit_price"] - l.get("line_discount", 0.0) * l["quantity"]}
                       for l in lines],
@@ -692,6 +712,9 @@ def get_order_lines(order_id: int, user_id: int, role: str, region: str = "") ->
     if not order.data:
         raise ValueError("Order not found")
     o = order.data[0]
+    if role not in REGION_HEAD_ROLES and role != "admin":
+        if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
+            raise ValueError("Not authorized to view this order")
     lines = (
         sb.schema("sales").from_("order_lines")
         .select("id, quantity, unit_price, line_total, status, "
@@ -909,6 +932,8 @@ def approve_order(order_id: int, approved_by: int) -> dict:
         raise ValueError("Order not found")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
+    if order.data[0]["status"] == "hold":
+        raise ValueError("Order is on hold — release the hold before approving")
     res = sb.schema("sales").from_("orders").update({"status": "approved"}).eq("id", order_id).execute()
     return res.data[0]
 
@@ -1447,7 +1472,11 @@ def create_stock_request(city: str, lines: list, requested_by: int, notes: str =
     request_id = req_res.data[0]["id"]
     line_rows = [{"request_id": request_id, "sku_id": l["sku_id"], "requested_qty": l["quantity"]}
                  for l in clean_lines]
-    sb.schema("sales").from_("stock_request_lines").insert(line_rows).execute()
+    try:
+        sb.schema("sales").from_("stock_request_lines").insert(line_rows).execute()
+    except Exception:
+        sb.schema("sales").from_("stock_requests").delete().eq("id", request_id).execute()
+        raise
     return {"id": request_id, "city": city, "status": "pending"}
 
 

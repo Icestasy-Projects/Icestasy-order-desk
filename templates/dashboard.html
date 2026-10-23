@@ -702,7 +702,7 @@ const PAY_CLASS = { received: "badge-green", pending: "badge-amber", failed: "ba
 
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 // Order comments are free text typed by staff — escape before rendering to avoid stored XSS.
-const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const escapeHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 // ── Avatar initials — colored circle, deterministic color per name ──────────
 const AVATAR_COLORS = ["avatar-blue", "avatar-green", "avatar-purple", "avatar-amber", "avatar-pink", "avatar-teal"];
@@ -786,7 +786,7 @@ function barRows(orders, keyFn, limit) {
   return entries.map(([name, v]) => `
     <div class="bar-row">
       <div class="bar-row-label">
-        <span>${name}</span>
+        <span>${escapeHtml(name)}</span>
         <span class="opt-sub">${v.count} · ${fmt(v.value)}</span>
       </div>
       <div class="bar-track"><div class="bar-fill" style="width:${(v.value / maxValue * 100).toFixed(1)}%"></div></div>
@@ -913,8 +913,8 @@ function orderLinesHtml(orderId) {
       <tbody>
         ${lines.map(l => `
           <tr>
-            <td>${l.flavour_name}</td>
-            <td>${l.pack_format_name}</td>
+            <td>${escapeHtml(l.flavour_name)}</td>
+            <td>${escapeHtml(l.pack_format_name)}</td>
             <td>${l.quantity}</td>
             <td>${fmt(l.unit_price)}</td>
             <td class="num">${fmt(l.line_total)}</td>
@@ -947,7 +947,7 @@ function orderRow(o) {
           <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${o.order_no}</span>
           ${orderDate ? `<span class="dash-order-date">${orderDate}</span>` : ""}
         </div>
-        <span class="dash-order-client">${o.client_name}${showPlace ? " · " + o.place : ""}</span>
+        <span class="dash-order-client">${escapeHtml(o.client_name)}${showPlace ? " · " + escapeHtml(o.place) : ""}</span>
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.source === "sheet_sync" ? "Auto Synced" : o.salesperson_name}</span>` : ""}
       </div>
       <div class="dash-order-side">
@@ -1081,7 +1081,7 @@ function renderOrders() {
     return `
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleGroup(${safeName})'>
-          <span>${isOpen ? "▾" : "▸"} ${name}</span>
+          <span>${isOpen ? "▾" : "▸"} ${escapeHtml(name)}</span>
           <span class="opt-sub">${orders.length} orders · ${fmt(groupTotal)}</span>
         </button>
         ${body}
@@ -1242,8 +1242,8 @@ function renderDuesTable() {
           }
           return `
           <tr onclick="toggleDueDetail(${d.id})" style="cursor:pointer">
-            <td>${isOpen ? "▾" : "▸"} ${d.business_name}${d.primary_contact_phone ? `<br><span class="opt-sub">${d.primary_contact_phone}</span>` : ""}</td>
-            <td>${d.place && d.place !== "—" ? d.place : d.city}</td>
+            <td>${isOpen ? "▾" : "▸"} ${escapeHtml(d.business_name)}${d.primary_contact_phone ? `<br><span class="opt-sub">${escapeHtml(d.primary_contact_phone)}</span>` : ""}</td>
+            <td>${escapeHtml(d.place && d.place !== "—" ? d.place : d.city)}</td>
             <td>${d.last_payment_date ? new Date(d.last_payment_date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}) : "—"}</td>
             <td class="num"><span class="badge badge-red">${fmt(d.balance)}</span></td>
           </tr>${body}`;
@@ -1388,15 +1388,15 @@ function addressCardHtml(c, a) {
   return `
     <div class="cart-item-card" style="flex-direction:column;align-items:stretch;gap:8px">
       <div class="opt-sub">${a.address_type || "shipping"}${a.is_default ? " · default" : ""}</div>
-      <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${a.line1 || ""}">
-      <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${a.line2 || ""}">
+      <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${escapeHtml(a.line1 || "")}">
+      <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${escapeHtml(a.line2 || "")}">
       <div class="btn-group">
         <input class="search-input" id="addr-city-${a.id}" placeholder="Locality" value="${a.locality || a.city || ""}" style="flex:1">
-        <input class="search-input" id="addr-state-${a.id}" placeholder="State" value="${a.state || ""}" style="flex:1">
+        <input class="search-input" id="addr-state-${a.id}" placeholder="State" value="${escapeHtml(a.state || "")}" style="flex:1">
       </div>
       <div class="btn-group">
-        <input class="search-input" id="addr-pincode-${a.id}" placeholder="Pincode" value="${a.pincode || ""}" style="flex:1">
-        <input class="search-input" id="addr-gstin-${a.id}" placeholder="Address GSTIN (optional)" value="${a.gstin || ""}" style="flex:1">
+        <input class="search-input" id="addr-pincode-${a.id}" placeholder="Pincode" value="${escapeHtml(a.pincode || "")}" style="flex:1">
+        <input class="search-input" id="addr-gstin-${a.id}" placeholder="Address GSTIN (optional)" value="${escapeHtml(a.gstin || "")}" style="flex:1">
       </div>
       <div id="addr-error-${a.id}" class="opt-error"></div>
       <button class="btn-option btn-sm" onclick="submitAddressEdit(${a.id})" style="align-self:flex-start">Save address</button>
@@ -1410,8 +1410,8 @@ function clientRowHtml(c) {
     const addrCards = (c.addresses || []).map(a => addressCardHtml(c, a)).join("");
     body = `
       <div class="register-form mt8">
-        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${c.gstin || ""}">
-        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${c.fssai_no || ""}">
+        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${escapeHtml(c.gstin || "")}">
+        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${escapeHtml(c.fssai_no || "")}">
         <div id="client-error-${c.id}" class="opt-error mt8"></div>
         <button class="btn-option btn-sm mt8" onclick="submitClientEdit(${c.id})">Save GST/FSSAI</button>
       </div>
@@ -1429,8 +1429,8 @@ function clientRowHtml(c) {
       <div class="person-row-left">
         ${avatarHtml(c.business_name)}
         <div class="person-row-info">
-          <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
-          <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
+          <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${escapeHtml(c.business_name)} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
+          <span class="opt-sub">${c.primary_contact_name ? escapeHtml(c.primary_contact_name) + " · " : ""}${c.primary_contact_phone ? escapeHtml(c.primary_contact_phone) + " · " : ""}${c.place && c.place !== "—" ? escapeHtml(c.place) : ""}${c.gstin ? " · GSTIN " + escapeHtml(c.gstin) : ""}</span>
         </div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
@@ -1523,7 +1523,7 @@ function renderClients() {
         return `
           <div class="dash-subgroup">
             <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${JSON.stringify(place)})'>
-              <span>${placeOpen ? "▾" : "▸"} ${label}</span>
+              <span>${placeOpen ? "▾" : "▸"} ${escapeHtml(label)}</span>
               <span class="opt-sub">${placeClients.length} client${placeClients.length === 1 ? "" : "s"}</span>
             </button>
             ${placeOpen ? placeClients.map(clientRowHtml).join("") : ""}
@@ -1574,7 +1574,7 @@ function renderClients() {
             return `
               <div class="dash-subgroup" style="margin-left:16px">
                 <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientCity(${JSON.stringify(label)})'>
-                  <span>${ckOpen ? "▾" : "▸"} ${label}</span>
+                  <span>${ckOpen ? "▾" : "▸"} ${escapeHtml(label)}</span>
                   <span class="opt-sub">${clients.length} client${clients.length === 1 ? "" : "s"}</span>
                 </button>
                 ${ckOpen ? clients.map(clientRowHtml).join("") : ""}
@@ -1737,8 +1737,8 @@ function teamMemberRow(t) {
       <div class="person-row-left">
         ${avatarHtml(t.full_name)}
         <div class="person-row-info">
-          <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
-          <span class="opt-sub">${t.region ? t.region + " · " : ""}${t.email}${phone}</span>
+          <span class="opt-name">${escapeHtml(t.full_name)}${!t.is_active ? " (inactive)" : ""}</span>
+          <span class="opt-sub">${t.region ? escapeHtml(t.region) + " · " : ""}${escapeHtml(t.email)}${phone}</span>
         </div>
       </div>
       <div class="person-row-right">
@@ -1859,9 +1859,9 @@ function showEditTeamForm(staffId, pushState = true) {
   box.innerHTML = `
     <button type="button" class="btn-ghost btn-sm" onclick="closeEditTeamForm()">${icon("chevron-left")} Back to Team</button>
     <div class="register-form mt16" id="editTeamForm">
-      <div class="opt-name mt8">${t.email}</div>
-      <input id="etName" class="search-input mt8" placeholder="Full name *" value="${t.full_name || ""}">
-      <input id="etPhone" class="search-input mt8" placeholder="Phone (optional)" value="${t.phone || ""}">
+      <div class="opt-name mt8">${escapeHtml(t.email)}</div>
+      <input id="etName" class="search-input mt8" placeholder="Full name *" value="${escapeHtml(t.full_name || "")}">
+      <input id="etPhone" class="search-input mt8" placeholder="Phone (optional)" value="${escapeHtml(t.phone || "")}">
       <select id="etRole" class="search-input mt8" onchange="syncRegionForRole('etRole','etRegion')">${roleOptionsHtml(t.role)}</select>
       <select id="etRegion" class="search-input mt8">${regionOptionsHtml(t.region)}</select>
       <select id="etActive" class="search-input mt8">
@@ -2095,7 +2095,7 @@ function renderInsights() {
     return `
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleInsightsGroup(${safeName})'>
-          <span>${isOpen ? "▾" : "▸"} ${g.name}</span>
+          <span>${isOpen ? "▾" : "▸"} ${escapeHtml(g.name)}</span>
           <span class="opt-sub">${g.qty.toFixed(0)} units · ${fmt(g.total)} (incl. GST)</span>
         </button>
         ${body}
@@ -2132,8 +2132,8 @@ function stockRowHtml(s) {
   return `
     <div class="dash-order-row">
       <div class="dash-order-main">
-        <span class="dash-order-no">${s.flavour_name}</span>
-        <span class="dash-order-client">${s.pack_format_name} · ${s.sku_code}</span>
+        <span class="dash-order-no">${escapeHtml(s.flavour_name)}</span>
+        <span class="dash-order-client">${escapeHtml(s.pack_format_name)} · ${escapeHtml(s.sku_code)}</span>
       </div>
       <div class="dash-order-side">
         <span class="badge ${STOCK_STATUS_CLASS[s.stock_status] || "badge-gray"}">${STOCK_STATUS_LABELS[s.stock_status] || s.stock_status}</span>
@@ -2225,8 +2225,8 @@ function cityStockTypeTableHtml(type, items) {
       <tbody>
         ${sorted.map(s => `
           <tr>
-            <td>${s.flavour_name}</td>
-            <td>${s.sku_code}</td>
+            <td>${escapeHtml(s.flavour_name)}</td>
+            <td>${escapeHtml(s.sku_code)}</td>
             <td class="num">${s.dispatched}</td>
             <td class="num">${s.used}</td>
             <td class="num">${cityStockAvailBadge(s)}</td>
@@ -2292,7 +2292,7 @@ function closeStockRequestForm() {
 
 function skuOptionsHtml(selectedId) {
   return skusCatalog.map(s =>
-    `<option value="${s.id}"${s.id === selectedId ? " selected" : ""}>${s.flavour_name} — ${s.pack_format_name} (${s.sku_code})</option>`
+    `<option value="${s.id}"${s.id === selectedId ? " selected" : ""}>${escapeHtml(s.flavour_name)} — ${escapeHtml(s.pack_format_name)} (${escapeHtml(s.sku_code)})</option>`
   ).join("");
 }
 
@@ -2385,7 +2385,7 @@ function requestLineEditRow(reqId, line) {
   const defaultQty = line.approved_qty !== null ? line.approved_qty : line.requested_qty;
   return `
     <tr>
-      <td>${line.flavour_name} — ${line.pack_format_name}</td>
+      <td>${escapeHtml(line.flavour_name)} — ${escapeHtml(line.pack_format_name)}</td>
       <td>${line.requested_qty}</td>
       <td class="num">
         <input type="number" min="0" class="search-input" style="max-width:90px;display:inline-block"
@@ -2418,7 +2418,7 @@ function renderStockRequests() {
         <table class="summary-table mt8">
           <thead><tr><th>SKU</th><th>Requested</th><th class="num">${r.status === "approved" ? "Approved" : "Qty"}</th></tr></thead>
           <tbody>${r.lines.map(l => `
-            <tr><td>${l.flavour_name} — ${l.pack_format_name}</td><td>${l.requested_qty}</td>
+            <tr><td>${escapeHtml(l.flavour_name)} — ${escapeHtml(l.pack_format_name)}</td><td>${l.requested_qty}</td>
             <td class="num">${l.approved_qty !== null ? l.approved_qty : "—"}</td></tr>`).join("")}</tbody>
         </table>`;
       if (r.notes) body += `<div class="order-comment mt8"><strong>Notes:</strong> ${escapeHtml(r.notes)}</div>`;
@@ -2426,9 +2426,9 @@ function renderStockRequests() {
     return `
       <div class="dash-order-row">
         <div class="dash-order-main" onclick="toggleStockRequest(${r.id})" style="cursor:pointer">
-          <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${r.city}</span>
+          <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${escapeHtml(r.city)}</span>
           <span class="dash-order-client">${r.lines.length} SKU${r.lines.length === 1 ? "" : "s"} · ${totalQty} units</span>
-          <span class="opt-sub">Requested by ${r.requested_by_name}${r.approved_by_name ? ` · ${r.status === "rejected" ? "Rejected" : "Approved"} by ${r.approved_by_name}` : ""}</span>
+          <span class="opt-sub">Requested by ${escapeHtml(r.requested_by_name)}${r.approved_by_name ? ` · ${r.status === "rejected" ? "Rejected" : "Approved"} by ${escapeHtml(r.approved_by_name)}` : ""}</span>
         </div>
         <div class="dash-order-side">
           <span class="badge ${STOCK_REQUEST_STATUS_CLASS[r.status] || "badge-gray"}">${r.status[0].toUpperCase() + r.status.slice(1)}</span>
@@ -2633,7 +2633,7 @@ function renderFlavours() {
         <div class="fm-edit-section">
           <div class="fm-edit-label">Add SKU</div>
           <div class="fm-edit-row">
-            <select id="newskufmt-${f.id}" class="fm-select">${availableFormats.map(pf => `<option value="${pf.id}">${pf.name}</option>`).join("")}</select>
+            <select id="newskufmt-${f.id}" class="fm-select">${availableFormats.map(pf => `<option value="${pf.id}">${escapeHtml(pf.name)}</option>`).join("")}</select>
             <button class="fm-btn fm-btn-ghost fm-btn-sm" onclick="submitAddSku(${f.id})">${icon("plus")} Add</button>
           </div>
         </div>` : "";
@@ -2646,8 +2646,8 @@ function renderFlavours() {
           <div class="fm-sku-card ${inact ? "fm-sku-inactive" : ""}">
             <div class="fm-sku-header">
               <div class="fm-sku-heading">
-                <span class="fm-sku-name">${s.pack_format_name}${inact ? " (inactive)" : ""}</span>
-                <span class="fm-sku-meta">${s.sku_code} · GST ${s.gst_rate}%</span>
+                <span class="fm-sku-name">${escapeHtml(s.pack_format_name)}${inact ? " (inactive)" : ""}</span>
+                <span class="fm-sku-meta">${escapeHtml(s.sku_code)} · GST ${s.gst_rate}%</span>
               </div>
               ${inact
                 ? `<button class="fm-btn fm-btn-ghost fm-btn-sm" onclick="reactivateSku(${s.id})">${icon("rotate-ccw")} Reactivate</button>`
@@ -2683,7 +2683,7 @@ function renderFlavours() {
           <div class="fm-edit-section">
             <div class="fm-edit-label">Flavour details</div>
             <div class="fm-edit-row">
-              <input id="fname-${f.id}" class="fm-input" value="${f.name}" placeholder="Name">
+              <input id="fname-${f.id}" class="fm-input" value="${escapeHtml(f.name)}" placeholder="Name">
               <select id="fstatus-${f.id}" class="fm-select">
                 <option value="active"${f.status === "active" ? " selected" : ""}>Active</option>
                 <option value="inactive"${f.status === "inactive" ? " selected" : ""}>Inactive</option>
@@ -2708,7 +2708,7 @@ function renderFlavours() {
           <label class="fm-card-cb" onclick="event.stopPropagation()">
             <input type="checkbox" ${isSelected ? "checked" : ""} onchange="toggleFlavourSelect(${f.id}, event)">
           </label>
-          <span class="fm-card-name">${f.name}</span>
+          <span class="fm-card-name">${escapeHtml(f.name)}</span>
           <div class="fm-card-meta">
             <span class="badge ${badgeClass}">${f.status}</span>
             <span class="fm-card-sku-count">${activeSku} SKU${activeSku !== 1 ? "s" : ""}</span>
@@ -2805,7 +2805,7 @@ function showAddFlavourForm() {
   if (existing) { existing.remove(); return; }
   const formatCheckboxes = packFormatsData.map(pf => `
     <label class="fm-checkbox-label" style="padding:6px 0">
-      <input type="checkbox" value="${pf.id}" class="af-format-cb"> ${pf.name}
+      <input type="checkbox" value="${pf.id}" class="af-format-cb"> ${escapeHtml(pf.name)}
     </label>`).join("");
   box.insertAdjacentHTML("afterbegin", `
     <div class="fm-add-form" id="addFlavourForm">

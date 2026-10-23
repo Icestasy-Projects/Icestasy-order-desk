@@ -108,7 +108,7 @@ def tally_api_key_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         # Deny-by-default: an unset key must never be treated as "no key required".
-        if not TALLY_API_KEY or not hmac.compare_digest(request.headers.get("X-API-Key", ""), TALLY_API_KEY):
+        if not TALLY_API_KEY or not hmac.compare_digest(request.headers.get("X-API-Key", "").encode(), TALLY_API_KEY.encode()):
             return jsonify({"error": "unauthorized"}), 401
         return view(*args, **kwargs)
     return wrapped
@@ -227,7 +227,7 @@ def new_order():
 @app.route("/api/parse", methods=["POST"])
 def api_parse():
     body = request.get_json(force=True)
-    text = body.get("text", "").strip()
+    text = (body.get("text") or "").strip()
     if not text:
         return jsonify({"error": "empty"}), 400
     result = parse_order_text(text)
@@ -872,4 +872,4 @@ def api_tally_sales():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001, threaded=True)
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1", port=5001, threaded=True)
