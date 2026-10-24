@@ -565,6 +565,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             raise ValueError("Line quantity must be positive")
         if not l["unit_price"] >= 0 or not l.get("line_discount", 0.0) >= 0:
             raise ValueError("Line price and discount must not be negative")
+        if l.get("line_discount", 0.0) > l["unit_price"]:
+            raise ValueError("Line discount cannot exceed the unit price")
     if not 0 <= discount_pct <= 100:
         raise ValueError("Discount % must be between 0 and 100")
     subtotal = round(sum(l["quantity"] * l["unit_price"] for l in lines), 2)
@@ -686,12 +688,34 @@ def get_order_lines(order_id: int, user_id: int, role: str, region: str = "") ->
     sb = _sb()
     order = (
         sb.schema("sales").from_("orders")
-        .select("id, created_by_user_id, salesperson_id, shipping_address_id")
+        .select("id, order_no, client_id, created_by_user_id, salesperson_id, shipping_address_id")
         .eq("id", order_id).limit(1).execute()
     )
     if not order.data:
         raise ValueError("Order not found")
     o = order.data[0]
+    if role != "admin":
+        if role in REGION_HEAD_ROLES:
+            place = None
+            addr_q = (sb.schema("sales").from_("addresses").select("city,locality"))
+            if o.get("shipping_address_id"):
+                rows = addr_q.eq("id", o["shipping_address_id"]).limit(1).execute().data
+            elif o.get("client_id"):
+                rows = addr_q.eq("client_id", o["client_id"]).order("is_default", desc=True).order("id").limit(1).execute().data
+            else:
+                rows = []
+            if rows:
+                place = rows[0].get("locality") or rows[0].get("city")
+            if place:
+                owner_role = _region_role_for_city(place)
+            else:
+                code = re.match(r"[A-Za-z]+", o.get("order_no") or "")
+                owner_role = next((r for r, c in _REGION_ROLE_TO_ORDER_CODE.items()
+                                   if code and c == code.group(0).upper()), "roi_head")
+            if owner_role != role:
+                raise ValueError("Not authorized to view this order")
+        elif o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
+            raise ValueError("Not authorized to view this order")
     lines = (
         sb.schema("sales").from_("order_lines")
         .select("id, quantity, unit_price, line_total, status, "

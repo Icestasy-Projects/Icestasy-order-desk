@@ -577,10 +577,33 @@ def api_team():
         return jsonify({"team": [], "error": str(e)}), 200
 
 
+def _team_guard(staff_id=None, body=None):
+    """Regional heads share admin_required but must not escalate: they can't grant
+    the admin role or manage admins/other regions' staff (e.g. reset an admin's
+    password). Returns an error response, or None when allowed."""
+    role = session.get("role")
+    if role == ADMIN_ROLE:
+        return None
+    own_region = REGION_HEAD_ROLES.get(role)
+    if body is not None and body.get("role") == ADMIN_ROLE:
+        return jsonify({"ok": False, "error": "Only admins can assign the admin role"}), 403
+    if body is not None and "region" in body and (body.get("region") or "") != own_region:
+        return jsonify({"ok": False, "error": f"You can only manage staff in {own_region}"}), 403
+    if staff_id is not None:
+        from order_engine import list_team
+        target = next((m for m in list_team(region=own_region) if m["id"] == staff_id), None)
+        if not target or target["role"] == ADMIN_ROLE:
+            return jsonify({"ok": False, "error": "You can only manage staff in your own region"}), 403
+    return None
+
+
 @app.route("/api/team", methods=["POST"])
 @admin_required
 def api_create_team_member():
     body = request.get_json(force=True)
+    denied = _team_guard(body=body)
+    if denied:
+        return denied
     try:
         member = create_team_member(body)
         return jsonify({"ok": True, "member": member})
@@ -594,6 +617,9 @@ def api_create_team_member():
 @admin_required
 def api_update_team_member(staff_id):
     body = request.get_json(force=True)
+    denied = _team_guard(staff_id, body)
+    if denied:
+        return denied
     try:
         member = update_team_member(staff_id, body)
         return jsonify({"ok": True, "member": member})
@@ -606,6 +632,9 @@ def api_update_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>", methods=["DELETE"])
 @admin_required
 def api_delete_team_member(staff_id):
+    denied = _team_guard(staff_id)
+    if denied:
+        return denied
     try:
         member = delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
@@ -618,6 +647,9 @@ def api_delete_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>/permanent", methods=["DELETE"])
 @admin_required
 def api_hard_delete_team_member(staff_id):
+    denied = _team_guard(staff_id)
+    if denied:
+        return denied
     try:
         member = hard_delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
@@ -630,6 +662,9 @@ def api_hard_delete_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>/reset-password", methods=["POST"])
 @admin_required
 def api_reset_team_member_password(staff_id):
+    denied = _team_guard(staff_id)
+    if denied:
+        return denied
     try:
         result = reset_team_member_password(staff_id)
         return jsonify({"ok": True, **result})
