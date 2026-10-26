@@ -222,18 +222,22 @@ def list_clients_lite() -> list:
     sb = _sb()
     result = (
         sb.schema("sales").from_("clients")
-        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin, addresses(city, locality, is_default)")
+        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin, city, addresses(city, locality, is_default)")
         .eq("status", "active").order("business_name").execute()
     )
     for c in result.data:
         addrs = c.pop("addresses", None) or []
-        default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
-        if default_addr:
-            place = default_addr.get("locality") or default_addr.get("city") or ""
-            raw_city = default_addr.get("city") or ""
-            c["city"] = city_for_place(place) if place else (raw_city or "Unassigned")
+        direct_city = (c.get("city") or "").strip()
+        if direct_city:
+            c["city"] = direct_city
         else:
-            c["city"] = "Unassigned"
+            default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
+            if default_addr:
+                place = default_addr.get("locality") or default_addr.get("city") or ""
+                raw_city = default_addr.get("city") or ""
+                c["city"] = city_for_place(place) if place else (raw_city or "Unassigned")
+            else:
+                c["city"] = "Unassigned"
         c["price_region"] = _CITY_TO_PRICE_REGION.get(c["city"], "roi")
     return result.data
 
@@ -272,6 +276,7 @@ def register_client(data: dict, registered_by: int) -> dict:
             reason = "phone number"
         raise ValueError(f"A client already exists with this {reason}: {dupe['business_name']}")
 
+    city = (data.get("city") or "").strip() or None
     row = {
         "business_name": business_name,
         "client_type": data.get("client_type") or "horeca",
@@ -285,6 +290,7 @@ def register_client(data: dict, registered_by: int) -> dict:
         "default_payment_mode": data.get("default_payment_mode") or "advance",
         "status": "active",
         "registered_by": registered_by,
+        "city": city,
     }
     res = sb.schema("sales").from_("clients").insert(row).execute()
     return res.data[0]

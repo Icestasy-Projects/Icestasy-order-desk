@@ -1300,6 +1300,15 @@ function showAddClientForm() {
         <option value="retail">Retail</option>
         <option value="distributor">Distributor</option>
       </select>
+      <select id="acCity" class="search-input mt8">
+        <option value="">City (optional)</option>
+        <option value="Mumbai">Mumbai</option>
+        <option value="Pune">Pune</option>
+        <option value="Hyderabad">Hyderabad</option>
+        <option value="Bangalore">Bangalore</option>
+        <option value="Delhi">Delhi</option>
+        <option value="ROI">ROI</option>
+      </select>
       <input id="acGstin" class="search-input mt8" placeholder="GSTIN (optional)">
       <input id="acFssai" class="search-input mt8" placeholder="FSSAI No (optional)">
       <input id="acEmail" class="search-input mt8" placeholder="Email (optional)">
@@ -1324,6 +1333,7 @@ async function submitAddClient() {
     primary_contact_phone: document.getElementById("acPhone").value.trim(),
     primary_contact_name: document.getElementById("acContact").value.trim(),
     client_type: document.getElementById("acType").value,
+    city: document.getElementById("acCity").value,
     gstin: document.getElementById("acGstin").value.trim(),
     fssai_no: document.getElementById("acFssai").value.trim(),
     email: document.getElementById("acEmail").value.trim(),
