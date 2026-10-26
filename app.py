@@ -482,6 +482,11 @@ def api_dashboard_export():
     else:
         orders = list_dashboard_orders(user_id=session["user_id"], role=role,
                                        region=session.get("region", ""))
+        # Pre-filter orders by date range before fetching lines — avoids
+        # pulling line items for orders outside the requested window.
+        if date_from or date_to:
+            from reports import _in_range
+            orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
         order_ids = [o["id"] for o in orders]
         lines_by_order = fetch_report_order_lines(order_ids)
         paid_by_order = fetch_payment_summaries(order_ids)

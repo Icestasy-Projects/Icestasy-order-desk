@@ -22,8 +22,8 @@ PAY_LABELS = {
     "refunded": "Refunded", "not_recorded": "Not Recorded",
 }
 
-COLUMNS = ["Date", "B-Type", "Party Name", "Product Info", "Qty", "Rate", "GST %", "GST Amt", "Sales Ledger"]
-COLUMN_WIDTHS = [14, 20, 28, 30, 10, 14, 10, 14, 22]
+COLUMNS = ["Date", "Party Name", "Product Info", "Qty", "Rate", "GST %", "GST Amt", "Sales Ledger"]
+COLUMN_WIDTHS = [14, 28, 30, 10, 14, 10, 14, 22]
 
 CLIENT_TYPE_LABELS = {"horeca": "B2B", "distributor": "Distributor", "retail": "Retail"}
 
@@ -184,8 +184,6 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
     for o in orders:
         order_date = _format_date(o.get("created_at", ""))
         city = _report_city(o)
-        type_label = CLIENT_TYPE_LABELS.get(o.get("client_type", "horeca"), "B2B")
-        b_type = f"{city} - {type_label}"
         client = o.get("client_name")
         sales_ledger = f"Sales - {city}"
         lines = o.get("lines") or []
@@ -200,14 +198,14 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 fmt_name = ln.get("format_name")
                 if fmt_name and fmt_name != "—":
                     product_info = f"{product_info} - {fmt_name}" if product_info else fmt_name
-                values = [order_date, b_type, client, product_info, qty, rate, gst_pct, gst_amt, sales_ledger]
+                values = [order_date, client, product_info, qty, rate, gst_pct, gst_amt, sales_ledger]
                 for col, val in enumerate(values, start=1):
                     cell = ws.cell(row=row, column=col, value=val)
-                    if col == 5:
+                    if col == 4:
                         cell.number_format = "#,##0"
-                    elif col in (6, 8):
+                    elif col in (5, 7):
                         cell.number_format = "#,##0.00"
-                    elif col == 7:
+                    elif col == 6:
                         cell.number_format = "0.0"
                 total_qty += qty
                 total_value += amt
@@ -215,17 +213,17 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 row += 1
         else:
             amt = o.get("total_amount", 0) or 0
-            values = [order_date, b_type, client, "", "", "", "", "", sales_ledger]
+            values = [order_date, client, "", "", "", "", "", sales_ledger]
             for col, val in enumerate(values, start=1):
                 ws.cell(row=row, column=col, value=val)
             total_value += amt
             row += 1
 
-    ws.cell(row=row, column=4, value="Total").font = TOTAL_FONT
-    qty_cell = ws.cell(row=row, column=5, value=total_qty)
+    ws.cell(row=row, column=3, value="Total").font = TOTAL_FONT
+    qty_cell = ws.cell(row=row, column=4, value=total_qty)
     qty_cell.font = TOTAL_FONT
     qty_cell.number_format = "#,##0"
-    gst_total_cell = ws.cell(row=row, column=8, value=total_gst)
+    gst_total_cell = ws.cell(row=row, column=7, value=total_gst)
     gst_total_cell.font = TOTAL_FONT
     gst_total_cell.number_format = "#,##0.00"
 
