@@ -316,13 +316,14 @@
 
     <!-- STEP 0: Paste / Form -->
     <section class="step hidden" id="step-paste">
-      {# Paste Message tab hidden — re-enable when ready #}
-      <div class="tab-bar-flat" id="orderModeTabs" style="display:none!important">
+      {% if is_admin %}
+      <div class="tab-bar-flat" id="orderModeTabs">
         <button class="tab-btn-flat" id="orderModeTab-paste" onclick="switchOrderMode('paste')">Paste Message</button>
         <button class="tab-btn-flat active" id="orderModeTab-form" onclick="switchOrderMode('form')">Fill Form</button>
       </div>
+      {% endif %}
 
-      <div id="orderModeBox-paste" class="mt16" style="display:none!important">
+      <div id="orderModeBox-paste" class="mt16" style="display:none">
         <div class="step-label">Paste order message</div>
         <textarea id="orderText" class="paste-box" rows="6"
           placeholder="2 Bulk Belgian&#10;3 Square Mango&#10;Advance&#10;Client: Trevor"></textarea>
