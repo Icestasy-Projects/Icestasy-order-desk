@@ -3,7 +3,8 @@
 depending on interstate vs intrastate, running client balance, UPI QR)."""
 import io
 import os
-from datetime import datetime, timezone
+from datetime import datetime
+from urllib.parse import quote
 from xml.sax.saxutils import escape as xml_escape
 
 import qrcode
@@ -11,7 +12,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "logo1_trimmed.png")
@@ -122,7 +123,8 @@ def _addr_block(addr: dict | None) -> str:
 
 
 def _upi_qr_image(amount: float, order_no: str) -> Image:
-    uri = f"upi://pay?pa={COMPANY['upi_id']}&pn={COMPANY['name'].replace(' ', '%20')}&am={amount:.2f}&cu=INR&tn=Invoice%20{order_no}"
+    uri = (f"upi://pay?pa={COMPANY['upi_id']}&pn={quote(COMPANY['name'])}"
+           f"&am={amount:.2f}&cu=INR&tn={quote('Invoice ' + order_no)}")
     qr = qrcode.QRCode(box_size=4, border=1)
     qr.add_data(uri)
     qr.make(fit=True)

@@ -578,6 +578,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     pct_discount = round(subtotal * (discount_pct / 100), 2) if discount_pct else 0.0
     discount = round(line_discount + pct_discount, 2)
     total = round(subtotal - discount, 2)
+    if total < 0:
+        raise ValueError("Discount cannot exceed the order subtotal")
 
     city_code = "ROI"
     if shipping_address_id:
@@ -698,6 +700,9 @@ def get_order_lines(order_id: int, user_id: int, role: str, region: str = "") ->
     if not order.data:
         raise ValueError("Order not found")
     o = order.data[0]
+    if role != "admin" and role not in REGION_HEAD_ROLES:
+        if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
+            raise ValueError("Not authorized to view this order")
     lines = (
         sb.schema("sales").from_("order_lines")
         .select("id, quantity, unit_price, line_total, status, "
