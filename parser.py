@@ -34,7 +34,7 @@ def _fuzzy_flavour_ids(word: str) -> set:
 # ── Groq LLM extraction ──────────────────────────────────────────────────────
 
 _GROQ_SYSTEM = """You are an order parser for Icestasy, a premium ice cream brand.
-Extract order items, payment mode, and client name from the pasted message.
+Extract order items from the pasted message.
 
 Available flavours (id: name):
 {flavours}
@@ -44,9 +44,7 @@ Available formats (id: name):
 
 Return ONLY valid JSON, no markdown, no extra text:
 {{
-  "items": [{{"qty": <int>, "flavour_id": <int or null>, "format_id": <int or null>}}],
-  "payment": "<advance|invoice|credit or null>",
-  "client_hint": "<name or null>"
+  "items": [{{"qty": <int>, "flavour_id": <int or null>, "format_id": <int or null>}}]
 }}
 
 Rules:
@@ -54,7 +52,7 @@ Rules:
 - If a flavour is clear but format is not mentioned, set format_id to null (will show options).
 - If nothing in a line matches a flavour or format, skip it.
 - qty defaults to 1 if not mentioned.
-- payment is one of: advance, invoice, credit — null if not mentioned.
+- Ignore payment terms (advance, invoice, credit) and client names — only extract items.
 """
 
 
@@ -232,21 +230,17 @@ def _keyword_extract(text: str):
     text = _clean_text(text)
     lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
     items = []
-    payment = None
-    client_hint = None
 
     for raw_line in lines:
         line = _strip_list_marker(raw_line)
         lower = line.lower()
 
         if lower.startswith("client:") or lower.startswith("client "):
-            client_hint = re.sub(r"^client[:\s]+", "", line, flags=re.IGNORECASE).strip()
             continue
 
         matched_payment = False
         for pm in PAYMENT_KEYWORDS:
             if pm in lower.split():
-                payment = pm
                 matched_payment = True
                 break
         if matched_payment:
@@ -280,8 +274,6 @@ def _keyword_extract(text: str):
                 residual = line.strip().rstrip("-").strip()
                 if residual.lower() in _NON_CLIENT_LABELS:
                     continue
-                if client_hint is None and line.strip():
-                    client_hint = line.strip()
                 continue
 
         for qty, item_text, extra_text in segments:
@@ -295,7 +287,7 @@ def _keyword_extract(text: str):
                 flavour_hint = " ".join(hint_words) if hint_words else item_lower
             items.append({"qty": qty, "flavour_id": flavour_id, "format_id": format_id, "flavour_hint": flavour_hint})
 
-    return {"items": items, "payment": payment, "client_hint": client_hint}
+    return {"items": items}
 
 
 # ── SKU matching ─────────────────────────────────────────────────────────────
@@ -475,6 +467,4 @@ def parse_order_text(text: str) -> dict:
 
     return {
         "items": _enrich(extracted.get("items", [])),
-        "payment": extracted.get("payment"),
-        "client_hint": extracted.get("client_hint"),
     }

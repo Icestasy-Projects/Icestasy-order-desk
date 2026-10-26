@@ -633,7 +633,6 @@ async function parseOrder() {
   }
 
   state.items = res.items.map(i => ({...i}));
-  state.payment = res.payment || null;
 
   if (state.items.some(i => i.not_found)) {
     const region = (state.client && state.client.price_region) || "default";
@@ -643,11 +642,6 @@ async function parseOrder() {
   hide("step-paste");
   renderCart();
   show("step-cart");
-
-  // Pre-fill client search if hint provided
-  if (res.client_hint) {
-    document.getElementById("clientPickerInput").value = res.client_hint;
-  }
 }
 
 // ── STEP 0b: Fill Form (dropdown-only item entry) ────────────────────────────
