@@ -1543,7 +1543,7 @@ function renderClients() {
   }
 
   const searching = !!q;
-  const CORE_CITIES = new Set(["Mumbai", "Pune", "Hyderabad", "Bangalore", "Delhi"]);
+  const CORE_CITIES = new Set(["Mumbai"]);
   const coreGroups = {};
   const roiClients = [];
 
@@ -1721,7 +1721,7 @@ function deselectAllInGroup(cityOrIds) {
 }
 
 function getClientIdsForCity(city) {
-  const CORE_CITIES = new Set(["Mumbai", "Pune", "Hyderabad", "Bangalore", "Delhi"]);
+  const CORE_CITIES = new Set(["Mumbai"]);
   return clientsData.filter(c => {
     const cc = c.city ? mmrCity(c.city) : null;
     return city === "ROI" ? (!cc || !CORE_CITIES.has(cc)) : cc === city;
