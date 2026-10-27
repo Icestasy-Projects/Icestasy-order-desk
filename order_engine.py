@@ -564,7 +564,7 @@ def release_hold(order_id: int) -> dict:
     return res.data[0]
 
 
-def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0):
+def create_order(client_id, payment_mode, lines, user_id, billing_address_id=None, shipping_address_id=None, notes=None, collateral=None, discount_pct=0.0, consignee_name=None):
     sb = _sb()
     payment_mode = payment_mode or "advance"
     if not lines:
@@ -607,6 +607,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
         "subtotal_amount": str(subtotal), "discount_amount": str(discount),
         "tax_amount": "0.00", "total_amount": str(total), "notes": notes,
     }
+    if consignee_name:
+        order_row["consignee_name"] = consignee_name.strip()
     order_res = sb.schema("sales").from_("orders").insert(order_row).execute()
     order_id = order_res.data[0]["id"]
     line_rows = []
@@ -1237,6 +1239,18 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
             "status": o["status"],
         })
     return out
+
+
+def delete_client(client_id: int) -> dict:
+    sb = _sb()
+    orders = sb.schema("sales").from_("orders").select("id").eq("client_id", client_id).limit(1).execute()
+    if orders.data:
+        raise ValueError("Cannot delete client with existing orders. Remove or reassign their orders first.")
+    sb.schema("sales").from_("addresses").delete().eq("client_id", client_id).execute()
+    res = sb.schema("sales").from_("clients").delete().eq("id", client_id).execute()
+    if not res.data:
+        raise ValueError("Client not found")
+    return res.data[0]
 
 
 def update_client(client_id: int, data: dict) -> dict:

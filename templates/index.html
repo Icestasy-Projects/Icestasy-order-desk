@@ -355,7 +355,7 @@
 
     <!-- STEP 3: Client -->
     <section class="step hidden" id="step-client">
-      <div class="step-label">Client</div>
+      <div class="step-label">Billing Client</div>
       <div class="sku-picker" id="clientPickerWrap">
         <input class="search-input sku-picker-input" type="text" autocomplete="off"
           id="clientPickerInput" placeholder="Type to search client…"
@@ -365,6 +365,23 @@
       </div>
       <div class="opt-muted mt8">New client? Ask your Admin to add them from the Clients tab first.</div>
       <div id="clientSelectedPill" class="mt8"></div>
+
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;font-size:13px;color:var(--slate-600)">
+        <input type="checkbox" id="consigneeDifferent" onchange="toggleConsignee(this.checked)">
+        Consignee (ship-to) is different from billing client
+      </label>
+
+      <div id="consigneeSection" class="hidden" style="margin-top:12px">
+        <div class="step-label">Consignee Client</div>
+        <div class="sku-picker" id="consigneePickerWrap">
+          <input class="search-input sku-picker-input" type="text" autocomplete="off"
+            id="consigneePickerInput" placeholder="Type to search consignee…"
+            onfocus="openConsigneeDropdown()"
+            oninput="filterConsigneeDropdown(this.value)">
+          <div class="sku-picker-list hidden" id="consigneePickerList"></div>
+        </div>
+        <div id="consigneeSelectedPill" class="mt8"></div>
+      </div>
     </section>
 
     <!-- STEP 5: Confirm -->
@@ -426,6 +443,7 @@ let state = {
   address_state: null,
   collateral: [],    // [{type, quantity, notes}]
   collateralOnly: false,
+  consignee: null,   // different consignee client, or null if same as billing
 };
 let flavourOptionsCache = null;  // lazy-loaded full active-SKU list, for manual not_found fallback
 let flavourOptionsCacheRegion = null;  // which price_region the cache was loaded for
@@ -438,13 +456,18 @@ const hide = id => document.getElementById(id).classList.add("hidden");
 
 function resetAll() {
   state = {items: [], payment: null, client: null, address_id: null, address_label: null,
-           address_state: null, collateral: [], collateralOnly: false};
+           address_state: null, collateral: [], collateralOnly: false, consignee: null};
   ["step-paste","step-cart","step-collateral","step-confirm","step-done"]
     .forEach(hide);
   document.getElementById("orderText").value = "";
   document.getElementById("clientPickerWrap").style.display = "";
   document.getElementById("clientSelectedPill").innerHTML = "";
   document.getElementById("clientPickerInput").value = "";
+  document.getElementById("consigneeDifferent").checked = false;
+  document.getElementById("consigneeSection").classList.add("hidden");
+  document.getElementById("consigneePickerWrap").style.display = "";
+  document.getElementById("consigneeSelectedPill").innerHTML = "";
+  document.getElementById("consigneePickerInput").value = "";
   document.getElementById("collateralList").innerHTML = "";
   formItemRows = [];
   selectedPackFormat = null;
@@ -1093,6 +1116,68 @@ function goBackToClient() {
   _returningToConfirmFromClient = false;
 }
 
+// ── Consignee (different ship-to client) ────────────────────────────────────
+function toggleConsignee(checked) {
+  const sec = document.getElementById("consigneeSection");
+  if (checked) {
+    sec.classList.remove("hidden");
+    loadClientOptions();
+  } else {
+    sec.classList.add("hidden");
+    state.consignee = null;
+    document.getElementById("consigneePickerWrap").style.display = "";
+    document.getElementById("consigneeSelectedPill").innerHTML = "";
+    document.getElementById("consigneePickerInput").value = "";
+  }
+}
+
+function openConsigneeDropdown() {
+  filterConsigneeDropdown(document.getElementById("consigneePickerInput").value);
+}
+
+function filterConsigneeDropdown(query) {
+  const listEl = document.getElementById("consigneePickerList");
+  if (!listEl) return;
+  const clients = clientOptionsCache || [];
+  const q = query.toLowerCase().trim();
+  const filtered = q
+    ? clients.filter(c => {
+        const hay = `${c.business_name} ${c.primary_contact_name || ""} ${c.primary_contact_phone || ""}`.toLowerCase();
+        return hay.includes(q);
+      })
+    : clients;
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="sku-picker-empty">${q ? "No matches" : "No clients loaded"}</div>`;
+  } else {
+    listEl.innerHTML = filtered.map(c =>
+      `<div class="sku-picker-option" onmousedown="selectConsigneeFromList('${c.id}')">
+        <span class="sku-name">${c.business_name}</span>
+        <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}</span>
+      </div>`
+    ).join("");
+  }
+  listEl.classList.remove("hidden");
+}
+
+function selectConsigneeFromList(clientId) {
+  const client = (clientOptionsCache || []).find(c => String(c.id) === String(clientId));
+  if (client) {
+    state.consignee = client;
+    document.getElementById("consigneePickerWrap").style.display = "none";
+    document.getElementById("consigneeSelectedPill").innerHTML =
+      `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeConsignee()">change</button></div>`;
+    document.getElementById("consigneePickerInput").value = "";
+  }
+}
+
+function changeConsignee() {
+  state.consignee = null;
+  document.getElementById("consigneePickerWrap").style.display = "";
+  document.getElementById("consigneeSelectedPill").innerHTML = "";
+  document.getElementById("consigneePickerInput").value = "";
+  document.getElementById("consigneePickerInput").focus();
+}
+
 // ── STEP 4: Address (inline in confirm) ─────────────────────────────────────
 function changeAddress() {
   const picker = document.getElementById("inlineAddressPicker");
@@ -1240,7 +1325,8 @@ async function showConfirm() {
   }
 
   document.getElementById("summaryBox").innerHTML = `
-    <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
+    <div class="summary-row"><span>Billing Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
+    ${state.consignee ? `<div class="summary-row"><span>Consignee</span><strong>${state.consignee.business_name}</strong></div>` : ""}
     <!-- Address row disabled for now -->
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
     <table class="summary-table">
@@ -1457,6 +1543,7 @@ async function submitOrderWithOptions(options) {
       lines,
       shipping_address_id: state.address_id,
       billing_address_id: state.address_id,
+      consignee_name: state.consignee ? state.consignee.business_name : null,
       collateral: options.collateral !== undefined ? options.collateral : state.collateral,
       discount_pct: 0,
       notes: notes || null,
