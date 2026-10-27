@@ -211,7 +211,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
 
         lines = o.get("lines") or []
         if not lines:
-            values = [order_no, order_id, order_date, client, consignee, "", "", "", "",
+            values = [sales_ledger, order_id, order_date, client, consignee, "", "", "", "",
                       "", "", "", "", "", "", "", "", city, sales_ledger]
             for col, val in enumerate(values, start=1):
                 ws.cell(row=row, column=col, value=val)
@@ -255,7 +255,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
             line_total = taxable + cgst_amt + sgst_amt + igst_amt
 
             values = [
-                order_no, order_id, order_date, client, consignee, product_info,
+                sales_ledger, order_id, order_date, client, consignee, product_info,
                 qty, rate, taxable,
                 cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt,
                 "", line_total, city, sales_ledger,
