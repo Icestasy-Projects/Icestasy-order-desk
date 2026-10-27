@@ -101,9 +101,6 @@
             <button class="bu-dropdown-item active" data-bu="all" onclick="selectBU('all')">All Locations <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
             <button class="bu-dropdown-item" data-bu="mumbai" onclick="selectBU('mumbai')">Mumbai <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
             <button class="bu-dropdown-item" data-bu="pune" onclick="selectBU('pune')">Pune <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
-            <button class="bu-dropdown-item" data-bu="bangalore" onclick="selectBU('bangalore')">Bangalore <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
-            <button class="bu-dropdown-item" data-bu="hyderabad" onclick="selectBU('hyderabad')">Hyderabad <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
-            <button class="bu-dropdown-item" data-bu="delhi" onclick="selectBU('delhi')">Delhi <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
             <button class="bu-dropdown-item" data-bu="roi" onclick="selectBU('roi')">ROI <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
           </div>
         </div>
@@ -491,13 +488,10 @@ let ordersPage = 1;
 const ORDERS_PAGE_SIZE = 30;
 
 // ── BU / Location selector (client-side filter only) ────────────────────────
-const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",bangalore:"Bangalore",hyderabad:"Hyderabad",delhi:"Delhi",roi:"ROI"};
+const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",roi:"ROI"};
 const _BU_CITIES = {
   mumbai: new Set(["Mumbai","Vasai-Virar","Thane","Navi Mumbai"]),
   pune: new Set(["Pune"]),
-  bangalore: new Set(["Bangalore"]),
-  hyderabad: new Set(["Hyderabad"]),
-  delhi: new Set(["Delhi"]),
 };
 let selectedBU = "all";
 
@@ -537,7 +531,7 @@ function _orderMatchesBU(o) {
   const c = o.city;
   if (!c || c === "—") {
     const prefix = (o.order_no || "").replace(/[0-9].*/,"").toUpperCase();
-    const mapped = {MU:"mumbai",PU:"pune",BA:"bangalore",HY:"hyderabad",DL:"delhi",ROI:"roi"}[prefix];
+    const mapped = {MU:"mumbai",PU:"pune",ROI:"roi"}[prefix];
     return mapped === selectedBU;
   }
   const citySet = _BU_CITIES[selectedBU];
@@ -1315,10 +1309,6 @@ function showAddClientForm() {
         <option value="">City (optional)</option>
         <option value="Mumbai">Mumbai</option>
         <option value="Pune">Pune</option>
-        <option value="Hyderabad">Hyderabad</option>
-        <option value="Bangalore">Bangalore</option>
-        <option value="Delhi">Delhi</option>
-        <option value="ROI">ROI</option>
       </select>
       <input id="acGstin" class="search-input mt8" placeholder="GSTIN (optional)">
       <input id="acFssai" class="search-input mt8" placeholder="FSSAI No (optional)">

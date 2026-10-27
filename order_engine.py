@@ -292,12 +292,10 @@ def get_client_addresses(client_id: int) -> list:
 def create_address(client_id: int, data: dict) -> dict:
     sb = _sb()
     line1 = (data.get("line1") or "").strip()
-    # "city" is entered at locality precision (e.g. "Bandra West") — the whole
-    # book of business is Mumbai, so `city` itself is now a fixed "Mumbai" and
-    # the actual submitted value is preserved in `locality`.
     locality = (data.get("city") or "").strip()
     state = (data.get("state") or "").strip()
     pincode = (data.get("pincode") or "").strip()
+    city = city_for_place(locality) if locality else "Mumbai"
 
     if not line1:
         raise ValueError("Address line is required")
@@ -317,7 +315,7 @@ def create_address(client_id: int, data: dict) -> dict:
         "gstin": (data.get("gstin") or "").strip() or None,
         "line1": line1,
         "line2": (data.get("line2") or "").strip() or None,
-        "city": "Mumbai",
+        "city": city,
         "locality": locality,
         "state": state,
         "state_code": _state_code_for(state),
