@@ -23,13 +23,13 @@ PAY_LABELS = {
 }
 
 COLUMNS = [
-    "Voucher No", "Date", "Billing Name", "Consignee Name", "Product Info",
+    "Voucher No", "Order ID", "Date", "Billing Name", "Consignee Name", "Product Info",
     "Qty", "Rate", "Taxable Value",
     "CGST %", "CGST Amt", "SGST %", "SGST Amt", "IGST %", "IGST Amt",
     "Round Off", "Total", "Godown", "Sales Ledger",
 ]
 COLUMN_WIDTHS = [
-    20, 14, 28, 28, 30,
+    20, 12, 14, 28, 28, 30,
     10, 14, 16,
     8, 14, 8, 14, 8, 14,
     12, 16, 14, 22,
@@ -200,16 +200,18 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
 
     for o in orders:
         order_no = o.get("order_no") or ""
+        order_id = o.get("id") or ""
         order_date = _format_date(o.get("created_at", ""))
         city = _report_city(o)
         client = o.get("client_name") or ""
+        consignee = (o.get("consignee_name") or "").strip() or client
         sales_ledger = f"Sales - {city}"
         shipping_state = (o.get("shipping_state") or "").strip()
         is_interstate = bool(shipping_state and shipping_state.lower() != COMPANY_STATE.lower())
 
         lines = o.get("lines") or []
         if not lines:
-            values = [order_no, order_date, client, client, "", "", "", "",
+            values = [order_no, order_id, order_date, client, consignee, "", "", "", "",
                       "", "", "", "", "", "", "", "", city, sales_ledger]
             for col, val in enumerate(values, start=1):
                 ws.cell(row=row, column=col, value=val)
@@ -253,18 +255,18 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
             line_total = taxable + cgst_amt + sgst_amt + igst_amt
 
             values = [
-                order_no, order_date, client, client, product_info,
+                order_no, order_id, order_date, client, consignee, product_info,
                 qty, rate, taxable,
                 cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt,
                 "", line_total, city, sales_ledger,
             ]
             for col, val in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=col, value=val)
-                if col == 6:
+                if col == 7:
                     cell.number_format = "#,##0"
-                elif col in (7, 8, 10, 12, 14, 16):
+                elif col in (8, 9, 11, 13, 15, 17):
                     cell.number_format = "#,##0.00"
-                elif col in (9, 11, 13):
+                elif col in (10, 12, 14):
                     cell.number_format = "0.0"
 
             total_qty += qty
@@ -278,13 +280,9 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         order_grand = round(raw_order_total)
         order_round_off = round(order_grand - raw_order_total, 2)
 
-        # Write round-off on the first line of this order
         if order_round_off != 0.0:
-            ro_cell = ws.cell(row=line_rows_start, column=15, value=order_round_off)
+            ro_cell = ws.cell(row=line_rows_start, column=16, value=order_round_off)
             ro_cell.number_format = "#,##0.00"
-            # Adjust the first line's Total to include round-off
-            first_line_total = ws.cell(row=line_rows_start, column=16).value or 0
-            ws.cell(row=line_rows_start, column=16, value=first_line_total + order_round_off).number_format = "#,##0.00"
 
         total_taxable += order_taxable
         total_cgst += order_cgst
@@ -294,15 +292,15 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         total_grand += order_grand
 
     # Totals row
-    ws.cell(row=row, column=5, value="Total").font = TOTAL_FONT
+    ws.cell(row=row, column=6, value="Total").font = TOTAL_FONT
     for col, val, fmt in [
-        (6, total_qty, "#,##0"),
-        (8, total_taxable, "#,##0.00"),
-        (10, total_cgst, "#,##0.00"),
-        (12, total_sgst, "#,##0.00"),
-        (14, total_igst, "#,##0.00"),
-        (15, total_round_off, "#,##0.00"),
-        (16, total_grand, "#,##0.00"),
+        (7, total_qty, "#,##0"),
+        (9, total_taxable, "#,##0.00"),
+        (11, total_cgst, "#,##0.00"),
+        (13, total_sgst, "#,##0.00"),
+        (15, total_igst, "#,##0.00"),
+        (16, total_round_off, "#,##0.00"),
+        (17, total_grand, "#,##0.00"),
     ]:
         c = ws.cell(row=row, column=col, value=val)
         c.font = TOTAL_FONT

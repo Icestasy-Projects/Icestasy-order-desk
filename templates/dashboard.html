@@ -1398,6 +1398,7 @@ function addressCardHtml(c, a) {
   return `
     <div class="cart-item-card" style="flex-direction:column;align-items:stretch;gap:8px">
       <div class="opt-sub">${a.address_type || "shipping"}${a.is_default ? " · default" : ""}</div>
+      <input class="search-input" id="addr-consignee-${a.id}" placeholder="Consignee Name (optional)" value="${a.consignee_name || ""}">
       <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${a.line1 || ""}">
       <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${a.line2 || ""}">
       <div class="btn-group">
@@ -1634,6 +1635,7 @@ async function submitClientEdit(clientId) {
 async function submitAddressEdit(addressId) {
   const errBox = document.getElementById(`addr-error-${addressId}`);
   const payload = {
+    consignee_name: document.getElementById(`addr-consignee-${addressId}`).value.trim(),
     line1: document.getElementById(`addr-line1-${addressId}`).value.trim(),
     line2: document.getElementById(`addr-line2-${addressId}`).value.trim(),
     city: document.getElementById(`addr-city-${addressId}`).value.trim(),
@@ -1656,7 +1658,8 @@ function showAddAddressForm(clientId) {
   const box = document.getElementById(`newaddr-${clientId}`);
   box.innerHTML = `
     <div class="register-form mt8">
-      <input id="newaddr-line1-${clientId}" class="search-input" placeholder="Address line 1 *">
+      <input id="newaddr-consignee-${clientId}" class="search-input" placeholder="Consignee Name (optional)">
+      <input id="newaddr-line1-${clientId}" class="search-input mt8" placeholder="Address line 1 *">
       <input id="newaddr-line2-${clientId}" class="search-input mt8" placeholder="Address line 2 (optional)">
       <div class="btn-group mt8">
         <input id="newaddr-city-${clientId}" class="search-input" placeholder="Locality *" style="flex:1">
@@ -1671,6 +1674,7 @@ function showAddAddressForm(clientId) {
 async function submitNewAddress(clientId) {
   const errBox = document.getElementById(`newaddr-error-${clientId}`);
   const payload = {
+    consignee_name: document.getElementById(`newaddr-consignee-${clientId}`).value.trim(),
     line1: document.getElementById(`newaddr-line1-${clientId}`).value.trim(),
     line2: document.getElementById(`newaddr-line2-${clientId}`).value.trim(),
     city: document.getElementById(`newaddr-city-${clientId}`).value.trim(),
