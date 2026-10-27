@@ -52,6 +52,18 @@
   width: 16px; height: 16px; color: var(--brand); opacity: 0;
 }
 .bu-dropdown-item.active .bu-check { opacity: 1; }
+.bulk-action-bar {
+  position: sticky; bottom: 0; left: 0; right: 0; z-index: 50;
+  display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+  background: var(--slate-800, #1e293b); color: #fff; border-radius: 10px;
+  margin-top: 12px; box-shadow: 0 -4px 20px rgba(0,0,0,.2);
+  font-size: 13px; font-weight: 600;
+}
+.bulk-action-bar.hidden { display: none; }
+.bulk-action-bar select { color: var(--slate-800); }
+.bulk-action-bar .btn-option { color: #fff; border-color: rgba(255,255,255,.3); font-size: 12px; }
+.bulk-action-bar .btn-option:hover { background: rgba(255,255,255,.1); }
+.client-checkbox { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; accent-color: var(--brand); }
 </style>
 </head>
 <body>
@@ -266,6 +278,25 @@
         <div class="tab-bar-flat mt8" id="clientGstFilterTabs"></div>
         <div id="addClientFormBox"></div>
         <div id="clientsList" class="option-list mt16"></div>
+        <div id="bulkActionBar" class="bulk-action-bar hidden">
+          <span id="bulkCount">0 selected</span>
+          <select id="bulkMoveCity" class="search-input" style="width:auto;min-width:140px;padding:6px 10px;font-size:13px">
+            <option value="">Move to city…</option>
+            <option value="Mumbai">Mumbai</option>
+            <option value="Pune">Pune</option>
+            <option value="Hyderabad">Hyderabad</option>
+            <option value="Bangalore">Bangalore</option>
+            <option value="Delhi">Delhi</option>
+            <option value="Goa">Goa</option>
+            <option value="Nashik">Nashik</option>
+            <option value="Kolhapur">Kolhapur</option>
+            <option value="Nagpur">Nagpur</option>
+            <option value="__custom">Other…</option>
+          </select>
+          <button class="btn-option btn-sm" onclick="bulkMoveClients()" id="bulkMoveBtn" disabled>Move</button>
+          <button class="btn-option btn-sm" style="color:var(--red,#ef4444);border-color:var(--red,#ef4444)" onclick="bulkDeleteClients()">Delete</button>
+          <button class="btn-option btn-sm" onclick="clearSelection()" style="margin-left:auto">Clear</button>
+        </div>
       </section>
     </div>
     {% endif %}
@@ -1171,6 +1202,7 @@ let expandedClientCity = null;
 let expandedClientPlace = null;
 let expandedClientROI = false;
 let expandedClientState = null;
+const selectedClients = new Set();
 
 function downloadClientList() {
   window.location = "/api/clients/export";
@@ -1438,18 +1470,22 @@ function clientRowHtml(c) {
   const typeLabel = c.client_type ? c.client_type[0].toUpperCase() + c.client_type.slice(1) : "";
   const gstBadge = c.gst_status === "unregistered"
     ? `<span class="badge badge-gray" title="Confirmed Unregistered/Consumer">Unregistered</span>` : "";
+  const checked = selectedClients.has(c.id) ? "checked" : "";
   return `
-    <div class="option-btn" style="cursor:${IS_ADMIN ? "pointer" : "default"}" ${IS_ADMIN ? `onclick="toggleClient(${c.id})"` : ""}>
-      <div class="person-row-left">
-        ${avatarHtml(c.business_name)}
-        <div class="person-row-info">
-          <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
-          <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
+    <div class="option-btn" style="cursor:${IS_ADMIN ? "pointer" : "default"};display:flex;align-items:center;gap:8px">
+      ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${checked} onclick="event.stopPropagation(); toggleSelectClient(${c.id})" title="Select">` : ""}
+      <div style="flex:1;display:flex;align-items:center;justify-content:space-between" ${IS_ADMIN ? `onclick="toggleClient(${c.id})"` : ""}>
+        <div class="person-row-left">
+          ${avatarHtml(c.business_name)}
+          <div class="person-row-info">
+            <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
+            <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
+          </div>
         </div>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        ${gstBadge}
-        ${typeLabel ? `<span class="badge ${c.client_type === "distributor" ? "badge-blue" : "badge-green"}">${typeLabel}</span>` : ""}
+        <div style="display:flex;gap:6px;align-items:center">
+          ${gstBadge}
+          ${typeLabel ? `<span class="badge ${c.client_type === "distributor" ? "badge-blue" : "badge-green"}">${typeLabel}</span>` : ""}
+        </div>
       </div>
     </div>
     ${isOpen ? `<div class="mt8">${body}</div>` : ""}`;
@@ -1546,10 +1582,13 @@ function renderClients() {
     }
     return `
       <div class="dash-group">
-        <button type="button" class="dash-group-header" onclick='toggleClientCity(${JSON.stringify(city)})'>
-          <span>${cityOpen ? "▾" : "▸"} ${city}</span>
-          <span class="opt-sub">${cityClients.length} client${cityClients.length === 1 ? "" : "s"}</span>
-        </button>
+        <div class="dash-group-header" style="display:flex;align-items:center;gap:8px">
+          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${cityClients.every(c => selectedClients.has(c.id)) && cityClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup(${JSON.stringify(city)}) : deselectAllInGroup(${JSON.stringify(city)})" title="Select all ${city}">` : ""}
+          <button type="button" style="flex:1;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit" onclick='toggleClientCity(${JSON.stringify(city)})'>
+            <span>${cityOpen ? "▾" : "▸"} ${city}</span>
+            <span class="opt-sub">${cityClients.length} client${cityClients.length === 1 ? "" : "s"}</span>
+          </button>
+        </div>
         ${cityBody}
       </div>`;
   }).join("");
@@ -1607,10 +1646,13 @@ function renderClients() {
     }
     html += `
       <div class="dash-group">
-        <button type="button" class="dash-group-header" onclick='toggleClientROI()'>
-          <span>${roiOpen ? "▾" : "▸"} ROI</span>
-          <span class="opt-sub">${roiClients.length} client${roiClients.length === 1 ? "" : "s"}</span>
-        </button>
+        <div class="dash-group-header" style="display:flex;align-items:center;gap:8px">
+          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${roiClients.every(c => selectedClients.has(c.id)) && roiClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup('ROI') : deselectAllInGroup('ROI')" title="Select all ROI">` : ""}
+          <button type="button" style="flex:1;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit" onclick='toggleClientROI()'>
+            <span>${roiOpen ? "▾" : "▸"} ROI</span>
+            <span class="opt-sub">${roiClients.length} client${roiClients.length === 1 ? "" : "s"}</span>
+          </button>
+        </div>
         ${roiBody}
       </div>`;
   }
@@ -1647,6 +1689,109 @@ async function deleteClient(clientId, name) {
   clientsData = clientsData.filter(c => c.id !== clientId);
   expandedClient = null;
   renderClients();
+}
+
+function toggleSelectClient(id) {
+  if (selectedClients.has(id)) selectedClients.delete(id);
+  else selectedClients.add(id);
+  updateBulkBar();
+}
+
+function selectAllInGroup(cityOrIds) {
+  const ids = Array.isArray(cityOrIds) ? cityOrIds : getClientIdsForCity(cityOrIds);
+  ids.forEach(id => selectedClients.add(id));
+  updateBulkBar();
+  renderClients();
+}
+
+function deselectAllInGroup(cityOrIds) {
+  const ids = Array.isArray(cityOrIds) ? cityOrIds : getClientIdsForCity(cityOrIds);
+  ids.forEach(id => selectedClients.delete(id));
+  updateBulkBar();
+  renderClients();
+}
+
+function getClientIdsForCity(city) {
+  const CORE_CITIES = new Set(["Mumbai", "Pune", "Hyderabad", "Bangalore", "Delhi"]);
+  return clientsData.filter(c => {
+    const cc = c.city ? mmrCity(c.city) : null;
+    return city === "ROI" ? (!cc || !CORE_CITIES.has(cc)) : cc === city;
+  }).map(c => c.id);
+}
+
+function clearSelection() {
+  selectedClients.clear();
+  updateBulkBar();
+  renderClients();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById("bulkActionBar");
+  if (!bar) return;
+  if (selectedClients.size) {
+    bar.classList.remove("hidden");
+    document.getElementById("bulkCount").textContent = selectedClients.size + " selected";
+  } else {
+    bar.classList.add("hidden");
+  }
+  const sel = document.getElementById("bulkMoveCity");
+  document.getElementById("bulkMoveBtn").disabled = !sel.value || sel.value === "";
+}
+
+document.addEventListener("change", e => {
+  if (e.target.id === "bulkMoveCity") {
+    const sel = e.target;
+    if (sel.value === "__custom") {
+      const custom = prompt("Enter city name:");
+      if (custom && custom.trim()) {
+        const opt = document.createElement("option");
+        opt.value = custom.trim();
+        opt.textContent = custom.trim();
+        sel.insertBefore(opt, sel.querySelector('[value="__custom"]'));
+        sel.value = custom.trim();
+      } else {
+        sel.value = "";
+      }
+    }
+    document.getElementById("bulkMoveBtn").disabled = !sel.value;
+  }
+});
+
+async function bulkMoveClients() {
+  const city = document.getElementById("bulkMoveCity").value;
+  if (!city || !selectedClients.size) return;
+  const ids = [...selectedClients];
+  if (!confirm(`Move ${ids.length} client${ids.length > 1 ? "s" : ""} to ${city}?`)) return;
+  const res = await fetch("/api/admin/clients/bulk-move", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ client_ids: ids, city }),
+  }).then(r => r.json());
+  if (!res.ok) { alert(res.error || "Failed to move clients"); return; }
+  ids.forEach(id => {
+    const c = clientsData.find(x => x.id === id);
+    if (c) c.city = city;
+  });
+  selectedClients.clear();
+  document.getElementById("bulkMoveCity").value = "";
+  updateBulkBar();
+  renderClients();
+}
+
+async function bulkDeleteClients() {
+  const ids = [...selectedClients];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} client${ids.length > 1 ? "s" : ""}? This cannot be undone.\n\nClients with existing orders cannot be deleted.`)) return;
+  const res = await fetch("/api/admin/clients/bulk-delete", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ client_ids: ids }),
+  }).then(r => r.json());
+  if (!res.ok) { alert(res.error || "Failed to delete clients"); return; }
+  clientsData = clientsData.filter(c => !selectedClients.has(c.id));
+  selectedClients.clear();
+  updateBulkBar();
+  expandedClient = null;
+  renderClients();
+  alert(`Deleted ${res.deleted} client${res.deleted !== 1 ? "s" : ""}`);
 }
 
 async function submitAddressEdit(addressId) {

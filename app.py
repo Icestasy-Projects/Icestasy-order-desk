@@ -21,7 +21,7 @@ from order_engine import (
     approve_order, reject_order, list_clients, client_dues, client_due_detail,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
-    update_client, update_address, delete_client,
+    update_client, update_address, delete_client, bulk_update_clients_city, bulk_delete_clients,
     get_order_lines, mark_order_completed, flavour_sales_summary,
     fetch_report_order_lines, fetch_report_order_shipping, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
@@ -862,6 +862,37 @@ def api_delete_client(client_id):
     try:
         deleted = delete_client(client_id)
         return jsonify({"ok": True, "client": deleted})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/clients/bulk-move", methods=["POST"])
+@admin_required
+def api_bulk_move_clients():
+    body = request.get_json(force=True)
+    ids = body.get("client_ids", [])
+    city = body.get("city", "")
+    if not ids:
+        return jsonify({"ok": False, "error": "No clients selected"}), 400
+    try:
+        count = bulk_update_clients_city(ids, city)
+        return jsonify({"ok": True, "updated": count})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/clients/bulk-delete", methods=["POST"])
+@admin_required
+def api_bulk_delete_clients():
+    body = request.get_json(force=True)
+    ids = body.get("client_ids", [])
+    if not ids:
+        return jsonify({"ok": False, "error": "No clients selected"}), 400
+    try:
+        result = bulk_delete_clients(ids)
+        return jsonify({"ok": True, **result})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:

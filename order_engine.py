@@ -1254,12 +1254,32 @@ def update_client(client_id: int, data: dict) -> dict:
         updates["gstin"] = (data.get("gstin") or "").strip() or None
     if "fssai_no" in data:
         updates["fssai_no"] = (data.get("fssai_no") or "").strip() or None
+    if "city" in data:
+        updates["city"] = (data.get("city") or "").strip() or None
     if not updates:
         raise ValueError("Nothing to update")
     res = sb.schema("sales").from_("clients").update(updates).eq("id", client_id).execute()
     if not res.data:
         raise ValueError("Client not found")
     return res.data[0]
+
+
+def bulk_update_clients_city(client_ids: list, city: str) -> int:
+    sb = _sb()
+    city = (city or "").strip() or None
+    res = sb.schema("sales").from_("clients").update({"city": city}).in_("id", client_ids).execute()
+    return len(res.data) if res.data else 0
+
+
+def bulk_delete_clients(client_ids: list) -> dict:
+    sb = _sb()
+    orders = sb.schema("sales").from_("orders").select("client_id").in_("client_id", client_ids).limit(1).execute()
+    if orders.data:
+        blocked = set(r["client_id"] for r in orders.data)
+        raise ValueError(f"Cannot delete clients with existing orders: {blocked}")
+    sb.schema("sales").from_("addresses").delete().in_("client_id", client_ids).execute()
+    res = sb.schema("sales").from_("clients").delete().in_("id", client_ids).execute()
+    return {"deleted": len(res.data) if res.data else 0}
 
 
 def update_address(address_id: int, data: dict) -> dict:
