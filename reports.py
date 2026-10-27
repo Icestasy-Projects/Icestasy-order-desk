@@ -203,13 +203,14 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         order_date = _format_date(o.get("created_at", ""))
         city = _report_city(o)
         client = o.get("client_name") or ""
+        consignee = (o.get("consignee_name") or "").strip() or client
         sales_ledger = f"Sales - {city}"
         shipping_state = (o.get("shipping_state") or "").strip()
         is_interstate = bool(shipping_state and shipping_state.lower() != COMPANY_STATE.lower())
 
         lines = o.get("lines") or []
         if not lines:
-            values = [order_no, order_date, client, client, "", "", "", "",
+            values = [order_no, order_date, client, consignee, "", "", "", "",
                       "", "", "", "", "", "", "", "", city, sales_ledger]
             for col, val in enumerate(values, start=1):
                 ws.cell(row=row, column=col, value=val)
@@ -253,7 +254,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
             line_total = taxable + cgst_amt + sgst_amt + igst_amt
 
             values = [
-                order_no, order_date, client, client, product_info,
+                order_no, order_date, client, consignee, product_info,
                 qty, rate, taxable,
                 cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt,
                 "", line_total, city, sales_ledger,

@@ -320,9 +320,12 @@ def create_address(client_id: int, data: dict) -> dict:
     if not pincode:
         raise ValueError("Pincode is required")
 
+    consignee_name = (data.get("consignee_name") or "").strip() or None
+
     row = {
         "client_id": client_id,
         "address_type": data.get("address_type") or "shipping",
+        "consignee_name": consignee_name,
         "gstin": (data.get("gstin") or "").strip() or None,
         "line1": line1,
         "line2": (data.get("line2") or "").strip() or None,
@@ -916,14 +919,17 @@ def fetch_report_order_shipping(order_ids: list) -> dict:
         for i in range(0, len(addr_ids), CHUNK):
             chunk = addr_ids[i:i + CHUNK]
             for a in (sb.schema("sales").from_("addresses")
-                      .select("id, state")
+                      .select("id, state, consignee_name")
                       .in_("id", chunk).execute().data):
                 addrs[a["id"]] = a
 
     out = {}
     for o in orders_with_addr:
         addr = addrs.get(o.get("shipping_address_id"), {})
-        out[o["id"]] = {"state": (addr.get("state") or "").strip()}
+        out[o["id"]] = {
+            "state": (addr.get("state") or "").strip(),
+            "consignee_name": (addr.get("consignee_name") or "").strip(),
+        }
     return out
 
 
@@ -1249,7 +1255,7 @@ def update_client(client_id: int, data: dict) -> dict:
 def update_address(address_id: int, data: dict) -> dict:
     sb = _sb()
     updates = {}
-    for key in ("line1", "line2", "state", "pincode", "gstin", "address_type"):
+    for key in ("line1", "line2", "state", "pincode", "gstin", "address_type", "consignee_name"):
         if key in data:
             updates[key] = (data.get(key) or "").strip() or None
     # "city" here means locality precision (e.g. "Bandra West") — the real

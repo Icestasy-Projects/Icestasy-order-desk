@@ -494,7 +494,9 @@ def api_dashboard_export():
         for o in orders:
             o["lines"] = lines_by_order.get(o["id"], [])
             o["amount_paid"] = paid_by_order.get(o["id"], 0.0)
-            o["shipping_state"] = shipping_by_order.get(o["id"], {}).get("state", "")
+            ship_info = shipping_by_order.get(o["id"], {})
+            o["shipping_state"] = ship_info.get("state", "")
+            o["consignee_name"] = ship_info.get("consignee_name", "")
         buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
                                      report_type=report_type, date_from=date_from, date_to=date_to)
     filename = f"icestasy-orders-{report_type}-{date.today().isoformat()}.xlsx"
