@@ -68,6 +68,19 @@ FLAVOUR_ALIASES = {
     "reshmi paan": "Reshmi Paan",
     "kyoka kuro goma": "Kyoka Kuro Goma",  # longer/more specific than "kuro goma" — must sort before it
     "shahi sevaiya": "Shahi Sevaiya",
+    "after hours": "After Hours",
+    "cheese melt": "Cheese Melt",
+    "ginger candy": "Ginger Candy",
+    "jamun": "Jambhul",
+    "mishti doi": "Mishti Doi",
+    "ny cheesecake": "New York Style Cheesecake", "new york cheesecake": "New York Style Cheesecake", "cheesecake": "New York Style Cheesecake",
+    "nutty naughty": "Nutty Naughty",
+    "pandan": "Pandan Purple Yam", "purple yam": "Pandan Purple Yam", "pandan purple yam": "Pandan Purple Yam",
+    "signature mango": "Signature Mango (Aurum)", "aurum": "Signature Mango (Aurum)",
+    "tamarind": "Tamarind & Curry Leaf", "curry leaf": "Tamarind & Curry Leaf", "tamarind & curry leaf": "Tamarind & Curry Leaf",
+    "turkish hazelnut": "Turkish Hazelnut", "hazelnut": "Turkish Hazelnut",
+    "vegan strawberry": "Vegan Strawberry",
+    "white knight": "White Knight",
 }
 
 FORMAT_ALIASES = {
@@ -112,6 +125,12 @@ _FLAVOURS = {
     463: "Signature Strawberry (Rosaea)", 464: "Crumble and Dough",
     465: "Off Season Sitaphal", 466: "Strawberry Strength (FD)",
     467: "Mango Mania (FD)", 468: "Blueberry Blush (FD)",
+    469: "After Hours", 470: "Cheese Melt", 471: "Ginger Candy",
+    472: "Gulab Jamun", 473: "Jambhul", 474: "Legal Overdose",
+    475: "Mishti Doi", 476: "New York Style Cheesecake", 477: "Nutty Naughty",
+    478: "Pandan Purple Yam", 479: "Pineapple", 480: "Signature Chocolate (Cacaoir)",
+    481: "Signature Mango (Aurum)", 482: "Tamarind & Curry Leaf",
+    483: "Turkish Hazelnut", 484: "Vegan Strawberry", 485: "White Knight",
 }
 _FORMATS = {
     1: ("4L Bulk", False), 2: ("12 Square", False), 3: ("50 ml Samples", True),
@@ -174,6 +193,12 @@ _SKU_ROWS = [
     ("STR-4L-466", 466, 1),
     ("MAN-4L-467", 467, 1),
     ("BLU-4L-468", 468, 1),
+    ("AFT-4L-469", 469, 1), ("CHE-4L-470", 470, 1), ("GIN-4L-471", 471, 1),
+    ("GUL-4L-472", 472, 1), ("JAM-4L-473", 473, 1), ("LEG-4L-474", 474, 1),
+    ("MIS-4L-475", 475, 1), ("NYC-4L-476", 476, 1), ("NUT-4L-477", 477, 1),
+    ("PAN-4L-478", 478, 1), ("PIN-4L-479", 479, 1), ("SIG-4L-480", 480, 1),
+    ("SIG-4L-481", 481, 1), ("TAM-4L-482", 482, 1), ("TUR-4L-483", 483, 1),
+    ("VEG-4L-484", 484, 1), ("WHI-4L-485", 485, 1),
 ]
 
 MOCK_SKUS = [
