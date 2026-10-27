@@ -220,12 +220,12 @@ def list_clients_lite() -> list:
     address — lightweight enough for a 'browse all clients' dropdown while
     still supporting BU-level filtering."""
     sb = _sb()
-    result = (
+    clients = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin, city, addresses(city, locality, is_default)")
-        .eq("status", "active").order("business_name").execute()
-    )
-    for c in result.data:
+        .eq("status", "active").order("business_name").range(start, end)
+    ))
+    for c in clients:
         addrs = c.pop("addresses", None) or []
         direct_city = (c.get("city") or "").strip()
         if direct_city:
@@ -239,7 +239,7 @@ def list_clients_lite() -> list:
             else:
                 c["city"] = "Unassigned"
         c["price_region"] = _CITY_TO_PRICE_REGION.get(c["city"], "roi")
-    return result.data
+    return clients
 
 
 def register_client(data: dict, registered_by: int) -> dict:
@@ -975,12 +975,12 @@ def reject_order(order_id: int, rejected_by: int) -> dict:
 
 def list_clients(role: str | None = None, region: str = "") -> list:
     sb = _sb()
-    clients = (
+    clients = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, "
-                "gstin, fssai_no, gst_status, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
-        .eq("status", "active").order("business_name").execute().data
-    )
+                "gstin, fssai_no, gst_status, city, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
+        .eq("status", "active").order("business_name").range(start, end)
+    ))
     order_counts = {}
     orders = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("orders").select("client_id").range(start, end)
@@ -992,8 +992,9 @@ def list_clients(role: str | None = None, region: str = "") -> list:
         default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
         addr = default_addr or {}
         c["place"] = addr.get("locality") or "—"
-        raw_city = addr.get("city")
-        c["city"] = raw_city or (city_for_place(c["place"]) if c["place"] != "—" else "Unassigned")
+        direct_city = (c.get("city") or "").strip()
+        addr_city = addr.get("city")
+        c["city"] = direct_city or addr_city or (city_for_place(c["place"]) if c["place"] != "—" else "Unassigned")
         c["state"] = addr.get("state") or ""
         c["order_count"] = order_counts.get(c["id"], 0)
         c["gst_status"] = "registered" if c.get("gstin") else (c.get("gst_status") or "unknown")
@@ -1007,12 +1008,12 @@ def client_dues(role: str | None = None, region: str = "") -> list:
     """Per-client outstanding balance: (invoiced + delivered order totals) minus
     payments received, for clients who still owe money."""
     sb = _sb()
-    clients = (
+    clients = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("clients")
-        .select("id, business_name, primary_contact_name, primary_contact_phone, "
+        .select("id, business_name, primary_contact_name, primary_contact_phone, city, "
                 "addresses(locality, city, is_default)")
-        .eq("status", "active").execute().data
-    )
+        .eq("status", "active").range(start, end)
+    ))
     orders = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("orders").select("id, client_id, status, total_amount").range(start, end)
     ))
@@ -1048,7 +1049,8 @@ def client_dues(role: str | None = None, region: str = "") -> list:
         default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
         addr = default_addr or {}
         place = addr.get("locality") or "—"
-        city = addr.get("city") or (city_for_place(place) if place != "—" else "Unassigned")
+        direct_city = (c.get("city") or "").strip()
+        city = direct_city or addr.get("city") or (city_for_place(place) if place != "—" else "Unassigned")
         dues.append({
             "id": cid,
             "business_name": c["business_name"],
