@@ -23,7 +23,7 @@ PAY_LABELS = {
 }
 
 COLUMNS = [
-    "Voucher No", "Order ID", "Date", "Billing Name", "Consignee Name", "Product Info",
+    "Voucher Type Name", "Order ID", "Date", "Billing Name", "Consignee Name", "Product Info",
     "Qty", "Rate", "Taxable Value",
     "CGST %", "CGST Amt", "SGST %", "SGST Amt", "IGST %", "IGST Amt",
     "Round Off", "Total", "Godown", "Sales Ledger",
