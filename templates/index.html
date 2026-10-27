@@ -164,13 +164,6 @@
   .summary-label { font-size: 10px; min-width: 48px; }
   .summary-chip { padding: 2px 8px; font-size: 11px; }
 
-  /* Discount chips: tighter */
-  .disc-chip-row { gap: 6px; }
-  .disc-chip { padding: 5px 12px; font-size: 12px; border-radius: 20px; }
-  .disc-chip-sub { font-size: 9px; }
-  .disc-summary { flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; font-size: 12px; }
-  .disc-summary-total { font-size: 13px; }
-
   /* Confirm extras */
   .confirm-extras { gap: 10px; }
   .confirm-label { font-size: 12px; min-width: 70px; }
@@ -205,10 +198,6 @@
 
   /* Collateral only button */
   .btn-ghost[onclick="startCollateralOnly()"] { font-size: 12px; padding: 10px 12px; }
-
-  /* Payment mode buttons */
-  #inlinePaymentBtns.btn-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-  #inlinePaymentBtns .btn-option { text-align: center; font-size: 13px; padding: 10px 6px; }
 
   /* Step-back link */
   .step-back { font-size: 12px; }
@@ -348,12 +337,6 @@
         <button class="btn-primary mt16" onclick="submitFormOrder()">Continue <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
       </div>
 
-      {% if is_admin %}
-      <button class="btn-ghost mt16" style="width:100%" onclick="startCollateralOnly()">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>
-        Marketing Collateral Only (no product order)
-      </button>
-      {% endif %}
     </section>
 
     <!-- STEP 1: Cart review + SKU disambiguation -->
@@ -389,44 +372,11 @@
       <div class="step-label">Order Summary</div>
       <div id="summaryBox" class="summary-box"></div>
 
-      {% if is_admin %}
-      <div class="hidden" id="inlinePaymentPicker" style="margin-top:12px">
-        <div class="step-label">Payment Mode</div>
-        <div class="btn-group" id="inlinePaymentBtns">
-          <button class="btn-option" onclick="inlineSelectPayment('advance')">Advance</button>
-          <button class="btn-option" onclick="inlineSelectPayment('invoice')">Invoice</button>
-          <button class="btn-option" onclick="inlineSelectPayment('credit')">Credit</button>
-        </div>
-      </div>
-      {% endif %}
 
       <!-- Address picker disabled for now -->
       <div class="hidden" id="inlineAddressPicker" style="margin-top:12px"></div>
 
       <div class="confirm-extras">
-        {% if is_admin %}
-        <div class="confirm-row" style="flex-direction:column;align-items:stretch">
-          <label class="confirm-label">Discount</label>
-          <div class="disc-chip-row" id="discChips">
-            <button class="disc-chip active" onclick="pickDiscount(0,this)">None</button>
-            <button class="disc-chip" onclick="pickDiscount(5,this)">5% <span class="disc-chip-sub">Nashik</span></button>
-            <button class="disc-chip" onclick="pickDiscount(15,this)">15%</button>
-            <button class="disc-chip" onclick="pickDiscount(16,this)">16%</button>
-            <button class="disc-chip" onclick="pickDiscount(16.5,this)">16.5%</button>
-            <button class="disc-chip" onclick="showCustomDisc(this)">Custom</button>
-          </div>
-          <div class="disc-custom-wrap hidden" id="discCustomWrap">
-            <input id="discountPct" class="search-input" type="number" min="0" max="100" step="0.5" value="0" style="width:90px;text-align:center" oninput="updateDiscountPreview()">
-            <span style="font-weight:700;color:var(--slate-500)">%</span>
-            <span id="discountPreview" class="opt-sub" style="margin-left:6px"></span>
-          </div>
-          <div class="disc-advance-note hidden" id="discAdvanceNote">+2.5% advance payment discount applied automatically</div>
-          <div id="discSummary" class="disc-summary hidden">
-            <span>Discount <strong id="discSumPct">0%</strong>: −<strong id="discSumAmt">₹0</strong></span>
-            <span class="disc-summary-total">After discount: <strong id="discSumTotal">₹0</strong></span>
-          </div>
-        </div>
-        {% endif %}
         <div class="confirm-row" style="flex-direction:column;align-items:stretch">
           <label class="confirm-label" for="orderComment">Comments</label>
           <textarea id="orderComment" class="paste-box" rows="2" placeholder="Add any notes or comments for this order…" style="margin-top:4px"></textarea>
@@ -585,11 +535,7 @@ function proceedFromCollateral() {
 // renderNextAfterCart() to skip that step entirely in the main order flow
 // (deferred for now, will come back once collateral tracking is ready).
 async function _afterCollateralStep() {
-  if (state.collateralOnly) {
-    state.payment = null;
-  } else if (!state.payment) {
-    state.payment = "invoice";
-  }
+  state.payment = state.collateralOnly ? null : "invoice";
   await autoSelectAddressAndConfirm();
 }
 
@@ -817,7 +763,7 @@ function submitFormOrder() {
     _returningToConfirm = false;
     showConfirm();
   } else {
-    if (!state.payment) state.payment = "invoice";
+    state.payment = "invoice";
     renderNextAfterCart();
   }
   renderOrderSummary();
@@ -940,7 +886,7 @@ function renderNextAfterCart() {
   _afterCollateralStep();
 }
 
-// ── Inline payment & address editing (confirm step) ─────────────────────────
+// ── Inline editing (confirm step) ────────────────────────────────────────────
 let _returningToConfirm = false;
 let _returningToConfirmFromClient = false;
 
@@ -958,24 +904,6 @@ async function changeItems() {
   renderOrderSummary();
 }
 
-function changePayment() {
-  const picker = document.getElementById("inlinePaymentPicker");
-  const isHidden = picker.classList.contains("hidden");
-  picker.classList.toggle("hidden");
-  if (isHidden) {
-    document.querySelectorAll("#inlinePaymentBtns .btn-option").forEach(b => {
-      b.classList.toggle("active", b.textContent.toLowerCase().trim() === state.payment);
-    });
-    setTimeout(() => picker.scrollIntoView({behavior:"smooth", block:"center"}), 50);
-  }
-}
-
-function inlineSelectPayment(mode) {
-  state.payment = mode;
-  document.getElementById("inlinePaymentPicker").classList.add("hidden");
-  saveOrderDraft();
-  showConfirm();
-}
 
 
 // ── BU location selector (client-side filter only) ──────────────────────────
@@ -1313,7 +1241,6 @@ async function showConfirm() {
 
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
-    ${state.collateralOnly || !IS_ADMIN ? "" : `<div class="summary-row"><span>Payment</span><strong>${(state.payment||"").replace(/^\w/,c=>c.toUpperCase())} <button class="pill-change" onclick="changePayment()">change</button></strong></div>`}
     <!-- Address row disabled for now -->
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
     <table class="summary-table">
@@ -1322,55 +1249,16 @@ async function showConfirm() {
     </table>` : ""}
     ${collateralRows ? `<div class="step-label mt16">Marketing Collateral</div>${collateralRows}` : ""}
     <div class="summary-total">Subtotal <strong>${fmt(state._subtotal)}</strong></div>
-    <div class="summary-total" id="discountTotalRow" style="display:none">After Discount <strong id="discountTotalAmt"></strong></div>
     <div id="taxBreakdown">${taxHtml}</div>
     ${resolved.length ? `<div class="summary-total" style="font-size:18px;border-top:2px solid var(--slate-200);padding-top:8px;margin-top:4px">Grand Total <strong id="grandTotalAmt">${fmt(grandTotal)}</strong></div>` : ""}`;
 
-  _baseDiscPct = 0;
-  const _discChips = document.getElementById("discChips");
-  if (_discChips) {
-    _discChips.querySelectorAll(".disc-chip").forEach(b => b.classList.remove("active"));
-    const first = _discChips.querySelector(".disc-chip");
-    if (first) first.classList.add("active");
-    const cw = document.getElementById("discCustomWrap"); if (cw) cw.classList.add("hidden");
-    const dp = document.getElementById("discountPct"); if (dp) dp.value = "0";
-    const dpr = document.getElementById("discountPreview"); if (dpr) dpr.textContent = "";
-    const dtr = document.getElementById("discountTotalRow"); if (dtr) dtr.style.display = "none";
-    const ds = document.getElementById("discSummary"); if (ds) ds.classList.add("hidden");
-    const an = document.getElementById("discAdvanceNote"); if (an) an.classList.toggle("hidden", state.payment !== "advance");
-  }
   document.getElementById("orderComment").value = "";
-  updateDiscountPreview();
+  _recalcGrandTotal(state._subtotal);
 
   show("step-confirm");
   renderOrderSummary();
 }
 
-let _baseDiscPct = 0;
-function pickDiscount(pct, btn) {
-  _baseDiscPct = pct;
-  document.querySelectorAll("#discChips .disc-chip").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  document.getElementById("discCustomWrap").classList.add("hidden");
-  _syncDiscountInput();
-}
-function showCustomDisc(btn) {
-  document.querySelectorAll("#discChips .disc-chip").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  document.getElementById("discCustomWrap").classList.remove("hidden");
-  document.getElementById("discountPct").focus();
-  _baseDiscPct = parseFloat(document.getElementById("discountPct").value) || 0;
-  _syncDiscountInput();
-}
-function _syncDiscountInput() {
-  document.getElementById("discountPct").value = _baseDiscPct || "";
-  updateDiscountPreview();
-}
-function _effectiveDiscPct() {
-  let pct = _baseDiscPct;
-  if (state.payment === "advance") pct += 2.5;
-  return pct;
-}
 function _recalcGrandTotal(afterDiscount) {
   const COMPANY_STATE = "maharashtra";
   const resolved = state.items.filter(i => !i.not_found && i.resolved_sku);
@@ -1416,38 +1304,6 @@ function _recalcGrandTotal(afterDiscount) {
   }
 }
 
-function updateDiscountPreview() {
-  const discInput = document.getElementById("discountPct");
-  if (!discInput) return;
-  _baseDiscPct = parseFloat(discInput.value) || 0;
-  const pct = _effectiveDiscPct();
-  const advNote = document.getElementById("discAdvanceNote");
-  if (advNote) advNote.classList.toggle("hidden", state.payment !== "advance");
-  const summary = document.getElementById("discSummary");
-  const preview = document.getElementById("discountPreview");
-  const totalRow = document.getElementById("discountTotalRow");
-  const totalAmt = document.getElementById("discountTotalAmt");
-  let afterDiscount = state._subtotal;
-  if (pct > 0 && state._subtotal) {
-    const disc = Math.round(state._subtotal * pct / 100 * 100) / 100;
-    afterDiscount = state._subtotal - disc;
-    if (preview) preview.textContent = `−${fmt(disc)}`;
-    if (totalAmt) totalAmt.textContent = fmt(afterDiscount);
-    if (totalRow) totalRow.style.display = "";
-    const sp = document.getElementById("discSumPct");
-    const sa = document.getElementById("discSumAmt");
-    const st = document.getElementById("discSumTotal");
-    if (sp) sp.textContent = pct + "%";
-    if (sa) sa.textContent = fmt(disc);
-    if (st) st.textContent = fmt(afterDiscount);
-    if (summary) summary.classList.remove("hidden");
-  } else {
-    if (preview) preview.textContent = "";
-    if (totalRow) totalRow.style.display = "none";
-    if (summary) summary.classList.add("hidden");
-  }
-  _recalcGrandTotal(afterDiscount);
-}
 
 // ── STEP 6: Place ────────────────────────────────────────────────────────────
 async function placeOrder() {
@@ -1564,7 +1420,6 @@ async function submitOrderWithOptions(options) {
   const btn = document.querySelector("#step-confirm .btn-green");
   btn.disabled = true; btn.textContent = "Placing…";
 
-  const discountPct = _effectiveDiscPct();
   const comment = document.getElementById("orderComment").value.trim();
   const sourceItems = options.sourceItems || state.items;
   const lines = buildOrderLines(sourceItems);
@@ -1598,12 +1453,12 @@ async function submitOrderWithOptions(options) {
     method: "POST", headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
       client_id: state.client.id,
-      payment_mode: state.payment,
+      payment_mode: "invoice",
       lines,
       shipping_address_id: state.address_id,
       billing_address_id: state.address_id,
       collateral: options.collateral !== undefined ? options.collateral : state.collateral,
-      discount_pct: discountPct,
+      discount_pct: 0,
       notes: notes || null,
     }),
   }).then(r => r.json());
@@ -1629,7 +1484,7 @@ function renderDoneOrders(orders, title) {
   hide("step-confirm");
   const cards = orders.map(order => {
     const total = fmt(order.total);
-    const discLine = order.discount_pct ? `<div class="done-meta" style="color:var(--green)">Discount: ${order.discount_pct}% (−${fmt(order.discount)})</div>` : "";
+    const discLine = "";
     const linesList = (order.lines || []).map(l =>
       `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
     ).join("") + (order.collateral || []).map(c =>
@@ -1640,7 +1495,7 @@ function renderDoneOrders(orders, title) {
       <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
       <div class="done-title">Order Confirmed</div>
       <a class="done-no" href="/orders?order=${order.id}" style="text-decoration:none">${order.order_no}</a>
-      <div class="done-meta">${state.client.business_name}${state.payment ? " · " + state.payment.replace(/^\w/,c=>c.toUpperCase()) : ""}</div>
+      <div class="done-meta">${state.client.business_name}</div>
       ${discLine}
       <ul class="done-lines">${linesList}</ul>
       <div class="done-total">Total: <strong>${total}</strong></div>
@@ -1745,7 +1600,7 @@ async function restoreOrderDraft() {
     } else if (target === "step-collateral") {
       renderCollateralList();
     } else if (target === "step-confirm") {
-      if (!state.payment) state.payment = "invoice";
+      state.payment = "invoice";
       showConfirm();
     }
     renderOrderSummary();
@@ -1771,7 +1626,6 @@ function renderOrderSummary() {
   const step = getVisibleStep();
   const pastClient = ["step-paste","step-cart","step-collateral","step-confirm"];
   const pastItems = ["step-cart","step-collateral","step-confirm"];
-  const pastPayment = ["step-confirm"];
   const lines = [];
 
   if (state.client && pastClient.includes(step)) {
@@ -1794,9 +1648,6 @@ function renderOrderSummary() {
       }).join("");
       lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
     }
-  }
-  if (IS_ADMIN && state.payment && pastPayment.includes(step)) {
-    lines.push(`<div class="summary-line"><span class="summary-label">Payment</span><span class="summary-value" style="text-transform:capitalize">${state.payment}</span></div>`);
   }
   if (IS_ADMIN && state.address_label && step === "step-confirm") {
     lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${state.address_label}</span></div>`);
