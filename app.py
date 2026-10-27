@@ -21,7 +21,7 @@ from order_engine import (
     approve_order, reject_order, list_clients, client_dues, client_due_detail,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
-    update_client, update_address,
+    update_client, update_address, delete_client,
     get_order_lines, mark_order_completed, flavour_sales_summary,
     fetch_report_order_lines, fetch_report_order_shipping, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
@@ -436,6 +436,7 @@ def api_orders():
             notes=body.get("notes"),
             collateral=body.get("collateral"),
             discount_pct=float(body.get("discount_pct") or 0),
+            consignee_name=body.get("consignee_name"),
         )
         return jsonify({"ok": True, "order": order})
     except (ValueError, KeyError, TypeError) as e:
@@ -849,6 +850,18 @@ def api_update_address(address_id):
     try:
         addr = update_address(address_id, body)
         return jsonify({"ok": True, "address": addr})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/clients/<int:client_id>", methods=["DELETE"])
+@admin_required
+def api_delete_client(client_id):
+    try:
+        deleted = delete_client(client_id)
+        return jsonify({"ok": True, "client": deleted})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:

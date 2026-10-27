@@ -1430,7 +1430,10 @@ function clientRowHtml(c) {
         ${addrCards || '<div class="opt-muted">No addresses yet</div>'}
       </div>
       <button class="btn-option btn-sm mt8" onclick="showAddAddressForm(${c.id})">+ Add address</button>
-      <div id="newaddr-${c.id}"></div>`;
+      <div id="newaddr-${c.id}"></div>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--slate-200)">
+        <button class="btn-option btn-sm" style="color:var(--red,#ef4444);border-color:var(--red,#ef4444)" onclick="deleteClient(${c.id}, '${(c.business_name || '').replace(/'/g, "\\'")}')">Delete Client</button>
+      </div>`;
   }
   const typeLabel = c.client_type ? c.client_type[0].toUpperCase() + c.client_type.slice(1) : "";
   const gstBadge = c.gst_status === "unregistered"
@@ -1630,6 +1633,20 @@ async function submitClientEdit(clientId) {
     return;
   }
   loadClients();
+}
+
+async function deleteClient(clientId, name) {
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/admin/clients/${clientId}`, {
+    method: "DELETE",
+  }).then(r => r.json());
+  if (!res.ok) {
+    alert(res.error || "Could not delete client");
+    return;
+  }
+  clientsData = clientsData.filter(c => c.id !== clientId);
+  expandedClient = null;
+  renderClients();
 }
 
 async function submitAddressEdit(addressId) {
