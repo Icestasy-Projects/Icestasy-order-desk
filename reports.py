@@ -1,4 +1,5 @@
 import io
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
@@ -248,7 +249,10 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 igst_amt = 0.0
 
             product_info = ln.get("flavour_name") or ""
-            fmt_name = ln.get("format_name")
+            product_info = re.sub(r"\s*\([^)]*\)", "", product_info).strip()
+            fmt_name = ln.get("format_name") or ""
+            if fmt_name == "4L Bulk":
+                fmt_name = "Bulk"
             if fmt_name and fmt_name != "—":
                 product_info = f"{product_info} - {fmt_name}" if product_info else fmt_name
 
