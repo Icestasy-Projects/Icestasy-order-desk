@@ -895,6 +895,38 @@ def fetch_report_order_lines(order_ids: list) -> dict:
     return out
 
 
+def fetch_report_order_shipping(order_ids: list) -> dict:
+    """Return {order_id: {"state": str}} from each order's shipping address.
+    Used by the Excel export to determine CGST/SGST vs IGST split."""
+    if not order_ids:
+        return {}
+    sb = _sb()
+    orders_with_addr = []
+    CHUNK = 600
+    for i in range(0, len(order_ids), CHUNK):
+        chunk = order_ids[i:i + CHUNK]
+        rows = (sb.schema("sales").from_("orders")
+                .select("id, shipping_address_id")
+                .in_("id", chunk).execute().data)
+        orders_with_addr.extend(rows)
+
+    addr_ids = list({o["shipping_address_id"] for o in orders_with_addr if o.get("shipping_address_id")})
+    addrs = {}
+    if addr_ids:
+        for i in range(0, len(addr_ids), CHUNK):
+            chunk = addr_ids[i:i + CHUNK]
+            for a in (sb.schema("sales").from_("addresses")
+                      .select("id, state")
+                      .in_("id", chunk).execute().data):
+                addrs[a["id"]] = a
+
+    out = {}
+    for o in orders_with_addr:
+        addr = addrs.get(o.get("shipping_address_id"), {})
+        out[o["id"]] = {"state": (addr.get("state") or "").strip()}
+    return out
+
+
 def fetch_payment_summaries(order_ids: list) -> dict:
     """Bulk-fetch total paid amount per order.
     Returns {order_id: total_paid_float}."""

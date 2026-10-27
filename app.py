@@ -23,7 +23,7 @@ from order_engine import (
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
     update_client, update_address,
     get_order_lines, mark_order_completed, flavour_sales_summary,
-    fetch_report_order_lines, fetch_payment_summaries,
+    fetch_report_order_lines, fetch_report_order_shipping, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
     check_pending_orders, cancel_order, should_auto_hold, put_on_hold, release_hold,
     check_stock_for_order,
@@ -490,9 +490,11 @@ def api_dashboard_export():
         order_ids = [o["id"] for o in orders]
         lines_by_order = fetch_report_order_lines(order_ids)
         paid_by_order = fetch_payment_summaries(order_ids)
+        shipping_by_order = fetch_report_order_shipping(order_ids)
         for o in orders:
             o["lines"] = lines_by_order.get(o["id"], [])
             o["amount_paid"] = paid_by_order.get(o["id"], 0.0)
+            o["shipping_state"] = shipping_by_order.get(o["id"], {}).get("state", "")
         buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
                                      report_type=report_type, date_from=date_from, date_to=date_to)
     filename = f"icestasy-orders-{report_type}-{date.today().isoformat()}.xlsx"

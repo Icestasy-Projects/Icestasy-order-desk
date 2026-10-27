@@ -22,8 +22,20 @@ PAY_LABELS = {
     "refunded": "Refunded", "not_recorded": "Not Recorded",
 }
 
-COLUMNS = ["Date", "Party Name", "Product Info", "Qty", "Rate", "GST %", "GST Amt", "Sales Ledger"]
-COLUMN_WIDTHS = [14, 28, 30, 10, 14, 10, 14, 22]
+COLUMNS = [
+    "Voucher No", "Date", "Billing Name", "Consignee Name", "Product Info",
+    "Qty", "Rate", "Taxable Value",
+    "CGST %", "CGST Amt", "SGST %", "SGST Amt", "IGST %", "IGST Amt",
+    "Round Off", "Total", "Godown", "Sales Ledger",
+]
+COLUMN_WIDTHS = [
+    20, 14, 28, 28, 30,
+    10, 14, 16,
+    8, 14, 8, 14, 8, 14,
+    12, 16, 14, 22,
+]
+
+COMPANY_STATE = "Maharashtra"
 
 CLIENT_TYPE_LABELS = {"horeca": "B2B", "distributor": "Distributor", "retail": "Retail"}
 
@@ -179,53 +191,122 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
 
     row = header_row + 1
     total_qty = 0.0
-    total_value = 0.0
-    total_gst = 0.0
+    total_taxable = 0.0
+    total_cgst = 0.0
+    total_sgst = 0.0
+    total_igst = 0.0
+    total_round_off = 0.0
+    total_grand = 0.0
+
     for o in orders:
+        order_no = o.get("order_no") or ""
         order_date = _format_date(o.get("created_at", ""))
         city = _report_city(o)
-        client = o.get("client_name")
+        client = o.get("client_name") or ""
         sales_ledger = f"Sales - {city}"
+        shipping_state = (o.get("shipping_state") or "").strip()
+        is_interstate = bool(shipping_state and shipping_state.lower() != COMPANY_STATE.lower())
+
         lines = o.get("lines") or []
-        if lines:
-            for ln in lines:
-                qty = ln.get("quantity", 0) or 0
-                rate = ln.get("unit_price", 0) or 0
-                gst_pct = ln.get("gst_rate", 5.0)
-                gst_amt = ln.get("gst_amount", 0) or 0
-                amt = ln.get("line_total", 0) or 0
-                product_info = ln.get("flavour_name") or ""
-                fmt_name = ln.get("format_name")
-                if fmt_name and fmt_name != "—":
-                    product_info = f"{product_info} - {fmt_name}" if product_info else fmt_name
-                values = [order_date, client, product_info, qty, rate, gst_pct, gst_amt, sales_ledger]
-                for col, val in enumerate(values, start=1):
-                    cell = ws.cell(row=row, column=col, value=val)
-                    if col == 4:
-                        cell.number_format = "#,##0"
-                    elif col in (5, 7):
-                        cell.number_format = "#,##0.00"
-                    elif col == 6:
-                        cell.number_format = "0.0"
-                total_qty += qty
-                total_value += amt
-                total_gst += gst_amt
-                row += 1
-        else:
-            amt = o.get("total_amount", 0) or 0
-            values = [order_date, client, "", "", "", "", "", sales_ledger]
+        if not lines:
+            values = [order_no, order_date, client, client, "", "", "", "",
+                      "", "", "", "", "", "", "", "", city, sales_ledger]
             for col, val in enumerate(values, start=1):
                 ws.cell(row=row, column=col, value=val)
-            total_value += amt
+            row += 1
+            continue
+
+        order_taxable = 0.0
+        order_cgst = 0.0
+        order_sgst = 0.0
+        order_igst = 0.0
+
+        line_rows_start = row
+        for ln in lines:
+            qty = ln.get("quantity", 0) or 0
+            rate = ln.get("unit_price", 0) or 0
+            taxable = ln.get("line_total", 0) or 0
+            gst_rate = ln.get("gst_rate", 5.0)
+
+            if is_interstate:
+                cgst_pct = 0.0
+                cgst_amt = 0.0
+                sgst_pct = 0.0
+                sgst_amt = 0.0
+                igst_pct = gst_rate
+                igst_amt = round(taxable * gst_rate / 100, 2)
+            else:
+                half_rate = gst_rate / 2
+                half_amt = round(taxable * half_rate / 100, 2)
+                cgst_pct = half_rate
+                cgst_amt = half_amt
+                sgst_pct = half_rate
+                sgst_amt = half_amt
+                igst_pct = 0.0
+                igst_amt = 0.0
+
+            product_info = ln.get("flavour_name") or ""
+            fmt_name = ln.get("format_name")
+            if fmt_name and fmt_name != "—":
+                product_info = f"{product_info} - {fmt_name}" if product_info else fmt_name
+
+            line_total = taxable + cgst_amt + sgst_amt + igst_amt
+
+            values = [
+                order_no, order_date, client, client, product_info,
+                qty, rate, taxable,
+                cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt,
+                "", line_total, city, sales_ledger,
+            ]
+            for col, val in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=col, value=val)
+                if col == 6:
+                    cell.number_format = "#,##0"
+                elif col in (7, 8, 10, 12, 14, 16):
+                    cell.number_format = "#,##0.00"
+                elif col in (9, 11, 13):
+                    cell.number_format = "0.0"
+
+            total_qty += qty
+            order_taxable += taxable
+            order_cgst += cgst_amt
+            order_sgst += sgst_amt
+            order_igst += igst_amt
             row += 1
 
-    ws.cell(row=row, column=3, value="Total").font = TOTAL_FONT
-    qty_cell = ws.cell(row=row, column=4, value=total_qty)
-    qty_cell.font = TOTAL_FONT
-    qty_cell.number_format = "#,##0"
-    gst_total_cell = ws.cell(row=row, column=7, value=total_gst)
-    gst_total_cell.font = TOTAL_FONT
-    gst_total_cell.number_format = "#,##0.00"
+        raw_order_total = order_taxable + order_cgst + order_sgst + order_igst
+        order_grand = round(raw_order_total)
+        order_round_off = round(order_grand - raw_order_total, 2)
+
+        # Write round-off on the first line of this order
+        if order_round_off != 0.0:
+            ro_cell = ws.cell(row=line_rows_start, column=15, value=order_round_off)
+            ro_cell.number_format = "#,##0.00"
+            # Adjust the first line's Total to include round-off
+            first_line_total = ws.cell(row=line_rows_start, column=16).value or 0
+            ws.cell(row=line_rows_start, column=16, value=first_line_total + order_round_off).number_format = "#,##0.00"
+
+        total_taxable += order_taxable
+        total_cgst += order_cgst
+        total_sgst += order_sgst
+        total_igst += order_igst
+        total_round_off += order_round_off
+        total_grand += order_grand
+
+    # Totals row
+    ws.cell(row=row, column=5, value="Total").font = TOTAL_FONT
+    for col, val, fmt in [
+        (6, total_qty, "#,##0"),
+        (8, total_taxable, "#,##0.00"),
+        (10, total_cgst, "#,##0.00"),
+        (12, total_sgst, "#,##0.00"),
+        (14, total_igst, "#,##0.00"),
+        (15, total_round_off, "#,##0.00"),
+        (16, total_grand, "#,##0.00"),
+    ]:
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = TOTAL_FONT
+        c.number_format = fmt
 
     for i, width in enumerate(COLUMN_WIDTHS, start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
