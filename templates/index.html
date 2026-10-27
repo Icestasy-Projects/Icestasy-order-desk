@@ -1052,6 +1052,17 @@ async function selectClient(client) {
     return;
   }
 
+  const needsConsignee = document.getElementById("consigneeDifferent").checked;
+  if (needsConsignee && !state.consignee) {
+    document.getElementById("consigneePickerInput").focus();
+    return;
+  }
+
+  proceedFromClientStep(region);
+}
+
+function proceedFromClientStep(region) {
+  if (!region) region = (state.client && state.client.price_region) || "default";
   hide("step-client");
   show("step-paste");
   renderFormatButtons();
@@ -1128,6 +1139,9 @@ function toggleConsignee(checked) {
     document.getElementById("consigneePickerWrap").style.display = "";
     document.getElementById("consigneeSelectedPill").innerHTML = "";
     document.getElementById("consigneePickerInput").value = "";
+    if (state.client) {
+      proceedFromClientStep();
+    }
   }
 }
 
@@ -1167,6 +1181,9 @@ function selectConsigneeFromList(clientId) {
     document.getElementById("consigneeSelectedPill").innerHTML =
       `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeConsignee()">change</button></div>`;
     document.getElementById("consigneePickerInput").value = "";
+    if (state.client) {
+      proceedFromClientStep();
+    }
   }
 }
 
