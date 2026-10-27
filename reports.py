@@ -256,13 +256,11 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
             if fmt_name and fmt_name != "—":
                 product_info = f"{product_info} - {fmt_name}" if product_info else fmt_name
 
-            line_total = taxable + cgst_amt + sgst_amt + igst_amt
-
             values = [
                 sales_ledger, order_id, order_date, client, consignee, product_info,
                 qty, rate, taxable,
                 cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt,
-                "", line_total, city, sales_ledger,
+                "", "", city, sales_ledger,
             ]
             for col, val in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=col, value=val)
@@ -287,6 +285,9 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         if order_round_off != 0.0:
             ro_cell = ws.cell(row=line_rows_start, column=16, value=order_round_off)
             ro_cell.number_format = "#,##0.00"
+
+        total_cell = ws.cell(row=line_rows_start, column=17, value=order_grand)
+        total_cell.number_format = "#,##0.00"
 
         total_taxable += order_taxable
         total_cgst += order_cgst
