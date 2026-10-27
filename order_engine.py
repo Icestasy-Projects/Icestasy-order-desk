@@ -591,6 +591,12 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             place = addr.data[0].get("locality") or addr.data[0].get("city")
             if place:
                 city_code = _order_city_code(place)
+    if city_code == "ROI":
+        client_row = sb.schema("sales").from_("clients").select("city").eq("id", client_id).limit(1).execute()
+        if client_row.data:
+            client_city = (client_row.data[0].get("city") or "").strip()
+            if client_city:
+                city_code = _order_city_code(client_city)
 
     status = "draft"
 
