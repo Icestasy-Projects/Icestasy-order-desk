@@ -216,28 +216,16 @@ def search_clients(query: str) -> list:
 
 
 def list_clients_lite() -> list:
-    """Every active client's id/name/contact plus derived city from default
-    address — lightweight enough for a 'browse all clients' dropdown while
-    still supporting BU-level filtering."""
+    """Every active client's id/name/contact plus city — lightweight for the
+    'browse all clients' dropdown while supporting BU-level filtering."""
     sb = _sb()
     clients = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("clients")
-        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin, city, addresses(city, locality, is_default)")
+        .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin, city")
         .eq("status", "active").order("business_name").range(start, end)
     ))
     for c in clients:
-        addrs = c.pop("addresses", None) or []
-        direct_city = (c.get("city") or "").strip()
-        if direct_city:
-            c["city"] = direct_city
-        else:
-            default_addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None)
-            if default_addr:
-                place = default_addr.get("locality") or default_addr.get("city") or ""
-                raw_city = default_addr.get("city") or ""
-                c["city"] = city_for_place(place) if place else (raw_city or "Unassigned")
-            else:
-                c["city"] = "Unassigned"
+        c["city"] = (c.get("city") or "").strip() or "Unassigned"
         c["price_region"] = _CITY_TO_PRICE_REGION.get(c["city"], "roi")
     return clients
 

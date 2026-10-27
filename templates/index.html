@@ -1343,7 +1343,7 @@ async function showConfirm() {
 
   document.getElementById("summaryBox").innerHTML = `
     <div class="summary-row"><span>Billing Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
-    ${state.consignee ? `<div class="summary-row"><span>Consignee</span><strong>${state.consignee.business_name}</strong></div>` : ""}
+    ${state.consignee && state.consignee.id !== state.client?.id ? `<div class="summary-row"><span>Consignee</span><strong>${state.consignee.business_name}</strong></div>` : ""}
     <!-- Address row disabled for now -->
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
     <table class="summary-table">
