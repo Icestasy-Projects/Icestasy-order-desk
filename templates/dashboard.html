@@ -53,17 +53,33 @@
 }
 .bu-dropdown-item.active .bu-check { opacity: 1; }
 .bulk-action-bar {
-  position: sticky; bottom: 0; left: 0; right: 0; z-index: 50;
-  display: flex; align-items: center; gap: 10px; padding: 10px 16px;
-  background: var(--slate-800, #1e293b); color: #fff; border-radius: 10px;
-  margin-top: 12px; box-shadow: 0 -4px 20px rgba(0,0,0,.2);
-  font-size: 13px; font-weight: 600;
+  position: sticky; bottom: 16px; left: 16px; right: 16px; z-index: 50;
+  display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+  background: var(--slate-900, #0f172a); color: #fff; border-radius: 14px;
+  margin-top: 16px; box-shadow: 0 8px 32px rgba(0,0,0,.35);
+  font-size: 13px; font-weight: 500; flex-wrap: wrap;
 }
 .bulk-action-bar.hidden { display: none; }
-.bulk-action-bar select { color: var(--slate-800); }
-.bulk-action-bar .btn-option { color: #fff; border-color: rgba(255,255,255,.3); font-size: 12px; }
-.bulk-action-bar .btn-option:hover { background: rgba(255,255,255,.1); }
-.client-checkbox { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; accent-color: var(--brand); }
+.bulk-count { font-weight: 700; font-size: 14px; white-space: nowrap; }
+.bulk-sep { width: 1px; height: 24px; background: rgba(255,255,255,.15); flex-shrink: 0; }
+.bulk-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; opacity: .6; white-space: nowrap; }
+.bulk-cities { display: flex; gap: 6px; flex-wrap: wrap; }
+.bulk-city-chip {
+  padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  border: 1.5px solid rgba(255,255,255,.2); background: transparent; color: #fff;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.bulk-city-chip:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.4); }
+.bulk-city-chip.active { background: var(--brand, #3b82f6); border-color: var(--brand, #3b82f6); }
+.bulk-btn {
+  padding: 6px 16px; border-radius: 8px; font-size: 12px; font-weight: 700;
+  border: none; cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.bulk-btn-delete { background: #ef4444; color: #fff; }
+.bulk-btn-delete:hover { background: #dc2626; }
+.bulk-btn-clear { background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); }
+.bulk-btn-clear:hover { background: rgba(255,255,255,.15); color: #fff; }
+.client-checkbox { width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; accent-color: var(--brand, #3b82f6); }
 </style>
 </head>
 <body>
@@ -279,23 +295,16 @@
         <div id="addClientFormBox"></div>
         <div id="clientsList" class="option-list mt16"></div>
         <div id="bulkActionBar" class="bulk-action-bar hidden">
-          <span id="bulkCount">0 selected</span>
-          <select id="bulkMoveCity" class="search-input" style="width:auto;min-width:140px;padding:6px 10px;font-size:13px">
-            <option value="">Move to city…</option>
-            <option value="Mumbai">Mumbai</option>
-            <option value="Pune">Pune</option>
-            <option value="Hyderabad">Hyderabad</option>
-            <option value="Bangalore">Bangalore</option>
-            <option value="Delhi">Delhi</option>
-            <option value="Goa">Goa</option>
-            <option value="Nashik">Nashik</option>
-            <option value="Kolhapur">Kolhapur</option>
-            <option value="Nagpur">Nagpur</option>
-            <option value="__custom">Other…</option>
-          </select>
-          <button class="btn-option btn-sm" onclick="bulkMoveClients()" id="bulkMoveBtn" disabled>Move</button>
-          <button class="btn-option btn-sm" style="color:var(--red,#ef4444);border-color:var(--red,#ef4444)" onclick="bulkDeleteClients()">Delete</button>
-          <button class="btn-option btn-sm" onclick="clearSelection()" style="margin-left:auto">Clear</button>
+          <span class="bulk-count" id="bulkCount">0</span>
+          <div class="bulk-sep"></div>
+          <span class="bulk-label">Move to</span>
+          <div class="bulk-cities" id="bulkCityChips">
+            <button class="bulk-city-chip" onclick="pickBulkCity(this,'Mumbai')">Mumbai</button>
+            <button class="bulk-city-chip" onclick="pickBulkCity(this,'Pune')">Pune</button>
+          </div>
+          <div class="bulk-sep"></div>
+          <button class="bulk-btn bulk-btn-delete" onclick="bulkDeleteClients()">Delete</button>
+          <button class="bulk-btn bulk-btn-clear" onclick="clearSelection()" style="margin-left:auto">Clear</button>
         </div>
       </section>
     </div>
@@ -1734,47 +1743,27 @@ function updateBulkBar() {
   } else {
     bar.classList.add("hidden");
   }
-  const sel = document.getElementById("bulkMoveCity");
-  document.getElementById("bulkMoveBtn").disabled = !sel.value || sel.value === "";
 }
 
-document.addEventListener("change", e => {
-  if (e.target.id === "bulkMoveCity") {
-    const sel = e.target;
-    if (sel.value === "__custom") {
-      const custom = prompt("Enter city name:");
-      if (custom && custom.trim()) {
-        const opt = document.createElement("option");
-        opt.value = custom.trim();
-        opt.textContent = custom.trim();
-        sel.insertBefore(opt, sel.querySelector('[value="__custom"]'));
-        sel.value = custom.trim();
-      } else {
-        sel.value = "";
-      }
-    }
-    document.getElementById("bulkMoveBtn").disabled = !sel.value;
-  }
-});
-
-async function bulkMoveClients() {
-  const city = document.getElementById("bulkMoveCity").value;
-  if (!city || !selectedClients.size) return;
+function pickBulkCity(btn, city) {
+  if (!selectedClients.size) return;
   const ids = [...selectedClients];
   if (!confirm(`Move ${ids.length} client${ids.length > 1 ? "s" : ""} to ${city}?`)) return;
-  const res = await fetch("/api/admin/clients/bulk-move", {
+  btn.classList.add("active");
+  fetch("/api/admin/clients/bulk-move", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ client_ids: ids, city }),
-  }).then(r => r.json());
-  if (!res.ok) { alert(res.error || "Failed to move clients"); return; }
-  ids.forEach(id => {
-    const c = clientsData.find(x => x.id === id);
-    if (c) c.city = city;
+  }).then(r => r.json()).then(res => {
+    btn.classList.remove("active");
+    if (!res.ok) { alert(res.error || "Failed to move clients"); return; }
+    ids.forEach(id => {
+      const c = clientsData.find(x => x.id === id);
+      if (c) c.city = city;
+    });
+    selectedClients.clear();
+    updateBulkBar();
+    renderClients();
   });
-  selectedClients.clear();
-  document.getElementById("bulkMoveCity").value = "";
-  updateBulkBar();
-  renderClients();
 }
 
 async function bulkDeleteClients() {
