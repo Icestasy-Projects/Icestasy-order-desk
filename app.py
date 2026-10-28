@@ -227,7 +227,7 @@ def new_order():
 @app.route("/api/parse", methods=["POST"])
 def api_parse():
     body = request.get_json(force=True)
-    text = body.get("text", "").strip()
+    text = (body.get("text") or "").strip()
     if not text:
         return jsonify({"error": "empty"}), 400
     result = parse_order_text(text)

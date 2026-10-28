@@ -200,7 +200,6 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
     total_grand = 0.0
 
     for o in orders:
-        order_no = o.get("order_no") or ""
         order_id = o.get("id") or ""
         order_date = _format_date(o.get("created_at", ""))
         city = _report_city(o)
