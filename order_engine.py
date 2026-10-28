@@ -456,6 +456,23 @@ def add_order_collateral(sb, order_id: int, collateral: list) -> list:
     return res.data
 
 
+def _order_region_role(sb, order: dict) -> str:
+    """Region-head role that owns an order, from its shipping address (falling
+    back to the order-number prefix when there is no address on file)."""
+    place = None
+    if order.get("shipping_address_id"):
+        addr = (sb.schema("sales").from_("addresses").select("city,locality")
+                .eq("id", order["shipping_address_id"]).limit(1).execute().data)
+        if addr:
+            place = addr[0].get("locality") or addr[0].get("city")
+    return _region_role_for_city(place or _city_from_order_no(order.get("order_no")))
+
+
+def _require_order_in_region(sb, order: dict, role: str | None, action: str) -> None:
+    if role in REGION_HEAD_ROLES and _order_region_role(sb, order) != role:
+        raise ValueError(f"Not authorized to {action} — order belongs to another region")
+
+
 def check_pending_orders(client_id: int) -> list:
     sb = _sb()
     cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
@@ -473,10 +490,11 @@ def check_pending_orders(client_id: int) -> list:
 
 def cancel_order(order_id: int, user_id: int | None = None, role: str | None = None) -> dict:
     sb = _sb()
-    order = (sb.schema("sales").from_("orders").select("id, status, created_by_user_id, salesperson_id")
+    order = (sb.schema("sales").from_("orders").select("id, order_no, status, created_by_user_id, salesperson_id, shipping_address_id")
              .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "cancel this order")
     if role is not None and role != "admin" and role not in REGION_HEAD_ROLES:
         o = order.data[0]
         if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
@@ -694,12 +712,13 @@ def get_order_lines(order_id: int, user_id: int, role: str, region: str = "") ->
     sb = _sb()
     order = (
         sb.schema("sales").from_("orders")
-        .select("id, created_by_user_id, salesperson_id, shipping_address_id")
+        .select("id, order_no, created_by_user_id, salesperson_id, shipping_address_id")
         .eq("id", order_id).limit(1).execute()
     )
     if not order.data:
         raise ValueError("Order not found")
     o = order.data[0]
+    _require_order_in_region(sb, o, role, "view this order")
     if role != "admin" and role not in REGION_HEAD_ROLES:
         if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
             raise ValueError("Not authorized to view this order")
@@ -728,12 +747,13 @@ def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
     sb = _sb()
     order = (
         sb.schema("sales").from_("orders")
-        .select("status, created_by_user_id, salesperson_id")
+        .select("status, order_no, created_by_user_id, salesperson_id, shipping_address_id")
         .eq("id", order_id).limit(1).execute()
     )
     if not order.data:
         raise ValueError("Order not found")
     o = order.data[0]
+    _require_order_in_region(sb, o, role, "update this order")
     if role not in REGION_HEAD_ROLES and role != "admin":
         if o.get("created_by_user_id") != user_id and o.get("salesperson_id") != user_id:
             raise ValueError("Not authorized to update this order")
@@ -768,7 +788,7 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
 
     orders = _fetch_all_pages(build_orders_query)
     if not orders:
-        return {"lines": [], "orders_without_lines": 0, "value_without_lines": 0.0}
+        return {"lines": [], "order_totals": [], "orders_without_lines": 0, "value_without_lines": 0.0}
 
     addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
     addrs = {a["id"]: a for a in (
@@ -790,6 +810,12 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
     def _addr_place(o):
         addr = addrs.get(o.get("shipping_address_id")) or _client_fallback.get(o.get("client_id")) or {}
         return addr.get("locality") or addr.get("city")
+
+    if role in REGION_HEAD_ROLES:
+        orders = [o for o in orders if _region_role_for_city(
+            _addr_place(o) or _city_from_order_no(o.get("order_no"))) == role]
+        if not orders:
+            return {"lines": [], "order_totals": [], "orders_without_lines": 0, "value_without_lines": 0.0}
 
     orders_by_id = {o["id"]: o for o in orders}
     order_ids = list(orders_by_id.keys())
