@@ -134,8 +134,8 @@ def _region_role_for_city(place: str) -> str:
 # Order number city code — reuses the same city scoping as regional-head
 # visibility, so an order's code matches whichever region head sees it.
 _REGION_ROLE_TO_ORDER_CODE = {
-    "mumbai_head": "MU", "pune_head": "PU", "bangalore_head": "BA",
-    "hyderabad_head": "HY", "delhi_head": "DL", "roi_head": "ROI",
+    "mumbai_head": "MUM", "pune_head": "PUN", "bangalore_head": "BAN",
+    "hyderabad_head": "HYD", "delhi_head": "DEL", "roi_head": "ROI",
 }
 
 
@@ -145,12 +145,20 @@ def _order_city_code(place: str) -> str:
 
 # Reverse of the order-number city code, for orders with no address on file
 # (e.g. sheet-synced "PU10/26-27/3499") — the prefix is the only city signal.
-_ORDER_CODE_TO_CITY = {"MU": "Mumbai", "PU": "Pune", "BA": "Bangalore", "HY": "Hyderabad", "DL": "Delhi"}
+_ORDER_CODE_TO_CITY = {
+    "MUM": "Mumbai", "PUN": "Pune", "BAN": "Bangalore", "HYD": "Hyderabad", "DEL": "Delhi",
+    "MU": "Mumbai", "PU": "Pune", "BA": "Bangalore", "HY": "Hyderabad", "DL": "Delhi",
+}
 
 
 def _city_from_order_no(order_no: str | None) -> str:
     prefix = re.match(r"[A-Za-z]+", order_no or "")
     return _ORDER_CODE_TO_CITY.get(prefix.group(0).upper(), "—") if prefix else "—"
+
+
+def _prefix_from_order_no(order_no: str | None) -> str:
+    prefix = re.match(r"[A-Za-z]+", order_no or "")
+    return prefix.group(0).upper() if prefix else ""
 
 
 def _financial_year(d: date) -> str:
@@ -292,12 +300,10 @@ def get_client_addresses(client_id: int) -> list:
 def create_address(client_id: int, data: dict) -> dict:
     sb = _sb()
     line1 = (data.get("line1") or "").strip()
-    # "city" is entered at locality precision (e.g. "Bandra West") — the whole
-    # book of business is Mumbai, so `city` itself is now a fixed "Mumbai" and
-    # the actual submitted value is preserved in `locality`.
     locality = (data.get("city") or "").strip()
     state = (data.get("state") or "").strip()
     pincode = (data.get("pincode") or "").strip()
+    city = city_for_place(locality) if locality else "Mumbai"
 
     if not line1:
         raise ValueError("Address line is required")
@@ -317,7 +323,7 @@ def create_address(client_id: int, data: dict) -> dict:
         "gstin": (data.get("gstin") or "").strip() or None,
         "line1": line1,
         "line2": (data.get("line2") or "").strip() or None,
-        "city": "Mumbai",
+        "city": city,
         "locality": locality,
         "state": state,
         "state_code": _state_code_for(state),
@@ -424,24 +430,19 @@ def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
 
 
 def _next_order_no(sb, city_code: str) -> str:
-    """{CITY}{MM}/{FY}/I{SEQ:04d}, e.g. MU05/26-27/I1843 — sequence is scoped
-    per city per financial year (Indian FY, April-March), so it resets when
-    a new FY starts and each city counts independently. The "I" prefix marks
-    the sequence segment as the invoice number.
+    """{CITY}/{YY}/{MM}/{SEQ:04d}, e.g. MUM/26/10/0008 — sequence is scoped
+    per city per calendar year, so it resets when a new year starts and each
+    city counts independently.
 
     The sequence itself lives in sales.order_sequences and is incremented via
     the sales.next_order_seq() RPC, which does an atomic INSERT ... ON
-    CONFLICT DO UPDATE. This used to be a client-side SELECT-then-max over
-    sales.orders, which silently truncated at PostgREST's 1000-row default
-    page size for any city/FY with more orders than that — computing a stale
-    max and colliding with real order numbers — and was racy under
-    concurrent order creation regardless of row count.
+    CONFLICT DO UPDATE.
     """
     today = date.today()
-    fy = _financial_year(today)
+    yy = f"{today.year % 100:02d}"
     mm = f"{today.month:02d}"
-    seq = sb.schema("sales").rpc("next_order_seq", {"p_city_code": city_code, "p_fy": fy}).execute().data
-    return f"{city_code}{mm}/{fy}/I{seq:04d}"
+    seq = sb.schema("sales").rpc("next_order_seq", {"p_city_code": city_code, "p_fy": yy}).execute().data
+    return f"{city_code}/{yy}/{mm}/{seq:04d}"
 
 
 def add_order_collateral(sb, order_id: int, collateral: list) -> list:

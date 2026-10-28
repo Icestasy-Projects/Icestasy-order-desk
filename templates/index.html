@@ -223,9 +223,6 @@
             <button class="bu-dropdown-item active" data-bu="all" onclick="selectBU('all')">All Locations <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
             <button class="bu-dropdown-item" data-bu="mumbai" onclick="selectBU('mumbai')">Mumbai <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
             <button class="bu-dropdown-item" data-bu="pune" onclick="selectBU('pune')">Pune <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
-            <button class="bu-dropdown-item" data-bu="bangalore" onclick="selectBU('bangalore')">Bangalore <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
-            <button class="bu-dropdown-item" data-bu="hyderabad" onclick="selectBU('hyderabad')">Hyderabad <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
-            <button class="bu-dropdown-item" data-bu="delhi" onclick="selectBU('delhi')">Delhi <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
             <button class="bu-dropdown-item" data-bu="roi" onclick="selectBU('roi')">ROI <svg class="bu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
           </div>
         </div>
@@ -929,8 +926,10 @@ async function changeItems() {
 
 
 
+function escapeHtml(s){if(!s)return"";const d=document.createElement("div");d.textContent=s;return d.innerHTML;}
+
 // ── BU location selector (client-side filter only) ──────────────────────────
-const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",bangalore:"Bangalore",hyderabad:"Hyderabad",delhi:"Delhi",roi:"ROI"};
+const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",roi:"ROI"};
 let selectedBU = "all";
 
 (function initBU() {
@@ -1020,7 +1019,7 @@ function filterClientDropdown(query) {
   } else {
     listEl.innerHTML = filtered.map(c =>
       `<div class="sku-picker-option" onmousedown="selectClientFromList('${c.id}')">
-        <span class="sku-name">${c.business_name}</span>
+        <span class="sku-name">${escapeHtml(c.business_name)}</span>
         <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}</span>
       </div>`
     ).join("");
@@ -1038,7 +1037,7 @@ async function selectClient(client) {
   closeAllSkuDropdowns();
   document.getElementById("clientPickerWrap").style.display = "none";
   document.getElementById("clientSelectedPill").innerHTML =
-    `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+    `<div class="selected-pill">${icon("check")} ${escapeHtml(client.business_name)} <button class="pill-change" onclick="changeClient()">change</button></div>`;
   document.getElementById("clientPickerInput").value = "";
 
   const region = client.price_region || "default";
@@ -1165,7 +1164,7 @@ function filterConsigneeDropdown(query) {
   } else {
     listEl.innerHTML = filtered.map(c =>
       `<div class="sku-picker-option" onmousedown="selectConsigneeFromList('${c.id}')">
-        <span class="sku-name">${c.business_name}</span>
+        <span class="sku-name">${escapeHtml(c.business_name)}</span>
         <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}</span>
       </div>`
     ).join("");
@@ -1179,7 +1178,7 @@ function selectConsigneeFromList(clientId) {
     state.consignee = client;
     document.getElementById("consigneePickerWrap").style.display = "none";
     document.getElementById("consigneeSelectedPill").innerHTML =
-      `<div class="selected-pill">${icon("check")} ${client.business_name} <button class="pill-change" onclick="changeConsignee()">change</button></div>`;
+      `<div class="selected-pill">${icon("check")} ${escapeHtml(client.business_name)} <button class="pill-change" onclick="changeConsignee()">change</button></div>`;
     document.getElementById("consigneePickerInput").value = "";
     if (state.client) {
       proceedFromClientStep();
@@ -1342,8 +1341,8 @@ async function showConfirm() {
   }
 
   document.getElementById("summaryBox").innerHTML = `
-    <div class="summary-row"><span>Billing Client</span><strong>${state.client?.business_name || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
-    ${state.consignee && state.consignee.id !== state.client?.id ? `<div class="summary-row"><span>Consignee</span><strong>${state.consignee.business_name}</strong></div>` : ""}
+    <div class="summary-row"><span>Billing Client</span><strong>${escapeHtml(state.client?.business_name) || "—"} <button class="pill-change" onclick="changeClient()">change</button></strong></div>
+    ${state.consignee && state.consignee.id !== state.client?.id ? `<div class="summary-row"><span>Consignee</span><strong>${escapeHtml(state.consignee.business_name)}</strong></div>` : ""}
     <!-- Address row disabled for now -->
     ${resolved.length ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><span class="step-label" style="margin:0">Items</span><button class="pill-change" onclick="changeItems()">change</button></div>
     <table class="summary-table">
@@ -1599,7 +1598,7 @@ function renderDoneOrders(orders, title) {
       <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
       <div class="done-title">Order Confirmed</div>
       <a class="done-no" href="/orders?order=${order.id}" style="text-decoration:none">${order.order_no}</a>
-      <div class="done-meta">${state.client.business_name}</div>
+      <div class="done-meta">${escapeHtml(state.client.business_name)}</div>
       ${discLine}
       <ul class="done-lines">${linesList}</ul>
       <div class="done-total">Total: <strong>${total}</strong></div>
@@ -1690,7 +1689,7 @@ async function restoreOrderDraft() {
     // Restore client pill
     document.getElementById("clientPickerWrap").style.display = "none";
     document.getElementById("clientSelectedPill").innerHTML =
-      `<div class="selected-pill">${icon("check")} ${state.client.business_name} <button class="pill-change" onclick="changeClient()">change</button></div>`;
+      `<div class="selected-pill">${icon("check")} ${escapeHtml(state.client.business_name)} <button class="pill-change" onclick="changeClient()">change</button></div>`;
 
     // Show the step the user was on (redirect removed steps to confirm)
     let target = draft.step || "step-paste";
@@ -1733,7 +1732,7 @@ function renderOrderSummary() {
   const lines = [];
 
   if (state.client && pastClient.includes(step)) {
-    lines.push(`<div class="summary-line"><span class="summary-label">Client</span><span class="summary-value">${state.client.business_name}</span></div>`);
+    lines.push(`<div class="summary-line"><span class="summary-label">Client</span><span class="summary-value">${escapeHtml(state.client.business_name)}</span></div>`);
   }
   if (state.items.length && pastItems.includes(step)) {
     const chips = state.items.map(it => {
