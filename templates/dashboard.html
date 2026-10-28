@@ -530,8 +530,8 @@ function _orderMatchesBU(o) {
   if (selectedBU === "all") return true;
   const c = o.city;
   if (!c || c === "—") {
-    const prefix = (o.order_no || "").replace(/[0-9].*/,"").toUpperCase();
-    const mapped = {MU:"mumbai",PU:"pune",ROI:"roi"}[prefix];
+    const prefix = (o.order_no || "").replace(/[\d/].*/,"").toUpperCase();
+    const mapped = {MUM:"mumbai",PUN:"pune",ROI:"roi",MU:"mumbai",PU:"pune"}[prefix];
     return mapped === selectedBU;
   }
   const citySet = _BU_CITIES[selectedBU];
@@ -1012,11 +1012,11 @@ async function markCompleted(orderId) {
 
 // Mumbai Metropolitan Region: these are separate real cities but reported as one "Mumbai" group.
 const MMR_CITIES = new Set(["Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"]);
-const PREFIX_CITY = {PU: "Pune", MU: "Mumbai", BA: "Bangalore", HY: "Hyderabad", DL: "Delhi", ROI: "ROI"};
+const PREFIX_CITY = {MUM:"Mumbai",PUN:"Pune",BAN:"Bangalore",HYD:"Hyderabad",DEL:"Delhi",ROI:"ROI",MU:"Mumbai",PU:"Pune",BA:"Bangalore",HY:"Hyderabad",DL:"Delhi"};
 function mmrCity(city) { return MMR_CITIES.has(city) ? "Mumbai" : city; }
 function reportCity(o) {
   let c = o.city;
-  if (!c || c === "—") c = PREFIX_CITY[(o.order_no || "").replace(/[0-9].*/, "").toUpperCase()] || "Auto Synced";
+  if (!c || c === "—") c = PREFIX_CITY[(o.order_no || "").replace(/[\d/].*/, "").toUpperCase()] || "Auto Synced";
   return mmrCity(c);
 }
 
