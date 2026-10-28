@@ -69,13 +69,13 @@ WhatsApp message → parser.py (regex + fuzzy + Groq LLM)
 ### Order Number Format
 
 ```
-{CITY_CODE}{MM}/{FY}/{SEQ}
-Example: MU09/26-27/0042 (Mumbai, September, FY 2026-27, sequence 42)
+{CITY_CODE}/{YY}/{MM}/{SEQ:04d}
+Example: MUM/26/10/0008 (Mumbai, 2026, October, sequence 8)
 ```
 
-City codes: `MU` (Mumbai), `PU` (Pune), `BA` (Bangalore), `HY` (Hyderabad), `DL` (Delhi), `ROI` (Rest of India).
+City codes: `MUM` (Mumbai), `PUN` (Pune), `BAN` (Bangalore), `HYD` (Hyderabad), `DEL` (Delhi), `ROI` (Rest of India).
 
-Sequence is atomic — `sales.next_order_seq()` uses `INSERT ... ON CONFLICT DO UPDATE` with a row lock to prevent collisions under concurrency.
+Sequence is scoped per city per calendar year. `sales.next_order_seq()` uses `INSERT ... ON CONFLICT DO UPDATE` with a row lock to prevent collisions under concurrency.
 
 ### Invoice Generation
 
@@ -116,7 +116,7 @@ All tables live in the `sales` schema.
 | `order_collateral` | Attachments/collateral linked to orders |
 | `stock_requests` | Stock request header; requesting city, status, requested_by |
 | `stock_request_lines` | Individual SKU lines within a stock request; requested/approved qty |
-| `order_sequences` | Atomic counter per (city_code, FY) for order number generation |
+| `order_sequences` | Atomic counter per (city_code, calendar year) for order number generation |
 
 ### Key Relationships
 
@@ -168,13 +168,13 @@ flask run --debug
 ### Dependencies (`requirements.txt`)
 
 ```
-flask
-supabase
-python-dotenv
-requests
-openpyxl
-reportlab
-qrcode[pil]
+flask==3.1.1
+supabase==2.13.0
+python-dotenv==1.0.1
+requests==2.32.3
+openpyxl==3.1.5
+reportlab==4.2.5
+qrcode[pil]==8.0
 ```
 
 ## Deployment
