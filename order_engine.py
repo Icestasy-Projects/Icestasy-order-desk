@@ -21,11 +21,13 @@ _PAGE_SIZE = 1000  # PostgREST's default max rows per request — must page past
 def _fetch_all_pages(build_query) -> list:
     """build_query(start, end) must return a fresh, unexecuted query with .range(start, end)
     applied — PostgREST silently caps unbounded selects at _PAGE_SIZE rows, so anything that
-    can plausibly exceed that (orders, order_lines) has to be paged through explicitly."""
+    can plausibly exceed that (orders, order_lines) has to be paged through explicitly.
+    Pages are ordered by id as a final tie-breaker: without a deterministic order,
+    Postgres may return overlapping/skipped rows across range() calls."""
     rows = []
     start = 0
     while True:
-        batch = build_query(start, start + _PAGE_SIZE - 1).execute().data
+        batch = build_query(start, start + _PAGE_SIZE - 1).order("id").execute().data
         rows.extend(batch)
         if len(batch) < _PAGE_SIZE:
             break
@@ -234,7 +236,7 @@ def list_clients_lite() -> list:
     ))
     for c in clients:
         c["city"] = (c.get("city") or "").strip() or "Unassigned"
-        c["price_region"] = _CITY_TO_PRICE_REGION.get(c["city"], "roi")
+        c["price_region"] = price_region_for_city(c["city"])
     return clients
 
 
@@ -468,6 +470,21 @@ def _order_region_role(sb, order: dict) -> str:
     return _region_role_for_city(place or _city_from_order_no(order.get("order_no")))
 
 
+def order_level_discount(discount_amount, lines: list, subtotal: float) -> float:
+    """The part of orders.discount_amount that is NOT already baked into the
+    order lines' line_total (i.e. the order-wide "Discount %"). `lines` are
+    order_lines rows carrying line_discount_amount; subtotal is sum(line_total)."""
+    try:
+        total_discount = float(discount_amount or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    line_discount = sum(float(l.get("line_discount_amount") or 0) for l in lines)
+    extra = round(total_discount - line_discount, 2)
+    if extra < 0.01 or subtotal <= 0:
+        return 0.0
+    return min(extra, round(subtotal, 2))
+
+
 def _require_order_in_region(sb, order: dict, role: str | None, action: str) -> None:
     if role in REGION_HEAD_ROLES and _order_region_role(sb, order) != role:
         raise ValueError(f"Not authorized to {action} — order belongs to another region")
@@ -683,11 +700,13 @@ def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
     return out
 
 
-def mark_payment_received(order_id: int, received_by: int) -> dict:
+def mark_payment_received(order_id: int, received_by: int, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("total_amount, status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders").select("total_amount, status, order_no, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "record payment for this order")
     if order.data[0]["status"] in ("rejected", "cancelled"):
         raise ValueError(f"Order is {order.data[0]['status']} — nothing to collect payment for")
     already = (sb.schema("sales").from_("payments").select("id")
@@ -981,6 +1000,8 @@ def approve_order(order_id: int, approved_by: int) -> dict:
         raise ValueError("Order not found")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
+    if order.data[0]["status"] == "hold":
+        raise ValueError("Order is on hold — release the hold before approving")
     res = sb.schema("sales").from_("orders").update({"status": "approved"}).eq("id", order_id).execute()
     return res.data[0]
 
@@ -1155,7 +1176,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
         q = (
             sb.schema("sales").from_("orders")
             .select("id, order_no, created_at, client_id, billing_address_id, "
-                    "shipping_address_id, status")
+                    "shipping_address_id, status, discount_amount")
             .in_("status", list(_DUES_ORDER_STATUSES))
             .order("created_at")
         )
@@ -1188,7 +1209,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
         def build_lines_query(start, end, chunk_ids=chunk_ids):
             return (
                 sb.schema("sales").from_("order_lines")
-                .select("order_id, quantity, unit_price, line_total, "
+                .select("order_id, quantity, unit_price, line_total, line_discount_amount, "
                         "skus(hsn_code, gst_rate, flavours(name), pack_formats(name))")
                 .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
             )
@@ -1223,6 +1244,12 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
                 "quantity": qty, "rate": rate, "amount": round(net, 2),
                 "gstRate": gst_rate,
             })
+
+        order_discount = order_level_discount(o.get("discount_amount"), lines_by_order.get(o["id"], []), subtotal)
+        if order_discount:
+            factor = (subtotal - order_discount) / subtotal
+            tax_buckets = {rate: taxable * factor for rate, taxable in tax_buckets.items()}
+            subtotal -= order_discount
 
         total_tax = 0.0
         cgst = sgst = igst = 0.0

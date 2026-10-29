@@ -17,7 +17,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "logo1_trimmed.png")
 
-from order_engine import _sb
+from order_engine import _sb, _require_order_in_region, order_level_discount
 
 COMPANY = {
     "name": "Icestasy Projects Pvt. Ltd.",
@@ -135,7 +135,15 @@ def _upi_qr_image(amount: float, order_no: str) -> Image:
     return Image(buf, width=26 * mm, height=26 * mm)
 
 
-def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
+def _parse_iso(value: str) -> datetime:
+    """fromisoformat() on Python < 3.11 rejects "Z" and short "+00" offsets."""
+    value = value.replace("Z", "+00:00")
+    if len(value) > 3 and value[-3] in "+-" and value[-6] not in "+-":
+        value += ":00"
+    return datetime.fromisoformat(value)
+
+
+def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesIO, str]:
     sb = _sb()
     order_res = (
         sb.schema("sales").from_("orders")
@@ -146,6 +154,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
     if not order_res.data:
         raise ValueError("Order not found")
     order = order_res.data[0]
+    _require_order_in_region(sb, order, role, "view this invoice")
     if order["status"] not in ("approved", "invoiced", "delivered"):
         raise ValueError("Order must be approved or completed before an invoice can be generated")
 
@@ -195,6 +204,15 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
             str(i), f"{_esc(flavour_name)} - {_esc(format_name)}", sku.get("hsn_code") or "—",
             f"{disc_pct:.0f}" if disc_pct else "", f"{qty:g}", f"{rate:,.2f}", f"{net:,.2f}",
         ])
+
+    # Order-level discount (the "Discount %" on the order) isn't stored on any
+    # line — spread it across the tax buckets pro rata so the invoice total
+    # matches what the customer was actually quoted.
+    order_discount = order_level_discount(order.get("discount_amount"), lines, subtotal)
+    if order_discount:
+        factor = (subtotal - order_discount) / subtotal
+        tax_buckets = {rate: taxable * factor for rate, taxable in tax_buckets.items()}
+        subtotal -= order_discount
 
     tax_rows = []
     total_tax = 0.0
@@ -259,7 +277,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
         f"Fssai No : {_esc(client.get('fssai_no') or '—')}", styles["small"])
     meta = Paragraph(
         f"Invoice No<br/><b>{_esc(order['order_no'])}</b><br/>Dated<br/>"
-        f"<b>{datetime.fromisoformat(order['created_at']).strftime('%d-%b-%y')}</b><br/>"
+        f"<b>{_parse_iso(order['created_at']).strftime('%d-%b-%y')}</b><br/>"
         f"Godown<br/><b>{COMPANY['godown']}</b><br/>Destination<br/>"
         f"<b>{_esc((shipping_addr or {}).get('locality') or (shipping_addr or {}).get('city') or '—')}</b>", styles["small"])
     story.append(Table([[consignee, buyer, meta]], colWidths=[76 * mm, 76 * mm, 38 * mm],
@@ -277,6 +295,8 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
                                    for i, c in enumerate(row)] for row in line_rows]
     for label, amt in tax_rows:
         item_data.append(["", "", "", "", "", label, f"{amt:,.2f}"])
+    if order_discount:
+        item_data.append(["", "", "", "", "", "Order Discount", f"-{order_discount:,.2f}"])
     if abs(rounded_off) > 0.001:
         item_data.append(["", "", "", "", "", "Rounded Off", f"{rounded_off:,.2f}"])
     item_data.append([Paragraph("<b>Total</b>", styles["cellB"]), "", "", "", f"{total_qty:g}", "",
@@ -302,7 +322,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
 
     qr_img = _upi_qr_image(grand_total, order["order_no"])
     last_pay_line = (
-        f"Last Payment Date : <b>{datetime.fromisoformat(ledger['last_payment_date']).strftime('%d-%b-%y')}</b><br/>"
+        f"Last Payment Date : <b>{_parse_iso(ledger['last_payment_date']).strftime('%d-%b-%y')}</b><br/>"
         f"Last Payment Amount : <b>{ledger['last_payment_amount']:,.2f} Cr</b><br/>"
         if ledger["last_payment_date"] else "Last Payment Date : —<br/>"
     )

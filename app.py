@@ -543,7 +543,7 @@ def api_flavour_sales():
 @broad_view_required
 def api_mark_paid(order_id):
     try:
-        payment = mark_payment_received(order_id, received_by=session["user_id"])
+        payment = mark_payment_received(order_id, received_by=session["user_id"], role=session["role"])
         return jsonify({"ok": True, "payment": payment})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -904,7 +904,7 @@ def api_bulk_delete_clients():
 def api_order_invoice(order_id):
     from invoicing import build_invoice_pdf
     try:
-        buf, filename = build_invoice_pdf(order_id)
+        buf, filename = build_invoice_pdf(order_id, role=session["role"])
     except ValueError as e:
         return jsonify({"error": str(e)}), 409
     except Exception as e:
@@ -925,4 +925,4 @@ def api_tally_sales():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001, threaded=True)
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1", port=5001, threaded=True)

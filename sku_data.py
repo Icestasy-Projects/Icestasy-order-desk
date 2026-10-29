@@ -97,10 +97,10 @@ FORMAT_ALIASES = {
 # (last refreshed 2026-08-28 against the live catalog), so behaviour is
 # identical whether Supabase is reachable or not. Several flavours have moved
 # id since this was first written (e.g. Kesar Thandai 23->55, Madagascar
-# Vanilla 42->448) and a handful (Gulab Jamun, Sheer Qhurma, Banarasi Meetha
-# Paan, Caramelized Popcorn, Dates and Almonds, Pineapple, Jambhul, Legal
-# Overdose, Signature Chocolate (Cacaoir), Chocolate Choice (FD)) have been
-# discontinued outright — this block is refreshed to match exactly rather
+# Vanilla 42->448) and a handful (Sheer Qhurma, Banarasi Meetha Paan,
+# Caramelized Popcorn, Dates and Almonds, Chocolate Choice (FD)) have been
+# discontinued outright (Gulab Jamun, Pineapple, Jambhul, Legal Overdose and
+# Signature Chocolate (Cacaoir) were later re-added) — this block is refreshed to match exactly rather
 # than patched id-by-id, since FLAVOUR_ALIASES resolves by name (see below),
 # not by these ids, so drift here only matters for the offline-fallback path.
 _FLAVOURS = {
