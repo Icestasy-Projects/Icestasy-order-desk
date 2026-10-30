@@ -543,7 +543,7 @@ def api_flavour_sales():
 @broad_view_required
 def api_mark_paid(order_id):
     try:
-        payment = mark_payment_received(order_id, received_by=session["user_id"])
+        payment = mark_payment_received(order_id, received_by=session["user_id"], role=session["role"])
         return jsonify({"ok": True, "payment": payment})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -555,7 +555,7 @@ def api_mark_paid(order_id):
 @admin_required
 def api_approve_order(order_id):
     try:
-        order = approve_order(order_id, approved_by=session["user_id"])
+        order = approve_order(order_id, approved_by=session["user_id"], role=session["role"])
         return jsonify({"ok": True, "order": order})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -567,7 +567,7 @@ def api_approve_order(order_id):
 @admin_required
 def api_reject_order(order_id):
     try:
-        order = reject_order(order_id, rejected_by=session["user_id"])
+        order = reject_order(order_id, rejected_by=session["user_id"], role=session["role"])
         return jsonify({"ok": True, "order": order})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -904,7 +904,7 @@ def api_bulk_delete_clients():
 def api_order_invoice(order_id):
     from invoicing import build_invoice_pdf
     try:
-        buf, filename = build_invoice_pdf(order_id)
+        buf, filename = build_invoice_pdf(order_id, role=session["role"])
     except ValueError as e:
         return jsonify({"error": str(e)}), 409
     except Exception as e:

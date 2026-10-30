@@ -634,12 +634,22 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             "line_discount_amount": str(disc * qty),
             "line_total": str(qty * price - disc * qty), "status": "active",
         })
-    if line_rows:
-        sb.schema("sales").from_("order_lines").insert(line_rows).execute()
+    try:
+        if line_rows:
+            sb.schema("sales").from_("order_lines").insert(line_rows).execute()
+        saved = add_order_collateral(sb, order_id, collateral) if collateral else []
+    except Exception:
+        # No transaction across these inserts — don't leave a line-less
+        # order behind that would show up in the dashboard and dues.
+        try:
+            sb.schema("sales").from_("order_lines").delete().eq("order_id", order_id).execute()
+            sb.schema("sales").from_("orders").delete().eq("id", order_id).execute()
+        except Exception:
+            pass
+        raise
 
     collateral_out = []
     if collateral:
-        saved = add_order_collateral(sb, order_id, collateral)
         collateral_out = [{"type": c["collateral_type"], "quantity": c["quantity"], "notes": c.get("notes")}
                            for c in saved]
 
@@ -683,11 +693,13 @@ def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
     return out
 
 
-def mark_payment_received(order_id: int, received_by: int) -> dict:
+def mark_payment_received(order_id: int, received_by: int, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("total_amount, status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders").select("total_amount, status, order_no, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "record payment for this order")
     if order.data[0]["status"] in ("rejected", "cancelled"):
         raise ValueError(f"Order is {order.data[0]['status']} — nothing to collect payment for")
     already = (sb.schema("sales").from_("payments").select("id")
@@ -974,22 +986,26 @@ def fetch_payment_summaries(order_ids: list) -> dict:
     return payments
 
 
-def approve_order(order_id: int, approved_by: int) -> dict:
+def approve_order(order_id: int, approved_by: int, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders").select("status, order_no, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "approve this order")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
     res = sb.schema("sales").from_("orders").update({"status": "approved"}).eq("id", order_id).execute()
     return res.data[0]
 
 
-def reject_order(order_id: int, rejected_by: int) -> dict:
+def reject_order(order_id: int, rejected_by: int, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders").select("status, order_no, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "reject this order")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
     res = sb.schema("sales").from_("orders").update({"status": "rejected"}).eq("id", order_id).execute()
