@@ -113,31 +113,31 @@ add("E-qty", "7 Gulqand", qty=7)
 add("E-qty", "23 Pineapple", qty=23)
 add("E-qty", "9 Jambhul", qty=9)
 
-# ── F. Payment mode detection ────────────────────────────────────────────────
-add("F-payment", "2 Kaju Katli\nAdvance", payment="advance")
-add("F-payment", "2 Kaju Katli\nInvoice", payment="invoice")
-add("F-payment", "2 Kaju Katli\nCredit", payment="credit")
-add("F-payment", "2 Kaju Katli\nADVANCE", payment="advance")
-add("F-payment", "2 Kaju Katli\ninvoice", payment="invoice")
-add("F-payment", "2 Kaju Katli", payment=None)
+# ── F. Payment words are ignored (not items) — extraction was removed from the parser ────────────────────────────────────────────────
+add("F-payment", "2 Kaju Katli\nAdvance", item_count=1)
+add("F-payment", "2 Kaju Katli\nInvoice", item_count=1)
+add("F-payment", "2 Kaju Katli\nCredit", item_count=1)
+add("F-payment", "2 Kaju Katli\nADVANCE", item_count=1)
+add("F-payment", "2 Kaju Katli\ninvoice", item_count=1)
+add("F-payment", "2 Kaju Katli", item_count=1)
 
-# ── G. Client hint detection ─────────────────────────────────────────────────
-add("G-client", "2 Kaju Katli\nClient: Ocean View Cafe", client_hint="Ocean View Cafe")
-add("G-client", "2 Kaju Katli\nClient Ocean View Cafe", client_hint="Ocean View Cafe")
-add("G-client", "2 Kaju Katli\nclient:   Spaced Out Cafe", client_hint="Spaced Out Cafe")
-add("G-client", "2 Kaju Katli\nCLIENT: Upper Case Cafe", client_hint="Upper Case Cafe")
-add("G-client", "2 Kaju Katli", client_hint=None)
-add("G-client", "2 Kaju Katli\nOcean Pearl Diner", client_hint="Ocean Pearl Diner")
+# ── G. Client lines are ignored (not items) ─────────────────────────────────────────────────
+add("G-client", "2 Kaju Katli\nClient: Ocean View Cafe", item_count=1)
+add("G-client", "2 Kaju Katli\nClient Ocean View Cafe", item_count=1)
+add("G-client", "2 Kaju Katli\nclient:   Spaced Out Cafe", item_count=1)
+add("G-client", "2 Kaju Katli\nCLIENT: Upper Case Cafe", item_count=1)
+add("G-client", "2 Kaju Katli", item_count=1)
+add("G-client", "2 Kaju Katli\nOcean Pearl Diner", item_count=1)
 
 # ── H. Realistic multi-item orders ───────────────────────────────────────────
 add("H-multi", "2 Gajar Halwa\n3 Pineapple\n1 Jambhul\nInvoice\nClient: Ocean View Cafe",
-    item_count=3, payment="invoice", client_hint="Ocean View Cafe")
-add("H-multi", "5 Kaju Katli\n5 Gulab Jamun\nAdvance", item_count=2, payment="advance")
+    item_count=3)
+add("H-multi", "5 Kaju Katli\n5 Gulab Jamun\nAdvance", item_count=2)
 add("H-multi", "2 Chikoo\n4 Ramphal\n6 Dates and Almonds\n1 Wasabi Punch\nCredit\nClient: Test Cafe",
-    item_count=4, payment="credit", client_hint="Test Cafe")
+    item_count=4)
 add("H-multi", "1 Signature Chocolate\n1 Midnight Mania\n1 Legal Overdose", item_count=3)
 add("H-multi", "10 Hass Avocado\n10 Puranpoli\nAdvance\nClient: Dakshin Diners",
-    item_count=2, payment="advance", client_hint="Dakshin Diners")
+    item_count=2)
 
 # ── I. Not-found / garbage input ─────────────────────────────────────────────
 for garbage in ["5 Xyzabc Nonsense Flavour", "3 Qwerty Uiop", "1 Foobar Baz Quux",
@@ -150,12 +150,12 @@ add("J-format-robust", "1 KAJU KATLI", not_found=False, flavour_in="Kaju Katli")
 add("J-format-robust", "1 kaju katli", not_found=False, flavour_in="Kaju Katli")
 add("J-format-robust", "1 KaJu KaTlI", not_found=False, flavour_in="Kaju Katli")
 add("J-format-robust", "  2   Gulqand  ", not_found=False, flavour_in="Gulqand")
-add("J-format-robust", "2 Gulqand\n\n\nAdvance", payment="advance")
-add("J-format-robust", "1 PINEAPPLE\nINVOICE\nCLIENT: TEST", payment="invoice", client_hint="TEST")
+add("J-format-robust", "2 Gulqand\n\n\nAdvance")
+add("J-format-robust", "1 PINEAPPLE\nINVOICE\nCLIENT: TEST")
 add("J-format-robust", "\n\n2 Ramphal\n\n", not_found=False, flavour_in="Ramphal")
-add("J-format-robust", "1 Jambhul\t\t", not_found=True)  # discontinued flavour
+add("J-format-robust", "1 Jambhul\t\t", not_found=False, flavour_in="Jambhul")
 add("J-format-robust", "1 dakshin laddoo", not_found=False, flavour_in="Dakshin Laddoo")
-add("J-format-robust", "1 LEGAL OVERDOSE", not_found=True)  # discontinued flavour
+add("J-format-robust", "1 LEGAL OVERDOSE", not_found=False, flavour_in="Legal Overdose")
 
 # ── K. Real, independently-sourced WhatsApp order messages ──────────────────
 # Unlike A-J (derived from the parser's own alias/catalog data), these 9 are
@@ -166,15 +166,15 @@ add("J-format-robust", "1 LEGAL OVERDOSE", not_found=True)  # discontinued flavo
 # synthetic cases built from the same data the parser matches against.
 
 add("K-real", "Louts biscoff 02 \nBelgium chocolate 01 \n(Veg treat express chikuwadi)",
-    item_count=2, client_hint="chikuwadi")
+    item_count=2)
 add("K-real", "Kaju 1 Sheer korma 2 Guluqud 1",
     item_count=3)
 add("K-real", "Gova =1 \n3 boxes modak icecream \nGoaikars coastal express pe chahiye",
-    item_count=2, client_hint="Goaikars")
+    item_count=2)
 add("K-real", "1. Filter kaafi ice cream=1 box \n2. ⁠modak ice cream=1 box\n3. ⁠puranpoli ice cream=1 box",
     item_count=3)
 add("K-real", "The food studio malad \nBelgium specloss =01",
-    item_count=1, client_hint="food studio")
+    item_count=1)
 add("K-real", "Sudama Wakad 4 ltr Peruo Oro cholaclate Each 1 \nFor Soam 1 Bulk Jackfruit 1 Bulk kafir lime 1 Bulk Choclate",
     item_count=4)
 add("K-real", " *Mi hi koli dombivli requirement* Modak icecream 1 Chocolate ice-cream 1 Vanila 1 Tender coconut 1",
@@ -184,7 +184,7 @@ add("K-real", "S-2 M-2 G-2",
 add("K-real", "Send 1 biscoff ice cream Ratnagiri 2 Chocolate 1",
     item_count=3)
 add("K-real", "4 ltr Happy Cloud-\n* Vanilla ice cream - 01 bulk\n* Strawberry - 01 bulk",
-    item_count=2, client_hint=None)
+    item_count=2)
 
 
 def _run_k_quantity_checks():
