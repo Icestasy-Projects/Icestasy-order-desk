@@ -1,4 +1,5 @@
 /run.ps1
 .env
-.env.*__pycache__/
+.env.*
+__pycache__/
 *.pyc
