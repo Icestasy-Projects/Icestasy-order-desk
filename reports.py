@@ -17,6 +17,7 @@ STATUS_LABELS = {
     "draft": "Order Pending", "pending_approval": "In Progress", "approved": "In Progress",
     "in_production": "In Progress", "dispatched": "In Progress", "delivered": "Completed",
     "rejected": "Rejected", "cancelled": "Cancelled", "invoiced": "Invoiced",
+    "hold": "On Hold",
 }
 PAY_LABELS = {
     "received": "Payment Completed", "pending": "Payment Pending", "failed": "Payment Failed",

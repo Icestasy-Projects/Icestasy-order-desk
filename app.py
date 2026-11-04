@@ -327,7 +327,7 @@ def api_client_dues():
 @broad_view_required
 def api_client_due_detail(client_id):
     try:
-        return jsonify(client_due_detail(client_id))
+        return jsonify(client_due_detail(client_id, role=session.get("role")))
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
@@ -543,7 +543,7 @@ def api_flavour_sales():
 @broad_view_required
 def api_mark_paid(order_id):
     try:
-        payment = mark_payment_received(order_id, received_by=session["user_id"])
+        payment = mark_payment_received(order_id, received_by=session["user_id"], role=session["role"])
         return jsonify({"ok": True, "payment": payment})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -604,6 +604,9 @@ def api_create_team_member():
 @admin_required
 def api_update_team_member(staff_id):
     body = request.get_json(force=True)
+    if staff_id == session.get("user_id") and (body.get("is_active") is False or
+                                                ("role" in body and body["role"] != session.get("role"))):
+        return jsonify({"ok": False, "error": "You can't deactivate or change the role of your own account"}), 409
     try:
         member = update_team_member(staff_id, body)
         return jsonify({"ok": True, "member": member})
@@ -616,6 +619,8 @@ def api_update_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>", methods=["DELETE"])
 @admin_required
 def api_delete_team_member(staff_id):
+    if staff_id == session.get("user_id"):
+        return jsonify({"ok": False, "error": "You can't deactivate your own account"}), 409
     try:
         member = delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
@@ -628,6 +633,8 @@ def api_delete_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>/permanent", methods=["DELETE"])
 @admin_required
 def api_hard_delete_team_member(staff_id):
+    if staff_id == session.get("user_id"):
+        return jsonify({"ok": False, "error": "You can't delete your own account"}), 409
     try:
         member = hard_delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
