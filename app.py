@@ -158,6 +158,18 @@ def add_no_cache_headers(response):
     return response
 
 
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template("error.html", code=404, title="Page Not Found",
+                           message="The page you're looking for doesn't exist."), 404
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    return render_template("error.html", code=500, title="Something Went Wrong",
+                           message="An unexpected error occurred. Please try again or contact support."), 500
+
+
 @app.route("/logout")
 def logout():
     session.clear()
