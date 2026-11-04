@@ -683,11 +683,14 @@ def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
     return out
 
 
-def mark_payment_received(order_id: int, received_by: int) -> dict:
+def mark_payment_received(order_id: int, received_by: int, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("total_amount, status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders")
+             .select("total_amount, status, order_no, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "record payment for this order")
     if order.data[0]["status"] in ("rejected", "cancelled"):
         raise ValueError(f"Order is {order.data[0]['status']} — nothing to collect payment for")
     already = (sb.schema("sales").from_("payments").select("id")
@@ -979,6 +982,8 @@ def approve_order(order_id: int, approved_by: int) -> dict:
     order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
     if not order.data:
         raise ValueError("Order not found")
+    if order.data[0]["status"] == "hold":
+        raise ValueError("Order is on hold — release the hold before approving")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
     res = sb.schema("sales").from_("orders").update({"status": "approved"}).eq("id", order_id).execute()
@@ -1027,6 +1032,13 @@ def list_clients(role: str | None = None, region: str = "") -> list:
 _DUES_ORDER_STATUSES = {"approved", "invoiced", "delivered"}
 
 
+def _client_region_role(c: dict) -> str:
+    addrs = c.get("addresses") or []
+    addr = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else None) or {}
+    place = (c.get("city") or "").strip() or addr.get("locality") or addr.get("city")
+    return _region_role_for_city(place)
+
+
 def client_dues(role: str | None = None, region: str = "") -> list:
     """Per-client outstanding balance: (invoiced + delivered order totals) minus
     payments received, for clients who still owe money."""
@@ -1065,6 +1077,8 @@ def client_dues(role: str | None = None, region: str = "") -> list:
     dues = []
     for c in clients:
         cid = c["id"]
+        if role in REGION_HEAD_ROLES and _client_region_role(c) != role:
+            continue
         balance = invoiced_by_client.get(cid, 0.0) - paid_by_client.get(cid, 0.0)
         if balance <= 0.01:
             continue
@@ -1088,17 +1102,20 @@ def client_dues(role: str | None = None, region: str = "") -> list:
     return dues
 
 
-def client_due_detail(client_id: int) -> dict:
+def client_due_detail(client_id: int, role: str | None = None) -> dict:
     """Per-order breakdown behind one client's dues total: every invoiced/delivered
     order with what's been paid against it and what's still outstanding."""
     sb = _sb()
     client_res = (
-        sb.schema("sales").from_("clients").select("id, business_name, primary_contact_phone")
+        sb.schema("sales").from_("clients")
+        .select("id, business_name, primary_contact_phone, city, addresses(locality, city, is_default)")
         .eq("id", client_id).limit(1).execute()
     )
     if not client_res.data:
         raise ValueError("Client not found")
     client = client_res.data[0]
+    if role in REGION_HEAD_ROLES and _client_region_role(client) != role:
+        raise ValueError("Client not found")
 
     orders = (
         sb.schema("sales").from_("orders")
@@ -1300,10 +1317,10 @@ def bulk_update_clients_city(client_ids: list, city: str) -> int:
 
 def bulk_delete_clients(client_ids: list) -> dict:
     sb = _sb()
-    orders = sb.schema("sales").from_("orders").select("client_id").in_("client_id", client_ids).limit(1).execute()
+    orders = sb.schema("sales").from_("orders").select("client_id").in_("client_id", client_ids).execute()
     if orders.data:
-        blocked = set(r["client_id"] for r in orders.data)
-        raise ValueError(f"Cannot delete clients with existing orders: {blocked}")
+        blocked = sorted({r["client_id"] for r in orders.data})
+        raise ValueError(f"Cannot delete clients with existing orders (client IDs: {blocked})")
     sb.schema("sales").from_("addresses").delete().in_("client_id", client_ids).execute()
     res = sb.schema("sales").from_("clients").delete().in_("id", client_ids).execute()
     return {"deleted": len(res.data) if res.data else 0}
