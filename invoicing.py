@@ -17,7 +17,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "logo1_trimmed.png")
 
-from order_engine import _sb
+from order_engine import _sb, _require_order_in_region
 
 COMPANY = {
     "name": "Icestasy Projects Pvt. Ltd.",
@@ -135,7 +135,7 @@ def _upi_qr_image(amount: float, order_no: str) -> Image:
     return Image(buf, width=26 * mm, height=26 * mm)
 
 
-def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
+def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesIO, str]:
     sb = _sb()
     order_res = (
         sb.schema("sales").from_("orders")
@@ -146,6 +146,7 @@ def build_invoice_pdf(order_id: int) -> tuple[io.BytesIO, str]:
     if not order_res.data:
         raise ValueError("Order not found")
     order = order_res.data[0]
+    _require_order_in_region(sb, order, role, "download this invoice")
     if order["status"] not in ("approved", "invoiced", "delivered"):
         raise ValueError("Order must be approved or completed before an invoice can be generated")
 
