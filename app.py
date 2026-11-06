@@ -567,7 +567,7 @@ def api_mark_paid(order_id):
 @admin_required
 def api_approve_order(order_id):
     try:
-        order = approve_order(order_id, approved_by=session["user_id"])
+        order = approve_order(order_id, approved_by=session["user_id"], role=session.get("role"))
         return jsonify({"ok": True, "order": order})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
@@ -579,7 +579,7 @@ def api_approve_order(order_id):
 @admin_required
 def api_reject_order(order_id):
     try:
-        order = reject_order(order_id, rejected_by=session["user_id"])
+        order = reject_order(order_id, rejected_by=session["user_id"], role=session.get("role"))
         return jsonify({"ok": True, "order": order})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409

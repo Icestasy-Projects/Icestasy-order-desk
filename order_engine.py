@@ -230,7 +230,7 @@ def list_clients_lite() -> list:
     clients = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, gstin, city")
-        .eq("status", "active").order("business_name").range(start, end)
+        .eq("status", "active").order("business_name").order("id").range(start, end)
     ))
     for c in clients:
         c["city"] = (c.get("city") or "").strip() or "Unassigned"
@@ -633,8 +633,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
         line_rows.append({
             "order_id": order_id, "sku_id": l["sku_id"],
             "quantity": str(qty), "unit_price": str(price),
-            "line_discount_amount": str(disc * qty),
-            "line_total": str(qty * price - disc * qty), "status": "active",
+            "line_discount_amount": str(round(disc * qty, 2)),
+            "line_total": str(round(qty * price - disc * qty, 2)), "status": "active",
         })
     if line_rows:
         sb.schema("sales").from_("order_lines").insert(line_rows).execute()
@@ -881,7 +881,7 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
         "lines": out,
         "order_totals": order_totals,
         "orders_without_lines": len(missing),
-        "value_without_lines": sum(o.get("total_amount", 0) or 0 for o in missing),
+        "value_without_lines": sum(float(o.get("total_amount") or 0) for o in missing),
     }
 
 
@@ -979,11 +979,13 @@ def fetch_payment_summaries(order_ids: list) -> dict:
     return payments
 
 
-def approve_order(order_id: int, approved_by: int) -> dict:
+def approve_order(order_id: int, approved_by: int, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders").select("status, order_no, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "approve this order")
     if order.data[0]["status"] == "hold":
         raise ValueError("Order is on hold — release the hold before approving")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
@@ -992,11 +994,13 @@ def approve_order(order_id: int, approved_by: int) -> dict:
     return res.data[0]
 
 
-def reject_order(order_id: int, rejected_by: int) -> dict:
+def reject_order(order_id: int, rejected_by: int, role: str | None = None) -> dict:
     sb = _sb()
-    order = sb.schema("sales").from_("orders").select("status").eq("id", order_id).limit(1).execute()
+    order = (sb.schema("sales").from_("orders").select("status, order_no, shipping_address_id")
+             .eq("id", order_id).limit(1).execute())
     if not order.data:
         raise ValueError("Order not found")
+    _require_order_in_region(sb, order.data[0], role, "reject this order")
     if order.data[0]["status"] in _TERMINAL_ORDER_STATUSES:
         raise ValueError(f"Order is already {order.data[0]['status']}")
     res = sb.schema("sales").from_("orders").update({"status": "rejected"}).eq("id", order_id).execute()
@@ -1009,7 +1013,7 @@ def list_clients(role: str | None = None, region: str = "") -> list:
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, "
                 "gstin, fssai_no, gst_status, city, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
-        .eq("status", "active").order("business_name").range(start, end)
+        .eq("status", "active").order("business_name").order("id").range(start, end)
     ))
     order_counts = {}
     orders = _fetch_all_pages(lambda start, end: (
@@ -1153,6 +1157,20 @@ def client_due_detail(client_id: int, role: str | None = None) -> dict:
     }
 
 
+def order_discount_factor(order_discount, line_nets: list, line_discounts: list) -> float:
+    """Multiplier applying an order's header-level (percentage) discount to its lines.
+
+    create_order() stores the % discount only on orders.discount_amount — each
+    line's line_total carries just its own per-line discount — so invoices and
+    the Tally feed must scale the lines down by the remainder or their totals
+    won't match the order total. Returns 1.0 when there is no extra discount."""
+    base = sum(line_nets)
+    extra = float(order_discount or 0) - sum(line_discounts)
+    if base <= 0 or extra <= 0.005:
+        return 1.0
+    return max(0.0, 1 - extra / base)
+
+
 # Must match invoicing.COMPANY["state"] — kept separate to avoid a circular
 # import (invoicing.py imports from this module).
 _COMPANY_STATE = "Maharashtra"
@@ -1176,7 +1194,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
         q = (
             sb.schema("sales").from_("orders")
             .select("id, order_no, created_at, client_id, billing_address_id, "
-                    "shipping_address_id, status")
+                    "shipping_address_id, status, discount_amount")
             .in_("status", list(_DUES_ORDER_STATUSES))
             .order("created_at").order("id")
         )
@@ -1210,7 +1228,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
             return (
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, unit_price, line_total, "
-                        "skus(hsn_code, gst_rate, flavours(name), pack_formats(name))")
+                        "line_discount_amount, skus(hsn_code, gst_rate, flavours(name), pack_formats(name))")
                 .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).order("id").range(start, end)
             )
 
@@ -1228,13 +1246,18 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
         items = []
         tax_buckets = {}
         subtotal = 0.0
-        for l in lines_by_order.get(o["id"], []):
+        order_lines = lines_by_order.get(o["id"], [])
+        factor = order_discount_factor(
+            o.get("discount_amount"),
+            [float(l["line_total"]) for l in order_lines],
+            [float(l.get("line_discount_amount") or 0) for l in order_lines])
+        for l in order_lines:
             sku = l.get("skus") or {}
             flavour_name = (sku.get("flavours") or {}).get("name", "—")
             format_name = (sku.get("pack_formats") or {}).get("name", "")
             qty = float(l["quantity"])
             rate = float(l["unit_price"])
-            net = float(l["line_total"])
+            net = float(l["line_total"]) * factor
             gst_rate = float(sku.get("gst_rate") or 5.0)
             tax_buckets[gst_rate] = tax_buckets.get(gst_rate, 0.0) + net
             subtotal += net
