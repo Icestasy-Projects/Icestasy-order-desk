@@ -581,6 +581,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             raise ValueError("Line quantity must be positive")
         if not l["unit_price"] >= 0 or not l.get("line_discount", 0.0) >= 0:
             raise ValueError("Line price and discount must not be negative")
+        if l.get("line_discount", 0.0) > l["unit_price"]:
+            raise ValueError("Line discount cannot exceed the unit price")
     if not 0 <= discount_pct <= 100:
         raise ValueError("Discount % must be between 0 and 100")
     subtotal = round(sum(l["quantity"] * l["unit_price"] for l in lines), 2)
@@ -787,7 +789,7 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
             q = q.eq("created_by_user_id", user_id)
-        return q.range(start, end)
+        return q.order("id").range(start, end)
 
     orders = _fetch_all_pages(build_orders_query)
     if not orders:
@@ -835,7 +837,7 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
             return (
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, line_total, skus(sku_code, gst_rate, flavours(name))")
-                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
+                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).order("id").range(start, end)
             )
 
         lines.extend(_fetch_all_pages(build_lines_query))
@@ -899,7 +901,7 @@ def fetch_report_order_lines(order_ids: list) -> dict:
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, unit_price, line_total, line_discount_amount, status, "
                         "skus(sku_code, gst_rate, flavours(name), pack_formats(name))")
-                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
+                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).order("id").range(start, end)
             )
 
         lines.extend(_fetch_all_pages(build_lines_query))
@@ -1011,7 +1013,7 @@ def list_clients(role: str | None = None, region: str = "") -> list:
     ))
     order_counts = {}
     orders = _fetch_all_pages(lambda start, end: (
-        sb.schema("sales").from_("orders").select("client_id").range(start, end)
+        sb.schema("sales").from_("orders").select("client_id").order("id").range(start, end)
     ))
     for o in orders:
         order_counts[o["client_id"]] = order_counts.get(o["client_id"], 0) + 1
@@ -1026,6 +1028,8 @@ def list_clients(role: str | None = None, region: str = "") -> list:
         c["state"] = addr.get("state") or ""
         c["order_count"] = order_counts.get(c["id"], 0)
         c["gst_status"] = "registered" if c.get("gstin") else (c.get("gst_status") or "unknown")
+    if role in REGION_HEAD_ROLES:
+        clients = [c for c in clients if _region_role_for_city(c["city"]) == role]
     return clients
 
 
@@ -1047,10 +1051,10 @@ def client_dues(role: str | None = None, region: str = "") -> list:
         sb.schema("sales").from_("clients")
         .select("id, business_name, primary_contact_name, primary_contact_phone, city, "
                 "addresses(locality, city, is_default)")
-        .eq("status", "active").range(start, end)
+        .eq("status", "active").order("id").range(start, end)
     ))
     orders = _fetch_all_pages(lambda start, end: (
-        sb.schema("sales").from_("orders").select("id, client_id, status, total_amount").range(start, end)
+        sb.schema("sales").from_("orders").select("id, client_id, status, total_amount").order("id").range(start, end)
     ))
     order_client = {}
     invoiced_by_client = {}
@@ -1061,7 +1065,7 @@ def client_dues(role: str | None = None, region: str = "") -> list:
 
     payments = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("payments").select("order_id, amount, received_at")
-        .eq("status", "received").range(start, end)
+        .eq("status", "received").order("id").range(start, end)
     ))
     paid_by_client = {}
     last_payment_by_client = {}
@@ -1174,7 +1178,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
             .select("id, order_no, created_at, client_id, billing_address_id, "
                     "shipping_address_id, status")
             .in_("status", list(_DUES_ORDER_STATUSES))
-            .order("created_at")
+            .order("created_at").order("id")
         )
         if from_date:
             q = q.gte("created_at", from_date)
@@ -1207,7 +1211,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
                 sb.schema("sales").from_("order_lines")
                 .select("order_id, quantity, unit_price, line_total, "
                         "skus(hsn_code, gst_rate, flavours(name), pack_formats(name))")
-                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
+                .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).order("id").range(start, end)
             )
 
         for l in _fetch_all_pages(build_lines_query):
@@ -1698,7 +1702,7 @@ def city_stock_summary() -> list:
     orders = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("orders").select("id, client_id, shipping_address_id")
         .in_("status", list(_CITY_USED_ORDER_STATUSES))
-        .neq("source", "historical_import").range(start, end)
+        .neq("source", "historical_import").order("id").range(start, end)
     ))
     used = {}
     if orders:
@@ -1726,7 +1730,7 @@ def city_stock_summary() -> list:
             def build_lines_query(start, end, chunk_ids=chunk_ids):
                 return (
                     sb.schema("sales").from_("order_lines").select("order_id, sku_id, quantity")
-                    .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).range(start, end)
+                    .in_("status", ["active", "delivered"]).in_("order_id", chunk_ids).order("id").range(start, end)
                 )
 
             lines.extend(_fetch_all_pages(build_lines_query))

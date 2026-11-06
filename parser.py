@@ -457,11 +457,33 @@ def _enrich(raw_items):
     return pending
 
 
+def _sanitize_extracted(extracted):
+    """LLM output is untrusted: keep only well-formed items (dict, integer
+    qty >= 1, int-or-null ids) so a malformed reply falls back to the keyword
+    parser instead of crashing _enrich() with a 500."""
+    if not isinstance(extracted, dict) or not isinstance(extracted.get("items"), list):
+        return None
+    items = []
+    for it in extracted["items"]:
+        if not isinstance(it, dict):
+            continue
+        try:
+            qty = max(1, int(it.get("qty") or 1))
+        except (TypeError, ValueError):
+            qty = 1
+        ids = {}
+        for k in ("flavour_id", "format_id"):
+            v = it.get(k)
+            ids[k] = v if isinstance(v, int) and not isinstance(v, bool) else None
+        items.append({"qty": qty, **ids})
+    return {"items": items} if items else None
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def parse_order_text(text: str) -> dict:
     # Try Groq first, fall back to keyword matching
-    extracted = _groq_extract(text)
+    extracted = _sanitize_extracted(_groq_extract(text))
     if not extracted:
         extracted = _keyword_extract(text)
 

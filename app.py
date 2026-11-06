@@ -108,7 +108,7 @@ def tally_api_key_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         # Deny-by-default: an unset key must never be treated as "no key required".
-        if not TALLY_API_KEY or not hmac.compare_digest(request.headers.get("X-API-Key", ""), TALLY_API_KEY):
+        if not TALLY_API_KEY or not hmac.compare_digest(request.headers.get("X-API-Key", "").encode(), TALLY_API_KEY.encode()):
             return jsonify({"error": "unauthorized"}), 401
         return view(*args, **kwargs)
     return wrapped
@@ -923,7 +923,7 @@ def api_bulk_delete_clients():
 def api_order_invoice(order_id):
     from invoicing import build_invoice_pdf
     try:
-        buf, filename = build_invoice_pdf(order_id)
+        buf, filename = build_invoice_pdf(order_id, role=session.get("role"))
     except ValueError as e:
         return jsonify({"error": str(e)}), 409
     except Exception as e:

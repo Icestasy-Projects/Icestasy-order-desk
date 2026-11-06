@@ -951,8 +951,8 @@ function orderRow(o) {
           <span class="dash-order-no">${isOpen ? "▾" : "▸"} ${o.order_no}</span>
           ${orderDate ? `<span class="dash-order-date">${orderDate}</span>` : ""}
         </div>
-        <span class="dash-order-client">${o.client_name}${showPlace ? " · " + o.place : ""}</span>
-        ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.source === "sheet_sync" ? "Auto Synced" : o.salesperson_name}</span>` : ""}
+        <span class="dash-order-client">${escapeHtml(o.client_name ?? "")}${showPlace ? " · " + escapeHtml(o.place ?? "") : ""}</span>
+        ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.source === "sheet_sync" ? "Auto Synced" : escapeHtml(o.salesperson_name ?? "")}</span>` : ""}
       </div>
       <div class="dash-order-side">
         ${IS_ADMIN ? `<span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
@@ -1247,7 +1247,7 @@ function renderDuesTable() {
           }
           return `
           <tr onclick="toggleDueDetail(${d.id})" style="cursor:pointer">
-            <td>${isOpen ? "▾" : "▸"} ${d.business_name}${d.primary_contact_phone ? `<br><span class="opt-sub">${d.primary_contact_phone}</span>` : ""}</td>
+            <td>${isOpen ? "▾" : "▸"} ${escapeHtml(d.business_name ?? "")}${d.primary_contact_phone ? `<br><span class="opt-sub">${escapeHtml(d.primary_contact_phone)}</span>` : ""}</td>
             <td>${d.place && d.place !== "—" ? d.place : d.city}</td>
             <td>${d.last_payment_date ? new Date(d.last_payment_date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}) : "—"}</td>
             <td class="num"><span class="badge badge-red">${fmt(d.balance)}</span></td>
@@ -1399,7 +1399,7 @@ function addressCardHtml(c, a) {
   return `
     <div class="cart-item-card" style="flex-direction:column;align-items:stretch;gap:8px">
       <div class="opt-sub">${a.address_type || "shipping"}${a.is_default ? " · default" : ""}</div>
-      <input class="search-input" id="addr-consignee-${a.id}" placeholder="Consignee Name (optional)" value="${a.consignee_name || ""}">
+      <input class="search-input" id="addr-consignee-${a.id}" placeholder="Consignee Name (optional)" value="${escapeHtml(a.consignee_name || "")}">
       <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${a.line1 || ""}">
       <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${a.line2 || ""}">
       <div class="btn-group">
@@ -1433,7 +1433,7 @@ function clientRowHtml(c) {
       <button class="btn-option btn-sm mt8" onclick="showAddAddressForm(${c.id})">+ Add address</button>
       <div id="newaddr-${c.id}"></div>
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--slate-200)">
-        <button class="btn-option btn-sm" style="color:var(--red,#ef4444);border-color:var(--red,#ef4444)" onclick="deleteClient(${c.id}, '${(c.business_name || '').replace(/'/g, "\\'")}')">Delete Client</button>
+        <button class="btn-option btn-sm" style="color:var(--red,#ef4444);border-color:var(--red,#ef4444)" data-name="${escapeHtml(c.business_name || "")}" onclick="deleteClient(${c.id}, this.dataset.name)">Delete Client</button>
       </div>`;
   }
   const typeLabel = c.client_type ? c.client_type[0].toUpperCase() + c.client_type.slice(1) : "";
@@ -1447,7 +1447,7 @@ function clientRowHtml(c) {
         <div class="person-row-left">
           ${avatarHtml(c.business_name)}
           <div class="person-row-info">
-            <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${c.business_name} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
+            <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${escapeHtml(c.business_name ?? "")} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
             <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
           </div>
         </div>
@@ -1856,14 +1856,14 @@ function roleBadgeClass(role) {
 }
 
 function teamMemberRow(t) {
-  const phone = t.phone ? " · " + t.phone : "";
+  const phone = t.phone ? " · " + escapeHtml(t.phone) : "";
   return `
     <div class="option-btn" style="cursor:default">
       <div class="person-row-left">
         ${avatarHtml(t.full_name)}
         <div class="person-row-info">
-          <span class="opt-name">${t.full_name}${!t.is_active ? " (inactive)" : ""}</span>
-          <span class="opt-sub">${t.region ? t.region + " · " : ""}${t.email}${phone}</span>
+          <span class="opt-name">${escapeHtml(t.full_name ?? "")}${!t.is_active ? " (inactive)" : ""}</span>
+          <span class="opt-sub">${t.region ? escapeHtml(t.region) + " · " : ""}${escapeHtml(t.email ?? "")}${phone}</span>
         </div>
       </div>
       <div class="person-row-right">
@@ -1984,8 +1984,8 @@ function showEditTeamForm(staffId, pushState = true) {
   box.innerHTML = `
     <button type="button" class="btn-ghost btn-sm" onclick="closeEditTeamForm()">${icon("chevron-left")} Back to Team</button>
     <div class="register-form mt16" id="editTeamForm">
-      <div class="opt-name mt8">${t.email}</div>
-      <input id="etName" class="search-input mt8" placeholder="Full name *" value="${t.full_name || ""}">
+      <div class="opt-name mt8">${escapeHtml(t.email ?? "")}</div>
+      <input id="etName" class="search-input mt8" placeholder="Full name *" value="${escapeHtml(t.full_name || "")}">
       <input id="etPhone" class="search-input mt8" placeholder="Phone (optional)" value="${t.phone || ""}">
       <select id="etRole" class="search-input mt8" onchange="syncRegionForRole('etRole','etRegion')">${roleOptionsHtml(t.role)}</select>
       <select id="etRegion" class="search-input mt8">${regionOptionsHtml(t.region)}</select>

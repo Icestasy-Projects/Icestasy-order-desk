@@ -60,6 +60,17 @@ LINE_COLUMNS = ["Date", "Flavour", "SKU Code", "City", "Quantity", "Revenue (INR
 LINE_COLUMN_WIDTHS = [14, 30, 16, 16, 12, 16]
 
 
+def _neutralize_formulas(wb) -> None:
+    """Staff-entered text (client names, notes...) that starts with "=" would be
+    stored by openpyxl as a live formula; force such cells to plain strings so a
+    crafted name can't execute when the export is opened in Excel."""
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.data_type = "s"
+
+
 def _format_date(created_at: str) -> str:
     try:
         return datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d-%m-%Y")
@@ -433,6 +444,7 @@ def build_flavour_sales_workbook(lines: list, role_label: str, full_name: str,
     detail_ws = wb.create_sheet("Detail")
     _write_flavour_detail_sheet(detail_ws, lines, subtitle_text)
 
+    _neutralize_formulas(wb)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -534,6 +546,7 @@ def build_orders_workbook(orders: list, role_label: str, full_name: str,
         detail_ws = wb.create_sheet("Orders")
         _write_orders_sheet(detail_ws, orders, subtitle_text)
 
+    _neutralize_formulas(wb)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -589,6 +602,7 @@ def build_clients_workbook(clients: list) -> io.BytesIO:
     ws.freeze_panes = f"A{header_row + 1}"
     ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row}"
 
+    _neutralize_formulas(wb)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
