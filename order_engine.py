@@ -607,6 +607,20 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             if client_city:
                 city_code = _order_city_code(client_city)
 
+    # The order-level discount % only lives on the order header, but invoices,
+    # Tally sync and Excel exports all total from order_lines — so spread it
+    # across the lines (proportional to each line's net, last line absorbs the
+    # rounding remainder) or those documents overstate the order's total.
+    line_nets = [l["quantity"] * l["unit_price"] - l.get("line_discount", 0.0) * l["quantity"] for l in lines]
+    pct_shares = [0.0] * len(lines)
+    if pct_discount and sum(line_nets) > 0:
+        base = sum(line_nets)
+        allocated = 0.0
+        for i, net in enumerate(line_nets[:-1]):
+            pct_shares[i] = round(pct_discount * net / base, 2)
+            allocated += pct_shares[i]
+        pct_shares[-1] = round(pct_discount - allocated, 2)
+
     status = "draft"
 
     order_no = _next_order_no(sb, city_code)
@@ -627,14 +641,14 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     order_res = sb.schema("sales").from_("orders").insert(order_row).execute()
     order_id = order_res.data[0]["id"]
     line_rows = []
-    for l in lines:
+    for l, share in zip(lines, pct_shares):
         qty = l["quantity"]; price = l["unit_price"]
         disc = l.get("line_discount", 0.0)
         line_rows.append({
             "order_id": order_id, "sku_id": l["sku_id"],
             "quantity": str(qty), "unit_price": str(price),
-            "line_discount_amount": str(disc * qty),
-            "line_total": str(qty * price - disc * qty), "status": "active",
+            "line_discount_amount": str(round(disc * qty + share, 2)),
+            "line_total": str(round(qty * price - disc * qty - share, 2)), "status": "active",
         })
     if line_rows:
         sb.schema("sales").from_("order_lines").insert(line_rows).execute()
@@ -650,8 +664,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
             "lines": [{"sku_code": l["sku_code"], "flavour_name": l["flavour_name"],
                        "format_name": l["format_name"], "quantity": l["quantity"],
                        "unit_price": l["unit_price"],
-                       "line_total": l["quantity"] * l["unit_price"] - l.get("line_discount", 0.0) * l["quantity"]}
-                      for l in lines],
+                       "line_total": round(net - share, 2)}
+                      for l, net, share in zip(lines, line_nets, pct_shares)],
             "collateral": collateral_out}
     return result
 
@@ -788,7 +802,7 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
             .select("id, order_no, client_id, created_at, total_amount, tax_amount, shipping_address_id, created_by_user_id, salesperson_id")
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
-            q = q.eq("created_by_user_id", user_id)
+            q = q.or_(f"created_by_user_id.eq.{int(user_id)},salesperson_id.eq.{int(user_id)}")
         return q.order("id").range(start, end)
 
     orders = _fetch_all_pages(build_orders_query)
@@ -1561,8 +1575,11 @@ def city_for_stock_request(place: str) -> str:
 def create_stock_request(city: str, lines: list, requested_by: int, notes: str = None) -> dict:
     if city not in STOCK_REQUEST_CITIES:
         raise ValueError(f"Unknown city: {city}")
-    clean_lines = [{"sku_id": int(l["sku_id"]), "quantity": float(l["quantity"])}
-                   for l in lines if float(l.get("quantity") or 0) > 0]
+    try:
+        clean_lines = [{"sku_id": int(l["sku_id"]), "quantity": float(l["quantity"])}
+                       for l in lines if float(l.get("quantity") or 0) > 0]
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("Each line needs a valid sku_id and quantity")
     if not clean_lines:
         raise ValueError("At least one SKU line with a positive quantity is required")
     sb = _sb()
