@@ -626,15 +626,28 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
         order_row["consignee_name"] = consignee_name.strip()
     order_res = sb.schema("sales").from_("orders").insert(order_row).execute()
     order_id = order_res.data[0]["id"]
+    # The order-level % discount must also be reflected in the stored line
+    # totals: invoices, Tally sync and Excel reports are all built from
+    # order_lines, so leaving it out would overstate them vs orders.total_amount.
+    # Each line absorbs its share; the last line takes the paise rounding drift
+    # so the lines sum exactly to `total`.
     line_rows = []
-    for l in lines:
+    allocated = 0.0
+    for idx, l in enumerate(lines):
         qty = l["quantity"]; price = l["unit_price"]
         disc = l.get("line_discount", 0.0)
+        base = qty * price - disc * qty
+        pct_share = round(qty * price * (discount_pct / 100), 2) if discount_pct else 0.0
+        line_total = round(base - pct_share, 2)
+        if idx == len(lines) - 1:
+            line_total = round(total - allocated, 2)
+            pct_share = round(base - line_total, 2)
+        allocated += line_total
         line_rows.append({
             "order_id": order_id, "sku_id": l["sku_id"],
             "quantity": str(qty), "unit_price": str(price),
-            "line_discount_amount": str(disc * qty),
-            "line_total": str(qty * price - disc * qty), "status": "active",
+            "line_discount_amount": str(round(disc * qty + pct_share, 2)),
+            "line_total": str(line_total), "status": "active",
         })
     if line_rows:
         sb.schema("sales").from_("order_lines").insert(line_rows).execute()
@@ -1361,6 +1374,12 @@ def _clean_region(value) -> str | None:
     if region and region not in VALID_REGIONS:
         raise ValueError(f"Invalid region: {region}")
     return region
+
+
+def get_staff_role(staff_id: int) -> str | None:
+    sb = _sb()
+    row = sb.schema("sales").from_("users").select("role").eq("id", staff_id).limit(1).execute().data
+    return row[0]["role"] if row else None
 
 
 def list_team(region: str | None = None) -> list:

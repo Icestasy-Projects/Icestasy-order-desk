@@ -17,7 +17,7 @@ from order_engine import (
     register_client, create_address, get_staff_by_email,
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, delete_team_member, hard_delete_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
-    set_user_password, mark_password_changed, reset_team_member_password,
+    set_user_password, mark_password_changed, get_staff_role, reset_team_member_password,
     approve_order, reject_order, list_clients, client_dues, client_due_detail,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
@@ -102,6 +102,16 @@ def broad_view_required(view):
             return jsonify({"error": "forbidden"}), 403
         return view(*args, **kwargs)
     return wrapped
+
+
+def _forbid_admin_account_change(target_role):
+    """Regional heads share the team-management endpoints but must not be able to
+    mint admins or touch existing admin accounts (privilege escalation)."""
+    if session.get("role") == ADMIN_ROLE:
+        return None
+    if target_role == ADMIN_ROLE:
+        return jsonify({"ok": False, "error": "Only an admin can create or modify admin accounts"}), 403
+    return None
 
 
 def tally_api_key_required(view):
@@ -603,6 +613,9 @@ def api_team():
 @admin_required
 def api_create_team_member():
     body = request.get_json(force=True)
+    denied = _forbid_admin_account_change(body.get("role"))
+    if denied:
+        return denied
     try:
         member = create_team_member(body)
         return jsonify({"ok": True, "member": member})
@@ -619,6 +632,9 @@ def api_update_team_member(staff_id):
     if staff_id == session.get("user_id") and (body.get("is_active") is False or
                                                 ("role" in body and body["role"] != session.get("role"))):
         return jsonify({"ok": False, "error": "You can't deactivate or change the role of your own account"}), 409
+    denied = _forbid_admin_account_change(body.get("role")) or _forbid_admin_account_change(get_staff_role(staff_id))
+    if denied:
+        return denied
     try:
         member = update_team_member(staff_id, body)
         return jsonify({"ok": True, "member": member})
@@ -633,6 +649,9 @@ def api_update_team_member(staff_id):
 def api_delete_team_member(staff_id):
     if staff_id == session.get("user_id"):
         return jsonify({"ok": False, "error": "You can't deactivate your own account"}), 409
+    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    if denied:
+        return denied
     try:
         member = delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
@@ -647,6 +666,9 @@ def api_delete_team_member(staff_id):
 def api_hard_delete_team_member(staff_id):
     if staff_id == session.get("user_id"):
         return jsonify({"ok": False, "error": "You can't delete your own account"}), 409
+    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    if denied:
+        return denied
     try:
         member = hard_delete_team_member(staff_id)
         return jsonify({"ok": True, "member": member})
@@ -659,6 +681,9 @@ def api_hard_delete_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>/reset-password", methods=["POST"])
 @admin_required
 def api_reset_team_member_password(staff_id):
+    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    if denied:
+        return denied
     try:
         result = reset_team_member_password(staff_id)
         return jsonify({"ok": True, **result})
