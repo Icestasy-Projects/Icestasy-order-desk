@@ -893,6 +893,8 @@ def api_bulk_move_clients():
     body = request.get_json(force=True)
     ids = body.get("client_ids", [])
     city = body.get("city", "")
+    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+        return jsonify({"ok": False, "error": "client_ids must be a list of integers"}), 400
     if not ids:
         return jsonify({"ok": False, "error": "No clients selected"}), 400
     try:
@@ -907,6 +909,8 @@ def api_bulk_move_clients():
 def api_bulk_delete_clients():
     body = request.get_json(force=True)
     ids = body.get("client_ids", [])
+    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+        return jsonify({"ok": False, "error": "client_ids must be a list of integers"}), 400
     if not ids:
         return jsonify({"ok": False, "error": "No clients selected"}), 400
     try:
@@ -944,4 +948,4 @@ def api_tally_sales():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001, threaded=True)
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1", port=5001, threaded=True)

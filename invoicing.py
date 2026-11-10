@@ -108,6 +108,10 @@ def _client_ledger(sb, client_id: int, as_of_iso: str) -> dict:
     }
 
 
+def _parse_ts(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def _esc(value) -> str:
     """Escape text for reportlab Paragraph markup (names like "A & B" or "<x>" otherwise break the PDF)."""
     return xml_escape(str(value)) if value is not None else ""
@@ -153,8 +157,11 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
     client = (
         sb.schema("sales").from_("clients")
         .select("id, business_name, gstin, fssai_no, primary_contact_name, primary_contact_phone")
-        .eq("id", order["client_id"]).limit(1).execute().data[0]
+        .eq("id", order["client_id"]).limit(1).execute().data
     )
+    if not client:
+        raise ValueError("Client not found for this order")
+    client = client[0]
 
     addr_ids = [a for a in [order.get("billing_address_id"), order.get("shipping_address_id")] if a]
     addrs = {}
@@ -214,7 +221,7 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
     grand_total = round(raw_total)
     rounded_off = grand_total - raw_total
 
-    as_of = order.get("approved_at") or order.get("created_at")
+    as_of = order.get("created_at")
     ledger = _client_ledger(sb, order["client_id"], as_of)
 
     # ── Build the PDF ────────────────────────────────────────────────────
@@ -248,19 +255,19 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
         f"<b>Consignee (Shipped To)</b><br/><b>{_esc(client['business_name'])}</b><br/>"
         f"{_addr_block(shipping_addr)}<br/>"
         f"State : {_esc((shipping_addr or {}).get('state', ''))}   "
-        f"State Code : {(shipping_addr or {}).get('state_code', '')}<br/>"
+        f"State Code : {_esc((shipping_addr or {}).get('state_code', ''))}<br/>"
         f"GSTIN No : {_esc((shipping_addr or {}).get('gstin') or client.get('gstin') or '—')}<br/>"
         f"Fssai No : {_esc(client.get('fssai_no') or '—')}", styles["small"])
     buyer = Paragraph(
         f"<b>Buyer (Billed To)</b><br/><b>{_esc(client['business_name'])}</b><br/>"
         f"{_addr_block(billing_addr)}<br/>"
         f"State : {_esc((billing_addr or {}).get('state', ''))}   "
-        f"State Code : {(billing_addr or {}).get('state_code', '')}<br/>"
+        f"State Code : {_esc((billing_addr or {}).get('state_code', ''))}<br/>"
         f"GSTIN No : {_esc((billing_addr or {}).get('gstin') or client.get('gstin') or '—')}<br/>"
         f"Fssai No : {_esc(client.get('fssai_no') or '—')}", styles["small"])
     meta = Paragraph(
         f"Invoice No<br/><b>{_esc(order['order_no'])}</b><br/>Dated<br/>"
-        f"<b>{datetime.fromisoformat(order['created_at']).strftime('%d-%b-%y')}</b><br/>"
+        f"<b>{_parse_ts(order['created_at']).strftime('%d-%b-%y')}</b><br/>"
         f"Godown<br/><b>{COMPANY['godown']}</b><br/>Destination<br/>"
         f"<b>{_esc((shipping_addr or {}).get('locality') or (shipping_addr or {}).get('city') or '—')}</b>", styles["small"])
     story.append(Table([[consignee, buyer, meta]], colWidths=[76 * mm, 76 * mm, 38 * mm],
@@ -303,7 +310,7 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
 
     qr_img = _upi_qr_image(grand_total, order["order_no"])
     last_pay_line = (
-        f"Last Payment Date : <b>{datetime.fromisoformat(ledger['last_payment_date']).strftime('%d-%b-%y')}</b><br/>"
+        f"Last Payment Date : <b>{_parse_ts(ledger['last_payment_date']).strftime('%d-%b-%y')}</b><br/>"
         f"Last Payment Amount : <b>{ledger['last_payment_amount']:,.2f} Cr</b><br/>"
         if ledger["last_payment_date"] else "Last Payment Date : —<br/>"
     )

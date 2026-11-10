@@ -577,6 +577,8 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     if not lines:
         raise ValueError("At least one order line is required")
     for l in lines:
+        if l.get("sku_id") is None:
+            raise ValueError("Each order line needs a sku_id")
         if not l["quantity"] > 0:
             raise ValueError("Line quantity must be positive")
         if not l["unit_price"] >= 0 or not l.get("line_discount", 0.0) >= 0:
@@ -624,34 +626,54 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     }
     if consignee_name:
         order_row["consignee_name"] = consignee_name.strip()
-    order_res = sb.schema("sales").from_("orders").insert(order_row).execute()
-    order_id = order_res.data[0]["id"]
-    line_rows = []
+    # Spread the order-level % discount across the lines so that the sum of
+    # line_total (what invoices, Tally and reports read) equals total_amount.
+    # Any rounding residue lands on the last line.
+    line_totals = []
+    line_discs = []
     for l in lines:
         qty = l["quantity"]; price = l["unit_price"]
-        disc = l.get("line_discount", 0.0)
-        line_rows.append({
+        base_disc = l.get("line_discount", 0.0) * qty
+        pct_share = round(qty * price * (discount_pct / 100), 2) if discount_pct else 0.0
+        line_discs.append(round(base_disc + pct_share, 2))
+        line_totals.append(round(qty * price - line_discs[-1], 2))
+    residue = round(total - sum(line_totals), 2)
+    if residue:
+        line_totals[-1] = round(line_totals[-1] + residue, 2)
+        line_discs[-1] = round(line_discs[-1] - residue, 2)
+
+    order_res = sb.schema("sales").from_("orders").insert(order_row).execute()
+    order_id = order_res.data[0]["id"]
+    try:
+        line_rows = [{
             "order_id": order_id, "sku_id": l["sku_id"],
-            "quantity": str(qty), "unit_price": str(price),
-            "line_discount_amount": str(disc * qty),
-            "line_total": str(qty * price - disc * qty), "status": "active",
-        })
-    if line_rows:
+            "quantity": str(l["quantity"]), "unit_price": str(l["unit_price"]),
+            "line_discount_amount": str(line_discs[i]),
+            "line_total": str(line_totals[i]), "status": "active",
+        } for i, l in enumerate(lines)]
         sb.schema("sales").from_("order_lines").insert(line_rows).execute()
 
-    collateral_out = []
-    if collateral:
-        saved = add_order_collateral(sb, order_id, collateral)
-        collateral_out = [{"type": c["collateral_type"], "quantity": c["quantity"], "notes": c.get("notes")}
-                           for c in saved]
+        collateral_out = []
+        if collateral:
+            saved = add_order_collateral(sb, order_id, collateral)
+            collateral_out = [{"type": c["collateral_type"], "quantity": c["quantity"], "notes": c.get("notes")}
+                               for c in saved]
+    except Exception:
+        # No multi-statement transaction over PostgREST: don't leave a header
+        # with missing lines behind (a retry would otherwise create a duplicate).
+        try:
+            sb.schema("sales").from_("order_lines").delete().eq("order_id", order_id).execute()
+            sb.schema("sales").from_("orders").delete().eq("id", order_id).execute()
+        except Exception:
+            pass
+        raise
 
     result = {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
             "discount_pct": discount_pct,
-            "lines": [{"sku_code": l["sku_code"], "flavour_name": l["flavour_name"],
-                       "format_name": l["format_name"], "quantity": l["quantity"],
-                       "unit_price": l["unit_price"],
-                       "line_total": l["quantity"] * l["unit_price"] - l.get("line_discount", 0.0) * l["quantity"]}
-                      for l in lines],
+            "lines": [{"sku_code": l.get("sku_code"), "flavour_name": l.get("flavour_name"),
+                       "format_name": l.get("format_name"), "quantity": l["quantity"],
+                       "unit_price": l["unit_price"], "line_total": line_totals[i]}
+                      for i, l in enumerate(lines)],
             "collateral": collateral_out}
     return result
 
@@ -1411,7 +1433,13 @@ def create_team_member(data: dict) -> dict:
         sb.schema("sales").from_("users").update({"auth_user_id": auth_user_id}).eq("id", staff["id"]).execute()
         staff["temp_password"] = temp_password
     except Exception as e:
-        staff["auth_error"] = str(e)
+        # Don't leave a login-less staff row behind: it would block a retry
+        # ("already exists") and can't have its password reset.
+        try:
+            sb.schema("sales").from_("users").delete().eq("id", staff["id"]).execute()
+        except Exception:
+            pass
+        raise ValueError(f"Could not create login for {email}: {e}")
     return staff
 
 
@@ -1518,7 +1546,8 @@ def _stock_rows_by_sku() -> dict:
     )
     # No FK between schemas — production.v_fg_stock only has free-text
     # product_name/unit, so match against sales SKUs by (flavour, format) name.
-    stock_by_key = {(r["product_name"].strip().lower(), r["unit"].strip().lower()): r for r in fg_rows}
+    stock_by_key = {((r.get("product_name") or "").strip().lower(), (r.get("unit") or "").strip().lower()): r
+                    for r in fg_rows}
     return {
         s["id"]: stock_by_key.get((s["flavour_name"].strip().lower(), s["pack_format_name"].strip().lower()))
         for s in ACTIVE_SKUS
@@ -1561,8 +1590,11 @@ def city_for_stock_request(place: str) -> str:
 def create_stock_request(city: str, lines: list, requested_by: int, notes: str = None) -> dict:
     if city not in STOCK_REQUEST_CITIES:
         raise ValueError(f"Unknown city: {city}")
-    clean_lines = [{"sku_id": int(l["sku_id"]), "quantity": float(l["quantity"])}
-                   for l in lines if float(l.get("quantity") or 0) > 0]
+    try:
+        clean_lines = [{"sku_id": int(l["sku_id"]), "quantity": float(l.get("quantity") or 0)}
+                       for l in lines if float(l.get("quantity") or 0) > 0]
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("Invalid stock request line")
     if not clean_lines:
         raise ValueError("At least one SKU line with a positive quantity is required")
     sb = _sb()
@@ -1764,7 +1796,14 @@ def city_stock_summary() -> list:
 def check_stock_for_order(lines: list) -> dict:
     stock_by_sku = _stock_rows_by_sku()
     items = []
+    merged = {}
     for line in lines:
+        key = int(line["sku_id"])
+        if key in merged:
+            merged[key]["quantity"] = float(merged[key].get("quantity") or 0) + float(line.get("quantity") or 0)
+        else:
+            merged[key] = dict(line)
+    for line in merged.values():
         sku_id = int(line["sku_id"])
         requested = float(line.get("quantity") or 0)
         stock = stock_by_sku.get(sku_id)
