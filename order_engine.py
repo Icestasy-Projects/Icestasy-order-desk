@@ -1408,6 +1408,12 @@ def _clean_region(value) -> str | None:
     return region
 
 
+def get_staff_role(staff_id: int) -> str | None:
+    sb = _sb()
+    row = sb.schema("sales").from_("users").select("role").eq("id", staff_id).limit(1).execute().data
+    return row[0]["role"] if row else None
+
+
 def list_team(region: str | None = None) -> list:
     sb = _sb()
     q = (
