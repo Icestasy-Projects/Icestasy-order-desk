@@ -17,7 +17,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "logo1_trimmed.png")
 
-from order_engine import _sb, _require_order_in_region
+from order_engine import _sb, _require_order_in_region, order_discount_factor
 
 COMPANY = {
     "name": "Icestasy Projects Pvt. Ltd.",
@@ -185,6 +185,11 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
     tax_buckets = {}  # gst_rate -> taxable amount
     total_qty = 0
     subtotal = 0.0
+    factor = order_discount_factor(
+        order.get("discount_amount"),
+        [float(l["line_total"]) for l in lines],
+        [float(l.get("line_discount_amount") or 0) for l in lines])
+    extra_discount = 0.0
     for i, l in enumerate(lines, start=1):
         sku = l.get("skus") or {}
         flavour_name = (sku.get("flavours") or {}).get("name", "—")
@@ -193,7 +198,9 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
         rate = float(l["unit_price"])
         gross = qty * rate
         disc_amt = float(l.get("line_discount_amount") or 0)
-        net = float(l["line_total"])
+        line_net = float(l["line_total"])
+        net = line_net * factor
+        extra_discount += line_net - net
         disc_pct = (disc_amt / gross * 100) if gross else 0
         gst_rate = float(sku.get("gst_rate") or 5.0)
         tax_buckets[gst_rate] = tax_buckets.get(gst_rate, 0.0) + net
@@ -201,7 +208,7 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
         subtotal += net
         line_rows.append([
             str(i), f"{_esc(flavour_name)} - {_esc(format_name)}", sku.get("hsn_code") or "—",
-            f"{disc_pct:.0f}" if disc_pct else "", f"{qty:g}", f"{rate:,.2f}", f"{net:,.2f}",
+            f"{disc_pct:.0f}" if disc_pct else "", f"{qty:g}", f"{rate:,.2f}", f"{line_net:,.2f}",
         ])
 
     tax_rows = []
@@ -283,6 +290,8 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
     item_data = [item_header] + [[Paragraph(c, styles["cell"]) if i == 1 else
                                    Paragraph(c, ParagraphStyle("r", fontName="Helvetica", fontSize=8.5, alignment=TA_RIGHT))
                                    for i, c in enumerate(row)] for row in line_rows]
+    if extra_discount > 0.005:
+        item_data.append(["", "", "", "", "", "Less: Discount", f"-{extra_discount:,.2f}"])
     for label, amt in tax_rows:
         item_data.append(["", "", "", "", "", label, f"{amt:,.2f}"])
     if abs(rounded_off) > 0.001:
