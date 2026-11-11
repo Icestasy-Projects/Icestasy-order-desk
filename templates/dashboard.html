@@ -731,10 +731,7 @@ async function loadOrders() {
     box.innerHTML = `<div class="opt-error">${icon("triangle-alert")} ${data.error}</div>`;
     return;
   }
-  // Historical bulk-imported orders with no recorded line items skew every figure on
-  // this page (see Insights gap note). Excluded from all dashboard views for now —
-  // nothing is deleted server-side, this is a display-only filter.
-  let filtered = (data.orders || []).filter(o => o.has_lines !== false);
+  let filtered = data.orders || [];
   if (!IS_ADMIN) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 7);
