@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
+<script src="/static/searchable-select.js"></script>
 <style>
 .bu-select-wrap {
   position: relative; display: inline-flex; align-items: center;
@@ -2453,6 +2454,7 @@ function renderStockRequestLines() {
              value="${line.quantity}" oninput="requestFormLines[${idx}].quantity = this.value">
       ${requestFormLines.length > 1 ? `<button class="qty-btn" onclick="removeStockRequestLine(${idx})">${icon("x")}</button>` : ""}
     </div>`).join("");
+  box.querySelectorAll("select.search-input").forEach(s => makeSearchable(s, {placeholder: "Type to search SKU…"}));
 }
 
 function addStockRequestLine() {

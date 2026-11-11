@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
+<script src="/static/searchable-select.js"></script>
 <style>
 .step-back {
   display: inline-flex; align-items: center; gap: 4px;
@@ -518,6 +519,7 @@ function showCollateralForm() {
         <button class="btn-ghost" onclick="renderCollateralList()">Cancel</button>
       </div>
     </div>`);
+  makeSearchable(document.getElementById("colType"));
 }
 
 function addCollateralLine() {
@@ -875,6 +877,8 @@ function renderCart() {
 
     box.appendChild(div);
   });
+
+  box.querySelectorAll("select.search-input").forEach(s => makeSearchable(s, {placeholder: "Type to search flavour…"}));
 
   const proceedable = state.items.every(i => i.not_found || (!i.ambiguous && i.resolved_sku));
   if (proceedable) {
@@ -1263,10 +1267,26 @@ function showInlineAddressForm() {
       <input id="inlineAddrPincode" class="search-input mt8" placeholder="Pincode *" maxlength="6">
       <button class="btn-primary mt8" onclick="saveInlineAddress()">Save Address</button>
     </div>`;
+  makeSearchable(document.getElementById("inlineAddrState"), {placeholder: "Type to search state…"});
+  makeSearchable(document.getElementById("inlineAddrCity"), {placeholder: "Type to search city…"});
 }
 
 function updateInlineAddrCities() {
   const st = document.getElementById("inlineAddrState").value;
+  const oldWrap = document.getElementById("inlineAddrCity")?.parentNode;
+  if (oldWrap?.classList?.contains("ss-wrap")) {
+    const parent = oldWrap.parentNode;
+    const newSel = document.createElement("select");
+    newSel.id = "inlineAddrCity";
+    newSel.className = "search-input mt8";
+    const cities = CITIES_BY_STATE[st] || [];
+    newSel.innerHTML = `<option value="">Select city *</option>` +
+      cities.map(c => `<option value="${c}">${c}</option>`).join("") +
+      `<option value="__other">Other</option>`;
+    parent.replaceChild(newSel, oldWrap);
+    makeSearchable(newSel, {placeholder: "Type to search city…"});
+    return;
+  }
   const sel = document.getElementById("inlineAddrCity");
   const cities = CITIES_BY_STATE[st] || [];
   sel.innerHTML = `<option value="">Select city *</option>` +
