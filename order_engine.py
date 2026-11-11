@@ -810,7 +810,7 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
             .select("id, order_no, client_id, created_at, total_amount, tax_amount, shipping_address_id, created_by_user_id, salesperson_id")
         )
         if role != "admin" and role not in REGION_HEAD_ROLES:
-            q = q.eq("created_by_user_id", user_id)
+            q = q.or_(f"created_by_user_id.eq.{int(user_id)},salesperson_id.eq.{int(user_id)}")
         return q.order("id").range(start, end)
 
     orders = _fetch_all_pages(build_orders_query)

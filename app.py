@@ -203,8 +203,8 @@ def change_password():
         set_user_password(session["auth_user_id"], new_password)
         mark_password_changed(session["user_id"])
         session["must_change_password"] = False
-    except Exception as e:
-        return redirect(url_for("change_password", error=str(e)))
+    except Exception:
+        return redirect(url_for("change_password", error="Could not update password. Please try again."))
     return redirect(url_for("index"))
 
 
@@ -248,7 +248,9 @@ def new_order():
 
 @app.route("/api/parse", methods=["POST"])
 def api_parse():
-    body = request.get_json(force=True)
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "invalid body"}), 400
     text = (body.get("text") or "").strip()
     if not text:
         return jsonify({"error": "empty"}), 400
