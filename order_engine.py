@@ -907,6 +907,54 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
     }
 
 
+def mis_daily_sales(dt: str) -> dict:
+    """Flavour-wise daily sales grouped by pack format (4L Bulk / 12 Square).
+
+    Returns {date, bulks: {flavour: qty}, squares: {flavour: qty}}.
+    """
+    sb = _sb()
+    # Fetch orders for the given date (IST)
+    ist_start = f"{dt}T00:00:00+05:30"
+    ist_end = f"{dt}T23:59:59.999+05:30"
+    orders = (
+        sb.schema("sales").from_("orders")
+        .select("id")
+        .gte("created_at", ist_start)
+        .lte("created_at", ist_end)
+        .execute().data
+    )
+    if not orders:
+        return {"date": dt, "bulks": {}, "squares": {}}
+
+    order_ids = [o["id"] for o in orders]
+    lines = []
+    CHUNK = 600
+    for i in range(0, len(order_ids), CHUNK):
+        chunk = order_ids[i:i + CHUNK]
+        batch = (
+            sb.schema("sales").from_("order_lines")
+            .select("quantity, skus(pack_format_id, flavours(name))")
+            .in_("order_id", chunk)
+            .in_("status", ["active", "delivered"])
+            .execute().data
+        )
+        lines.extend(batch)
+
+    bulks = {}
+    squares = {}
+    for l in lines:
+        sku = l.get("skus") or {}
+        pf = sku.get("pack_format_id")
+        flavour = (sku.get("flavours") or {}).get("name", "Unknown")
+        qty = float(l.get("quantity", 0))
+        if pf == 1:
+            bulks[flavour] = bulks.get(flavour, 0) + qty
+        elif pf == 2:
+            squares[flavour] = squares.get(flavour, 0) + qty
+
+    return {"date": dt, "bulks": bulks, "squares": squares}
+
+
 def fetch_report_order_lines(order_ids: list) -> dict:
     """Bulk-fetch order lines with SKU details for report generation.
     Returns {order_id: [line_dicts]}."""
