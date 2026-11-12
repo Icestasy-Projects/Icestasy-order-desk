@@ -31,6 +31,7 @@ from order_engine import (
     approve_stock_request, reject_stock_request, city_stock_summary,
     list_tally_sales,
     create_sample_order, list_sample_orders, get_sample_order_lines,
+    fetch_sample_report_order_lines, get_client_for_form,
 )
 # invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
 # imports that only the invoice-download and Excel-export routes need. Kept as
@@ -463,6 +464,18 @@ def api_orders():
             discount_pct=float(body.get("discount_pct") or 0),
             consignee_name=body.get("consignee_name"),
         )
+        try:
+            from google_form_sync import submit_order_to_google_form
+            client_info = get_client_for_form(body["client_id"])
+            submit_order_to_google_form(
+                city=client_info.get("city", ""),
+                client_name=client_info.get("business_name", ""),
+                contact_name=client_info.get("contact_name", ""),
+                area="",
+                lines=order.get("lines", []),
+            )
+        except Exception:
+            pass
         return jsonify({"ok": True, "order": order})
     except (ValueError, KeyError, TypeError) as e:
         return jsonify({"ok": False, "error": f"Invalid order: {e}"}), 400
@@ -482,6 +495,19 @@ def api_sample_orders():
             notes=body.get("notes"),
             discount_pct=float(body.get("discount_pct") or 0),
         )
+        try:
+            from google_form_sync import submit_order_to_google_form
+            client_info = get_client_for_form(body["client_id"])
+            submit_order_to_google_form(
+                city=client_info.get("city", ""),
+                client_name=client_info.get("business_name", ""),
+                contact_name=client_info.get("contact_name", ""),
+                area="",
+                lines=order.get("lines", []),
+                is_new_client=True,
+            )
+        except Exception:
+            pass
         return jsonify({"ok": True, "order": order})
     except (ValueError, KeyError, TypeError) as e:
         return jsonify({"ok": False, "error": f"Invalid order: {e}"}), 400
@@ -552,6 +578,34 @@ def api_dashboard_export():
     filename = f"icestasy-orders-{report_type}-{date.today().isoformat()}.xlsx"
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                       as_attachment=True, download_name=filename)
+
+
+@app.route("/api/dashboard/export-sample-orders")
+def api_export_sample_orders():
+    from reports import build_orders_workbook
+    try:
+        orders = list_sample_orders(user_id=session["user_id"], role=session["role"])
+        date_from = request.args.get("from") or None
+        date_to = request.args.get("to") or None
+        if date_from or date_to:
+            from reports import _in_range
+            orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
+        order_ids = [o["id"] for o in orders]
+        lines_by_order = fetch_sample_report_order_lines(order_ids)
+        for o in orders:
+            o["lines"] = lines_by_order.get(o["id"], [])
+            o["amount_paid"] = 0.0
+            o["shipping_state"] = ""
+            o["consignee_name"] = o.get("client_name", "")
+        role_label = ROLE_LABELS.get(session["role"], session["role"])
+        full_name = session.get("full_name") or ""
+        buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
+                                     report_type="all", date_from=date_from, date_to=date_to)
+        filename = f"icestasy-sample-orders-{date.today().isoformat()}.xlsx"
+        return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                          as_attachment=True, download_name=filename)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/dashboard/orders/<int:order_id>/lines")

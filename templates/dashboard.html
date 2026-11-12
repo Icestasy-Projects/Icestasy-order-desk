@@ -537,6 +537,7 @@
   <select id="reportType" class="rpt-input" onchange="onReportTypeChange()">
     <option value="all">All Orders</option>
     <option value="today">Today's Orders</option>
+    <option value="sample">New Client / Sample Orders</option>
     {% if is_admin %}
     <option value="city">City-wise</option>
     <option value="client">Client-wise</option>
@@ -784,6 +785,14 @@ function onReportTypeChange() {
 }
 function downloadReport() {
   const type = document.getElementById("reportType").value;
+  if (type === "sample") {
+    const params = new URLSearchParams();
+    params.set("from", document.getElementById("reportFrom").value);
+    params.set("to", document.getElementById("reportTo").value);
+    window.location = `/api/dashboard/export-sample-orders?${params.toString()}`;
+    closeReportModal();
+    return;
+  }
   const params = new URLSearchParams({type: type === "today" ? "all" : type});
   if (type === "today") {
     const today = new Date().toISOString().slice(0, 10);

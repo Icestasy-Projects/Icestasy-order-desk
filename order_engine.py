@@ -595,6 +595,21 @@ def get_sample_order_lines(order_id: int) -> list:
     return out
 
 
+def get_client_for_form(client_id: int) -> dict:
+    sb = _sb()
+    row = (sb.schema("sales").from_("clients")
+           .select("business_name, primary_contact_name, city")
+           .eq("id", client_id).limit(1).execute())
+    if not row.data:
+        return {}
+    r = row.data[0]
+    return {
+        "business_name": r.get("business_name") or "",
+        "contact_name": r.get("primary_contact_name") or "",
+        "city": r.get("city") or "",
+    }
+
+
 def add_order_collateral(sb, order_id: int, collateral: list) -> list:
     rows = [{
         "order_id": order_id,
@@ -1103,6 +1118,49 @@ def mis_daily_sales(dt: str) -> dict:
             squares[flavour] = squares.get(flavour, 0) + qty
 
     return {"date": dt, "bulks": bulks, "squares": squares}
+
+
+def fetch_sample_report_order_lines(order_ids: list) -> dict:
+    if not order_ids:
+        return {}
+    sb = _sb()
+    lines = []
+    CHUNK = 600
+    for i in range(0, len(order_ids), CHUNK):
+        chunk_ids = order_ids[i:i + CHUNK]
+        rows = (sb.schema("sales").from_("sample_order_lines")
+                .select("order_id, sku_id, quantity, unit_price, line_total, line_discount_amount, status")
+                .in_("order_id", chunk_ids).execute())
+        lines.extend(rows.data or [])
+    if not lines:
+        return {}
+    sku_ids = list({l["sku_id"] for l in lines})
+    skus_raw = []
+    for i in range(0, len(sku_ids), CHUNK):
+        chunk = sku_ids[i:i + CHUNK]
+        skus_raw.extend(
+            (sb.schema("sales").from_("skus")
+             .select("id, sku_code, gst_rate, flavours(name), pack_formats(name)")
+             .in_("id", chunk).execute()).data or [])
+    sku_map = {s["id"]: s for s in skus_raw}
+    out = {}
+    for l in lines:
+        sku = sku_map.get(l["sku_id"], {})
+        gst_rate = float(sku.get("gst_rate") or 5.0)
+        line_total = float(l["line_total"])
+        gst_amt = round(line_total * gst_rate / (100 + gst_rate), 2)
+        row = {
+            "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
+            "format_name": (sku.get("pack_formats") or {}).get("name", "—"),
+            "sku_code": sku.get("sku_code", "—"),
+            "quantity": float(l["quantity"]),
+            "unit_price": float(l["unit_price"]),
+            "line_total": line_total,
+            "gst_rate": gst_rate,
+            "gst_amount": gst_amt,
+        }
+        out.setdefault(l["order_id"], []).append(row)
+    return out
 
 
 def fetch_report_order_lines(order_ids: list) -> dict:
