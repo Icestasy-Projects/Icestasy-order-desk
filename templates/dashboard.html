@@ -273,10 +273,6 @@
         </div>
       </section>
 
-      <section>
-        <div class="section-label">Sales Breakdown</div>
-        <div id="breakdownRow" class="breakdown-row"></div>
-      </section>
       {% endif %}
 
       {% if is_admin %}
@@ -312,13 +308,6 @@
         <input id="dashSearch" class="search-input mt16" type="text"
                placeholder="Search by client, city, or order no…" oninput="handleSearchInput(this.value)">
 
-        {% if is_admin %}
-        <div class="tab-bar-flat mt16" id="paymentFilterTabs">
-          <button class="tab-btn-flat active" onclick="setPaymentFilter('all', this)">All Payments</button>
-          <button class="tab-btn-flat" onclick="setPaymentFilter('paid', this)">Paid</button>
-          <button class="tab-btn-flat" onclick="setPaymentFilter('unpaid', this)">Unpaid</button>
-        </div>
-        {% endif %}
 
         <div id="ordersBox" class="mt16"></div>
         <div id="ordersPagination" class="mt8"></div>
@@ -606,7 +595,6 @@ let grouping = "none";
 let expandedGroup = null;
 let expandedPlace = null;
 let searchQuery = "";
-let paymentFilter = "all";
 let ordersPage = 1;
 const ORDERS_PAGE_SIZE = 30;
 
@@ -681,16 +669,6 @@ function handleSearchInput(val) {
   }, 250);
 }
 
-function setPaymentFilter(f, btn) {
-  paymentFilter = f;
-  expandedGroup = null;
-  expandedPlace = null;
-  ordersPage = 1;
-  document.querySelectorAll("#paymentFilterTabs .tab-btn-flat").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  renderOrders();
-}
-
 function goToOrdersPage(p) {
   ordersPage = p;
   renderOrders();
@@ -699,8 +677,6 @@ function goToOrdersPage(p) {
 function filteredOrders() {
   let base = allOrders;
   if (selectedBU !== "all") base = base.filter(_orderMatchesBU);
-  if (paymentFilter === "paid") base = base.filter(o => o.payment_status === "received");
-  if (paymentFilter === "unpaid") base = base.filter(o => o.payment_status !== "received");
   if (!searchQuery) return base;
   return base.filter(o =>
     (o.order_no || "").toLowerCase().includes(searchQuery) ||
@@ -829,9 +805,6 @@ const STATUS_CLASS = {
   in_production: "badge-blue", dispatched: "badge-purple", delivered: "badge-green",
   rejected: "badge-red", cancelled: "badge-red", invoiced: "badge-blue",
 };
-const PAY_LABELS = { received: "Paid", pending: "Not Paid", failed: "Not Paid", refunded: "Refunded", not_recorded: "Not Paid" };
-const PAY_CLASS = { received: "badge-green", pending: "badge-amber", failed: "badge-red", refunded: "badge-red", not_recorded: "badge-gray" };
-
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 // Order comments are free text typed by staff — escape before rendering to avoid stored XSS.
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -873,8 +846,6 @@ function renderStats(orders) {
   if (!el) return;
   const total = orders.length;
   const totalValue = orders.reduce((s, o) => s + o.total_amount, 0);
-  const paid = orders.filter(o => o.payment_status === "received").length;
-  const due = orders.filter(o => o.payment_status === "pending" || o.payment_status === "not_recorded").length;
   el.innerHTML = `
     <div class="overview-card">
       <div class="overview-icon">${icon("package", "icon-lg")}</div>
@@ -885,56 +856,8 @@ function renderStats(orders) {
       <div class="overview-icon">${icon("indian-rupee", "icon-lg")}</div>
       <div class="overview-label">Total Value</div>
       <div class="overview-value">${fmt(totalValue)}</div>
-    </div>
-    <div class="overview-card">
-      <div class="overview-icon">${icon("circle-check-big", "icon-lg")}</div>
-      <div class="overview-label">Paid</div>
-      <div class="overview-value">${paid}</div>
-    </div>
-    <div class="overview-card">
-      <div class="overview-icon" style="color:var(--red)">${icon("hourglass", "icon-lg")}</div>
-      <div class="overview-label">Payment Due</div>
-      <div class="overview-value" style="color:var(--red)">${due}</div>
     </div>`;
-  if (IS_ADMIN) { renderBreakdown(orders); renderTrend(orders); }
-}
-
-// Pure-CSS horizontal bar breakdowns for the admin overview — no charting library needed.
-function barRows(orders, keyFn, limit) {
-  const totals = {};
-  orders.forEach(o => {
-    const k = keyFn(o) || "—";
-    const entry = totals[k] || (totals[k] = {count: 0, value: 0});
-    entry.count += 1;
-    entry.value += o.total_amount;
-  });
-  let entries = Object.entries(totals).sort((a, b) => b[1].value - a[1].value);
-  if (limit) entries = entries.slice(0, limit);
-  const maxValue = Math.max(1, ...entries.map(([, v]) => v.value));
-  if (!entries.length) return `<div class="opt-muted">No data</div>`;
-  return entries.map(([name, v]) => `
-    <div class="bar-row">
-      <div class="bar-row-label">
-        <span>${name}</span>
-        <span class="opt-sub">${v.count} · ${fmt(v.value)}</span>
-      </div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(v.value / maxValue * 100).toFixed(1)}%"></div></div>
-    </div>`).join("");
-}
-
-function renderBreakdown(orders) {
-  const box = document.getElementById("breakdownRow");
-  if (!box) return;
-  if (!orders.length) { box.innerHTML = ""; return; }
-  box.innerHTML = `
-    <div class="breakdown-card">
-      <div class="breakdown-title">By Status</div>
-      ${barRows(orders, o => STATUS_LABELS[o.status] || o.status)}
-    </div>
-    <div class="breakdown-card">
-      <div class="breakdown-title">Top Cities</div>
-      ${barRows(orders, reportCity, 5)}
-    </div>`;
+  if (IS_ADMIN) { renderTrend(orders); }
 }
 
 // ── Revenue trends (Month on Month / Quarter on Quarter / Year on Year) ────
@@ -1080,8 +1003,7 @@ function orderRow(o) {
         ${CAN_VIEW_TEAM ? `<span class="opt-sub">${o.source === "sheet_sync" ? "Auto Synced" : escapeHtml(o.salesperson_name ?? "")}</span>` : ""}
       </div>
       <div class="dash-order-side">
-        ${IS_ADMIN ? `<span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>
-        <span class="badge badge-pay ${PAY_CLASS[o.payment_status]}">${PAY_LABELS[o.payment_status]}</span>` : ""}
+        ${IS_ADMIN ? `<span class="badge badge-status ${STATUS_CLASS[o.status] || "badge-gray"}">${STATUS_LABELS[o.status] || o.status}</span>` : ""}
         <span class="ci-price">${fmt(o.total_amount)}</span>
         ${initialActions}
         ${holdAction}
