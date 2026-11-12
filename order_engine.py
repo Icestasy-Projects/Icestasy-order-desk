@@ -206,7 +206,7 @@ def get_staff_by_email(email: str) -> dict | None:
 
 def _postgrest_term(value: str) -> str:
     """Strip characters that would break out of a PostgREST or_() filter value."""
-    return re.sub(r"[,()*\\]", " ", value or "").strip()
+    return re.sub(r"[,()*\\.%]", " ", value or "").strip()
 
 
 def search_clients(query: str) -> list:
@@ -463,8 +463,10 @@ def create_sample_order(client_id, payment_mode, lines, user_id, notes=None, dis
             raise ValueError("Each order line needs a sku_id")
         if not l["quantity"] > 0:
             raise ValueError("Line quantity must be positive")
-        if not l["unit_price"] >= 0:
-            raise ValueError("Line price must not be negative")
+        if not l["unit_price"] >= 0 or not l.get("line_discount", 0.0) >= 0:
+            raise ValueError("Line price and discount must not be negative")
+        if l.get("line_discount", 0.0) > l["unit_price"]:
+            raise ValueError("Line discount cannot exceed the unit price")
     if not 0 <= discount_pct <= 100:
         raise ValueError("Discount % must be between 0 and 100")
     subtotal = round(sum(l["quantity"] * l["unit_price"] for l in lines), 2)
@@ -1589,6 +1591,9 @@ def delete_client(client_id: int) -> dict:
     orders = sb.schema("sales").from_("orders").select("id").eq("client_id", client_id).limit(1).execute()
     if orders.data:
         raise ValueError("Cannot delete client with existing orders. Remove or reassign their orders first.")
+    sample = sb.schema("sales").from_("sample_orders").select("id").eq("client_id", client_id).limit(1).execute()
+    if sample.data:
+        raise ValueError("Cannot delete client with existing sample orders. Remove or reassign their orders first.")
     sb.schema("sales").from_("addresses").delete().eq("client_id", client_id).execute()
     res = sb.schema("sales").from_("clients").delete().eq("id", client_id).execute()
     if not res.data:
