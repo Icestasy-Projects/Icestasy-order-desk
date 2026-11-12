@@ -166,7 +166,7 @@ function syncOrders() {
         client_id: matchedClient.id,
         consignee_name: client,
         billing: billing,
-        channel: 'whatsapp',
+        btype: btype,
         subtotal_amount: 0,
         total_amount: 0,
         items: []
@@ -203,7 +203,7 @@ function syncOrders() {
       created_at: o.created_at,
       client_id: o.client_id,
       consignee_name: o.consignee_name,
-      channel: o.channel,
+      channel: o.btype,
       order_type: 'commercial',
       payment_mode: 'invoice',
       status: 'delivered',
