@@ -4,11 +4,12 @@ Auto-submit order data to Google Forms (Pune B2B / Mumbai B2B).
 Each order line is submitted as a separate form response so it appears
 as one row in the linked spreadsheet — mirroring how manual form entries work.
 
-Submission is fire-and-forget: failures are logged but never block the order.
+Submission runs synchronously before the HTTP response returns (required on
+Vercel serverless where daemon threads are killed after the response).
+Failures are logged but never block the order.
 """
 
 import logging
-import threading
 import urllib.request
 import urllib.parse
 
@@ -74,7 +75,7 @@ def _submit_form(url: str, data: dict):
         with urllib.request.urlopen(req, timeout=10) as resp:
             log.info("Google Form submit OK (%s): %s", resp.status, url[:80])
     except Exception as e:
-        log.warning("Google Form submit failed: %s", e)
+        log.error("Google Form submit failed: %s", e)
 
 
 def submit_order_to_google_form(
@@ -85,10 +86,11 @@ def submit_order_to_google_form(
     lines: list,
     is_new_client: bool = False,
 ):
-    """Submit order lines to the city's Google Form (fire-and-forget in background).
+    """Submit order lines to the city's Google Form synchronously.
 
     `lines` is a list of dicts: [{flavour_name, format_name, quantity}, ...]
-    Each line becomes a separate form submission.
+    Each line becomes a separate form submission.  Runs inline (not in a
+    background thread) so it completes before Vercel freezes the process.
     """
     key = _city_key(city)
     config = CITY_FORM_CONFIG.get(key)
@@ -99,18 +101,14 @@ def submit_order_to_google_form(
     fields = config["fields"]
     client_type = "New Client" if is_new_client else "Existing Client"
 
-    def _do_submit():
-        for line in lines:
-            data = {
-                fields["client_type"]:  client_type,
-                fields["client_name"]:  client_name or "",
-                fields["contact_name"]: contact_name or "",
-                fields["area"]:         area or "",
-                fields["flavour"]:      line.get("flavour_name") or "",
-                fields["pack_format"]:  line.get("format_name") or "",
-                fields["quantity"]:     str(line.get("quantity") or ""),
-            }
-            _submit_form(url, data)
-
-    thread = threading.Thread(target=_do_submit, daemon=True)
-    thread.start()
+    for line in lines:
+        data = {
+            fields["client_type"]:  client_type,
+            fields["client_name"]:  client_name or "",
+            fields["contact_name"]: contact_name or "",
+            fields["area"]:         area or "",
+            fields["flavour"]:      line.get("flavour_name") or "",
+            fields["pack_format"]:  line.get("format_name") or "",
+            fields["quantity"]:     str(line.get("quantity") or ""),
+        }
+        _submit_form(url, data)

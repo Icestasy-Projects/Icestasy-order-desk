@@ -623,6 +623,17 @@ def api_order_lines(order_id):
 @app.route("/api/dashboard/sample-orders/<int:order_id>/lines")
 def api_sample_order_lines(order_id):
     try:
+        from order_engine import _sb
+        sb = _sb()
+        order = (sb.schema("sales").from_("sample_orders")
+                 .select("id, salesperson_id, created_by_user_id")
+                 .eq("id", order_id).limit(1).execute())
+        if not order.data:
+            return jsonify({"ok": False, "error": "Order not found"}), 404
+        o = order.data[0]
+        if session["role"] != "admin" and session["role"] not in ("region_head_mumbai", "region_head_pune", "region_head_roi"):
+            if o.get("created_by_user_id") != session["user_id"] and o.get("salesperson_id") != session["user_id"]:
+                return jsonify({"ok": False, "error": "Not authorized"}), 403
         lines = get_sample_order_lines(order_id)
         return jsonify({"ok": True, "lines": lines})
     except Exception as e:
