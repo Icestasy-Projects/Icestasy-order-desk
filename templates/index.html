@@ -617,8 +617,8 @@ let formItemRows = [];
 let selectedPackFormat = null;
 
 async function switchOrderMode(mode) {
-  document.getElementById("orderModeTab-paste").classList.toggle("active", mode === "paste");
-  document.getElementById("orderModeTab-form").classList.toggle("active", mode === "form");
+  document.getElementById("orderModeTab-paste")?.classList.toggle("active", mode === "paste");
+  document.getElementById("orderModeTab-form")?.classList.toggle("active", mode === "form");
   document.getElementById("orderModeBox-paste").classList.toggle("hidden", mode !== "paste");
   document.getElementById("orderModeBox-form").classList.toggle("hidden", mode !== "form");
   if (mode === "form") {

@@ -271,7 +271,9 @@ def api_flavour_options():
 
 @app.route("/api/reprice", methods=["POST"])
 def api_reprice():
-    body = request.get_json(force=True)
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "invalid body"}), 400
     city = (body.get("city") or "").strip()
     items = body.get("items") or []
     region = price_region_for_city(city) if city else "default"
@@ -757,10 +759,22 @@ def api_create_stock_request():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _stock_approver_required(view):
+    """Regional heads raise stock requests for their own city, so they must not
+    also be able to approve/reject them (self-approval, or acting on another
+    city's request by id) — only an admin signs off dispatches."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("role") != ADMIN_ROLE:
+            return jsonify({"ok": False, "error": "Only an admin can approve or reject stock requests"}), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @app.route("/api/stock-requests/<int:request_id>/approve", methods=["POST"])
-@admin_required
+@_stock_approver_required
 def api_approve_stock_request(request_id):
-    body = request.get_json(force=True)
+    body = request.get_json(force=True, silent=True) or {}
     try:
         req = approve_stock_request(request_id, line_approvals=body.get("lines") or {},
                                      approved_by=session["user_id"])
@@ -772,7 +786,7 @@ def api_approve_stock_request(request_id):
 
 
 @app.route("/api/stock-requests/<int:request_id>/reject", methods=["POST"])
-@admin_required
+@_stock_approver_required
 def api_reject_stock_request(request_id):
     try:
         req = reject_stock_request(request_id, rejected_by=session["user_id"])

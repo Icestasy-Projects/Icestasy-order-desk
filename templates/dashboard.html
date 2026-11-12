@@ -788,7 +788,7 @@ function barRows(orders, keyFn, limit) {
   return entries.map(([name, v]) => `
     <div class="bar-row">
       <div class="bar-row-label">
-        <span>${name}</span>
+        <span>${escapeHtml(name)}</span>
         <span class="opt-sub">${v.count} · ${fmt(v.value)}</span>
       </div>
       <div class="bar-track"><div class="bar-fill" style="width:${(v.value / maxValue * 100).toFixed(1)}%"></div></div>
@@ -931,8 +931,8 @@ function orderRow(o) {
   const isNotPaid = (o.payment_status !== "received");
   const initialActions = (IS_ADMIN && isPending)
     ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">${icon("check")} Approve</button>
-       <button class="btn-option btn-sm" onclick="putOnHold(${o.id})">${icon("pause")} Hold</button>` : "";
-  const holdAction = (IS_ADMIN && o.status === "hold")
+       ${USER_ROLE === "admin" ? `<button class="btn-option btn-sm" onclick="putOnHold(${o.id})">${icon("pause")} Hold</button>` : ""}` : "";
+  const holdAction = (USER_ROLE === "admin" && o.status === "hold")
     ? `<button class="btn-option btn-sm" onclick="releaseHold(${o.id})">${icon("play")} Release Hold</button>` : "";
   const payAction = (IS_ADMIN && isApproved && isNotPaid && o.payment_mode !== "advance")
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
@@ -1083,7 +1083,7 @@ function renderOrders() {
     return `
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleGroup(${safeName})'>
-          <span>${isOpen ? "▾" : "▸"} ${name}</span>
+          <span>${isOpen ? "▾" : "▸"} ${escapeHtml(name)}</span>
           <span class="opt-sub">${orders.length} orders · ${fmt(groupTotal)}</span>
         </button>
         ${body}
@@ -1113,7 +1113,7 @@ function renderPlaceGroups(orders) {
     return `
       <div class="dash-subgroup">
         <button type="button" class="dash-group-header dash-subgroup-header" onclick='togglePlace(${safePlace})'>
-          <span>${isOpen ? "▾" : "▸"} ${placeLabels[place]}</span>
+          <span>${isOpen ? "▾" : "▸"} ${escapeHtml(placeLabels[place])}</span>
           <span class="opt-sub">${placeOrders.length} orders · ${fmt(placeTotal)}</span>
         </button>
         ${isOpen ? placeOrders.map(orderRow).join("") : ""}
@@ -1398,15 +1398,15 @@ function addressCardHtml(c, a) {
     <div class="cart-item-card" style="flex-direction:column;align-items:stretch;gap:8px">
       <div class="opt-sub">${a.address_type || "shipping"}${a.is_default ? " · default" : ""}</div>
       <input class="search-input" id="addr-consignee-${a.id}" placeholder="Consignee Name (optional)" value="${escapeHtml(a.consignee_name || "")}">
-      <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${a.line1 || ""}">
-      <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${a.line2 || ""}">
+      <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${escapeHtml(a.line1 || "")}">
+      <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${escapeHtml(a.line2 || "")}">
       <div class="btn-group">
-        <input class="search-input" id="addr-city-${a.id}" placeholder="Locality" value="${a.locality || a.city || ""}" style="flex:1">
-        <input class="search-input" id="addr-state-${a.id}" placeholder="State" value="${a.state || ""}" style="flex:1">
+        <input class="search-input" id="addr-city-${a.id}" placeholder="Locality" value="${escapeHtml(a.locality || a.city || "")}" style="flex:1">
+        <input class="search-input" id="addr-state-${a.id}" placeholder="State" value="${escapeHtml(a.state || "")}" style="flex:1">
       </div>
       <div class="btn-group">
-        <input class="search-input" id="addr-pincode-${a.id}" placeholder="Pincode" value="${a.pincode || ""}" style="flex:1">
-        <input class="search-input" id="addr-gstin-${a.id}" placeholder="Address GSTIN (optional)" value="${a.gstin || ""}" style="flex:1">
+        <input class="search-input" id="addr-pincode-${a.id}" placeholder="Pincode" value="${escapeHtml(a.pincode || "")}" style="flex:1">
+        <input class="search-input" id="addr-gstin-${a.id}" placeholder="Address GSTIN (optional)" value="${escapeHtml(a.gstin || "")}" style="flex:1">
       </div>
       <div id="addr-error-${a.id}" class="opt-error"></div>
       <button class="btn-option btn-sm" onclick="submitAddressEdit(${a.id})" style="align-self:flex-start">Save address</button>
@@ -1420,8 +1420,8 @@ function clientRowHtml(c) {
     const addrCards = (c.addresses || []).map(a => addressCardHtml(c, a)).join("");
     body = `
       <div class="register-form mt8">
-        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${c.gstin || ""}">
-        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${c.fssai_no || ""}">
+        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${escapeHtml(c.gstin || "")}">
+        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${escapeHtml(c.fssai_no || "")}">
         <div id="client-error-${c.id}" class="opt-error mt8"></div>
         <button class="btn-option btn-sm mt8" onclick="submitClientEdit(${c.id})">Save GST/FSSAI</button>
       </div>
@@ -1446,7 +1446,7 @@ function clientRowHtml(c) {
           ${avatarHtml(c.business_name)}
           <div class="person-row-info">
             <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${escapeHtml(c.business_name ?? "")} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
-            <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
+            <span class="opt-sub">${escapeHtml((c.primary_contact_name ? c.primary_contact_name + " · " : "") + (c.primary_contact_phone ? c.primary_contact_phone + " · " : "") + (c.place && c.place !== "—" ? c.place : "") + (c.gstin ? " · GSTIN " + c.gstin : ""))}</span>
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -1539,8 +1539,8 @@ function renderClients() {
         const label = place === "—" ? "Other" : placeLabels[place];
         return `
           <div class="dash-subgroup">
-            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${JSON.stringify(place)})'>
-              <span>${placeOpen ? "▾" : "▸"} ${label}</span>
+            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${escapeHtml(JSON.stringify(place))})'>
+              <span>${placeOpen ? "▾" : "▸"} ${escapeHtml(label)}</span>
               <span class="opt-sub">${placeClients.length} client${placeClients.length === 1 ? "" : "s"}</span>
             </button>
             ${placeOpen ? placeClients.map(clientRowHtml).join("") : ""}
@@ -1550,9 +1550,9 @@ function renderClients() {
     return `
       <div class="dash-group">
         <div class="dash-group-header" style="display:flex;align-items:center;gap:8px">
-          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${cityClients.every(c => selectedClients.has(c.id)) && cityClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup(${JSON.stringify(city)}) : deselectAllInGroup(${JSON.stringify(city)})" title="Select all ${city}">` : ""}
-          <button type="button" style="flex:1;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit" onclick='toggleClientCity(${JSON.stringify(city)})'>
-            <span>${cityOpen ? "▾" : "▸"} ${city}</span>
+          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${cityClients.every(c => selectedClients.has(c.id)) && cityClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup(${escapeHtml(JSON.stringify(city))}) : deselectAllInGroup(${escapeHtml(JSON.stringify(city))})" title="Select all ${escapeHtml(city)}">` : ""}
+          <button type="button" style="flex:1;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit" onclick='toggleClientCity(${escapeHtml(JSON.stringify(city))})'>
+            <span>${cityOpen ? "▾" : "▸"} ${escapeHtml(city)}</span>
             <span class="opt-sub">${cityClients.length} client${cityClients.length === 1 ? "" : "s"}</span>
           </button>
         </div>
@@ -1593,8 +1593,8 @@ function renderClients() {
             const ckOpen = searching || expandedClientCity === label;
             return `
               <div class="dash-subgroup" style="margin-left:16px">
-                <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientCity(${JSON.stringify(label)})'>
-                  <span>${ckOpen ? "▾" : "▸"} ${label}</span>
+                <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientCity(${escapeHtml(JSON.stringify(label))})'>
+                  <span>${ckOpen ? "▾" : "▸"} ${escapeHtml(label)}</span>
                   <span class="opt-sub">${clients.length} client${clients.length === 1 ? "" : "s"}</span>
                 </button>
                 ${ckOpen ? clients.map(clientRowHtml).join("") : ""}
@@ -1603,8 +1603,8 @@ function renderClients() {
         }
         return `
           <div class="dash-subgroup">
-            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientState(${JSON.stringify(st)})'>
-              <span>${stOpen ? "▾" : "▸"} ${st}</span>
+            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientState(${escapeHtml(JSON.stringify(st))})'>
+              <span>${stOpen ? "▾" : "▸"} ${escapeHtml(st)}</span>
               <span class="opt-sub">${stClients.length} client${stClients.length === 1 ? "" : "s"}</span>
             </button>
             ${stBody}
@@ -2529,7 +2529,7 @@ function renderStockRequests() {
     const totalQty = r.lines.reduce((s, l) => s + (l.approved_qty !== null ? l.approved_qty : l.requested_qty), 0);
     let body = "";
     if (isOpen) {
-      const canApprove = IS_ADMIN && r.status === "pending";
+      const canApprove = USER_ROLE === "admin" && r.status === "pending";
       body = canApprove ? `
         <table class="summary-table mt8">
           <thead><tr><th>SKU</th><th>Requested</th><th class="num">Approve Qty</th></tr></thead>
@@ -2657,11 +2657,20 @@ function toggleFlavourSelect(id, ev) {
   updateBulkUI();
 }
 
-function toggleSelectAll(checked) {
+function currentFlavourPageItems() {
+  // Must mirror renderFlavours(): status filter, then search, then page —
+  // otherwise "select all" can pick (and bulk-delete) flavours not on screen.
   const q = flavourSearchQuery;
-  const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
+  const sf = flavourStatusFilter;
+  let filtered = flavoursData;
+  if (sf !== "all") filtered = filtered.filter(f => f.status === sf);
+  if (q) filtered = filtered.filter(f => f.name.toLowerCase().includes(q));
   const pageStart = (flavoursPage - 1) * FLAVOURS_PAGE_SIZE;
-  const pageItems = filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
+  return filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
+}
+
+function toggleSelectAll(checked) {
+  const pageItems = currentFlavourPageItems();
   pageItems.forEach(f => { if (checked) selectedFlavourIds.add(f.id); else selectedFlavourIds.delete(f.id); });
   updateBulkUI();
 }
@@ -2679,10 +2688,7 @@ function updateBulkUI() {
   });
   const selectAllCb = document.getElementById("selectAllCb");
   if (selectAllCb) {
-    const q = flavourSearchQuery;
-    const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
-    const pageStart = (flavoursPage - 1) * FLAVOURS_PAGE_SIZE;
-    const pageItems = filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
+    const pageItems = currentFlavourPageItems();
     selectAllCb.checked = pageItems.length > 0 && pageItems.every(f => selectedFlavourIds.has(f.id));
   }
 }

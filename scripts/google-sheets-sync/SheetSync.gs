@@ -399,8 +399,10 @@ function parseFlavourToSku_(flavourStr) {
   var skuMap = DB_SKUS[dbName];
   if (!skuMap) return null;
 
-  var skuId = skuMap[formatId] || skuMap[1];
-  return skuId ? { sku_id: skuId } : null;
+  // No fallback to another pack size (e.g. the 4L SKU): booking a 12-square
+  // line against the bulk SKU silently corrupts the order. Report it instead.
+  var skuId = skuMap[formatId];
+  return skuId ? { sku_id: skuId } : { error: rawName + ' (pack format ' + formatId + ')' };
 }
 
 
@@ -415,7 +417,15 @@ var clientByNorm_ = {};       // normalised core -> [{id, business_name, loc}]
 
 function ensureClientIndex_() {
   if (allClients_) return;
-  allClients_ = supabaseGet_('clients', 'select=id,business_name&status=eq.active&limit=5000');
+  // PostgREST caps every response at 1000 rows regardless of limit=, so page
+  // explicitly — otherwise clients past the first 1000 are never matched and
+  // get re-created as duplicates.
+  allClients_ = [];
+  for (var offset = 0; ; offset += 1000) {
+    var page = supabaseGet_('clients', 'select=id,business_name&status=eq.active&order=id&limit=1000&offset=' + offset);
+    allClients_ = allClients_.concat(page);
+    if (page.length < 1000) break;
+  }
   clientByExact_ = {};
   clientByNorm_ = {};
   for (var i = 0; i < allClients_.length; i++) {
@@ -660,6 +670,9 @@ function syncOrdersToDb() {
 
       if (parsed && parsed.error) {
         unknownFlavours[parsed.error] = (unknownFlavours[parsed.error] || 0) + 1;
+        // Don't sync this invoice with a line missing (its totals would still
+        // include it) and mark every row SYNCED — block it until mapped.
+        od.blocked = parsed.error;
         continue;
       }
 
@@ -781,7 +794,7 @@ function syncOrdersToDb() {
 
     var unknownKeys = Object.keys(unknownFlavours);
     if (unknownKeys.length > 0) {
-      confirmMsg += '\nUnmapped flavours (lines skipped):\n';
+      confirmMsg += '\nUnmapped flavours (their invoices will NOT sync until mapped):\n';
       for (var uk = 0; uk < Math.min(10, unknownKeys.length); uk++) {
         confirmMsg += '  - ' + unknownKeys[uk] + ' (' + unknownFlavours[unknownKeys[uk]] + ' lines)\n';
       }
@@ -820,6 +833,10 @@ function syncOrdersToDb() {
     if (!od.summary || od.lines.length === 0) {
       continue;
     }
+    if (od.blocked) {
+      errors.push(inv + ': Unmapped flavour/pack "' + od.blocked + '" — invoice not synced');
+      continue;
+    }
 
     try {
       var clientName = od.summary.client || od.summary.billing;
@@ -842,7 +859,10 @@ function syncOrdersToDb() {
       if (od.summary.date) {
         var dd = od.summary.date;
         if (dd instanceof Date) {
-          dateStr = dd.toISOString();
+          // toISOString() turns midnight IST into the previous day in UTC
+          // (e.g. 05-Oct -> 2026-10-04T18:30Z), and reports/Tally read the
+          // date as created_at[:10]. Midday IST is the same date in both zones.
+          dateStr = Utilities.formatDate(dd, 'Asia/Kolkata', "yyyy-MM-dd'T'12:00:00+05:30");
         } else if (String(dd).trim() !== '') {
           dateStr = String(dd);
         }
@@ -886,7 +906,14 @@ function syncOrdersToDb() {
           status: 'delivered'
         });
       }
-      supabaseInsert_('order_lines', lineData);
+      try {
+        supabaseInsert_('order_lines', lineData);
+      } catch (lineErr) {
+        // Don't leave a line-less order behind: the next run would see the
+        // order_no already in the DB and mark it SYNCED without its lines.
+        try { supabaseDelete_('orders', 'id=eq.' + orderId); } catch (e2) { /* best effort */ }
+        throw lineErr;
+      }
 
       // Mark rows as synced
       for (var ri = 0; ri < od.rowIndices.length; ri++) {
@@ -933,7 +960,12 @@ function syncOrdersToDb() {
       if (errors.length > 20) msg += '\n... and ' + (errors.length - 20) + ' more';
     }
 
-    SpreadsheetApp.getUi().alert('Sync Results', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+    if (isAutoResume) {
+      // getUi() is unavailable from a time-based trigger — toast instead.
+      ss.toast(msg, 'Icestasy Sync', 30);
+    } else {
+      SpreadsheetApp.getUi().alert('Sync Results', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+    }
   }
 }
 

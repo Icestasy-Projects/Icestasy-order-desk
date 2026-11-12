@@ -686,9 +686,26 @@ def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
     rows = sb.rpc("get_dashboard_orders", {"p_user_id": user_id, "p_role": role}).execute().data
     if not rows:
         return []
+    # The get_dashboard_orders RPC returns every order for every known role
+    # (salespeople and regional heads included), so scope it here — the same
+    # rules get_order_lines / flavour_sales_summary already enforce: a
+    # salesperson sees only orders they created or are assigned to, a regional
+    # head only orders whose place resolves to their region.
+    own_ids = None
+    if role != "admin" and role not in REGION_HEAD_ROLES:
+        own_ids = {o["id"] for o in _fetch_all_pages(lambda start, end: (
+            sb.schema("sales").from_("orders").select("id")
+            .or_(f"created_by_user_id.eq.{int(user_id)},salesperson_id.eq.{int(user_id)}")
+            .order("id").range(start, end)
+        ))}
     out = []
     for r in rows:
+        if own_ids is not None and r["id"] not in own_ids:
+            continue
         place = r.get("place", "—")
+        if role in REGION_HEAD_ROLES and _region_role_for_city(
+                place if place != "—" else _city_from_order_no(r["order_no"])) != role:
+            continue
         city = city_for_place(place) if place != "—" else _city_from_order_no(r["order_no"])
         out.append({
             "id": r["id"], "order_no": r["order_no"], "status": r["status"],
@@ -1381,10 +1398,15 @@ def update_address(address_id: int, data: dict) -> dict:
     for key in ("line1", "line2", "state", "pincode", "gstin", "address_type", "consignee_name"):
         if key in data:
             updates[key] = (data.get(key) or "").strip() or None
-    # "city" here means locality precision (e.g. "Bandra West") — the real
-    # `city` column stays a fixed "Mumbai", so route edits to `locality` instead.
+    # "city" here means locality precision (e.g. "Bandra West"): store it as
+    # `locality` and re-derive the real `city` from it, exactly as
+    # create_address() does — otherwise moving an address from "Bandra" to
+    # "Kothrud" would leave city="Mumbai" behind for client/region lookups.
     if "city" in data:
-        updates["locality"] = (data.get("city") or "").strip() or None
+        locality = (data.get("city") or "").strip() or None
+        updates["locality"] = locality
+        if locality:
+            updates["city"] = city_for_place(locality)
     if updates.get("state"):
         updates["state_code"] = _state_code_for(updates["state"])
     if "is_default" in data:
@@ -1878,13 +1900,15 @@ def _current_prices_by_sku() -> dict:
     Returns {sku_id: {"default": 480, "mumbai": 500, ...}}."""
     sb = _sb()
     today = date.today().isoformat()
-    rows = (
+    # Paged: one current row per SKU x region (7 regions) passes PostgREST's
+    # 1000-row cap at ~143 SKUs, silently dropping prices beyond it.
+    rows = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("sku_prices").select("sku_id,price,region,effective_from")
         .lte("effective_from", today)
         .or_(f"effective_to.is.null,effective_to.gte.{today}")
-        .order("effective_from", desc=True)
-        .execute().data
-    )
+        .order("effective_from", desc=True).order("id", desc=True)
+        .range(start, end)
+    ))
     out: dict[int, dict] = {}
     for r in rows:
         sku_map = out.setdefault(r["sku_id"], {})
