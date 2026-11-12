@@ -31,7 +31,7 @@ from order_engine import (
     approve_stock_request, reject_stock_request, city_stock_summary,
     list_tally_sales,
     create_sample_order, list_sample_orders, get_sample_order_lines,
-    fetch_sample_report_order_lines,
+    fetch_sample_report_order_lines, get_client_for_form,
 )
 # invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
 # imports that only the invoice-download and Excel-export routes need. Kept as
@@ -464,6 +464,18 @@ def api_orders():
             discount_pct=float(body.get("discount_pct") or 0),
             consignee_name=body.get("consignee_name"),
         )
+        try:
+            from google_form_sync import submit_order_to_google_form
+            client_info = get_client_for_form(body["client_id"])
+            submit_order_to_google_form(
+                city=client_info.get("city", ""),
+                client_name=client_info.get("business_name", ""),
+                contact_name=client_info.get("contact_name", ""),
+                area="",
+                lines=order.get("lines", []),
+            )
+        except Exception:
+            pass
         return jsonify({"ok": True, "order": order})
     except (ValueError, KeyError, TypeError) as e:
         return jsonify({"ok": False, "error": f"Invalid order: {e}"}), 400
@@ -483,6 +495,19 @@ def api_sample_orders():
             notes=body.get("notes"),
             discount_pct=float(body.get("discount_pct") or 0),
         )
+        try:
+            from google_form_sync import submit_order_to_google_form
+            client_info = get_client_for_form(body["client_id"])
+            submit_order_to_google_form(
+                city=client_info.get("city", ""),
+                client_name=client_info.get("business_name", ""),
+                contact_name=client_info.get("contact_name", ""),
+                area="",
+                lines=order.get("lines", []),
+                is_new_client=True,
+            )
+        except Exception:
+            pass
         return jsonify({"ok": True, "order": order})
     except (ValueError, KeyError, TypeError) as e:
         return jsonify({"ok": False, "error": f"Invalid order: {e}"}), 400

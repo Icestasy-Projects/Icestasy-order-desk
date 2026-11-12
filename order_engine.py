@@ -595,6 +595,21 @@ def get_sample_order_lines(order_id: int) -> list:
     return out
 
 
+def get_client_for_form(client_id: int) -> dict:
+    sb = _sb()
+    row = (sb.schema("sales").from_("clients")
+           .select("business_name, primary_contact_name, city")
+           .eq("id", client_id).limit(1).execute())
+    if not row.data:
+        return {}
+    r = row.data[0]
+    return {
+        "business_name": r.get("business_name") or "",
+        "contact_name": r.get("primary_contact_name") or "",
+        "city": r.get("city") or "",
+    }
+
+
 def add_order_collateral(sb, order_id: int, collateral: list) -> list:
     rows = [{
         "order_id": order_id,
