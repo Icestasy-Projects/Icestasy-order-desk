@@ -537,7 +537,11 @@ function _orderMatchesBU(o) {
   }
   const citySet = _BU_CITIES[selectedBU];
   if (citySet) return citySet.has(c);
-  return selectedBU === "roi";
+  if (selectedBU === "roi") {
+    for (const s of Object.values(_BU_CITIES)) { if (s.has(c)) return false; }
+    return true;
+  }
+  return false;
 }
 
 let _searchDebounce = null;
