@@ -30,6 +30,7 @@ from order_engine import (
     STOCK_REQUEST_CITIES, create_stock_request, list_stock_requests,
     approve_stock_request, reject_stock_request, city_stock_summary,
     list_tally_sales,
+    create_sample_order, list_sample_orders, get_sample_order_lines,
 )
 # invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
 # imports that only the invoice-download and Excel-export routes need. Kept as
@@ -364,7 +365,7 @@ def api_register_client():
     body = request.get_json(force=True)
     try:
         client = register_client(body, registered_by=session["user_id"])
-        return jsonify({"ok": True, "client": client})
+        return jsonify({"ok": True, "client": client, "client_id": client["id"]})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 409
     except Exception as e:
@@ -469,6 +470,25 @@ def api_orders():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/sample-orders", methods=["POST"])
+def api_sample_orders():
+    body = request.get_json(force=True)
+    try:
+        order = create_sample_order(
+            client_id=body["client_id"],
+            payment_mode=body.get("payment_mode", "advance"),
+            lines=body["lines"],
+            user_id=session["user_id"],
+            notes=body.get("notes"),
+            discount_pct=float(body.get("discount_pct") or 0),
+        )
+        return jsonify({"ok": True, "order": order})
+    except (ValueError, KeyError, TypeError) as e:
+        return jsonify({"ok": False, "error": f"Invalid order: {e}"}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/orders/stock-check", methods=["POST"])
 def api_stock_check():
     body = request.get_json(force=True)
@@ -483,6 +503,11 @@ def api_dashboard_orders():
     try:
         orders = list_dashboard_orders(user_id=session["user_id"], role=session["role"],
                                        region=session.get("region", ""))
+        try:
+            sample = list_sample_orders(user_id=session["user_id"], role=session["role"])
+            orders = orders + sample
+        except Exception:
+            pass
         return jsonify({"orders": orders})
     except Exception as e:
         return jsonify({"orders": [], "error": str(e)}), 200
@@ -537,6 +562,15 @@ def api_order_lines(order_id):
         return jsonify({"ok": True, "lines": lines})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 403
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/dashboard/sample-orders/<int:order_id>/lines")
+def api_sample_order_lines(order_id):
+    try:
+        lines = get_sample_order_lines(order_id)
+        return jsonify({"ok": True, "lines": lines})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
