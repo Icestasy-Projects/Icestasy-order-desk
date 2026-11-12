@@ -21,6 +21,12 @@
 }
 .step-back:hover { color: var(--brand); }
 .step-back svg { width: 16px; height: 16px; }
+.sample-banner {
+  display: none; padding: 10px 16px; background: #fef3c7; border: 1.5px solid #f59e0b;
+  border-radius: var(--radius-sm); margin-bottom: 12px; font-size: 13px; font-weight: 600;
+  color: #92400e; text-align: center;
+}
+.sample-banner.visible { display: block; }
 .sku-picker { position: relative; }
 .sku-picker-input { padding-right: 36px !important; }
 .sku-picker-clear {
@@ -299,6 +305,7 @@
 
   <main class="main">
 
+    <div id="sampleBanner" class="sample-banner">&#x1f9ea; Sample Order — This order will be recorded separately for the newly onboarded client</div>
     <div id="orderSummary" class="order-summary hidden"></div>
 
     <!-- STEP 0: Paste / Form -->
@@ -432,6 +439,10 @@ function icon(name, cls) {
 const IS_ADMIN = {{ "true" if is_admin else "false" }};
 
 // ── State ───────────────────────────────────────────────────────────────────
+const _urlParams = new URLSearchParams(window.location.search);
+const isSampleOrder = _urlParams.get("sample") === "1";
+const _preselectedClientId = _urlParams.get("client_id");
+
 let state = {
   items: [],        // [{qty, resolved_sku, unit_price, ambiguous, candidates}]
   payment: null,
@@ -1571,19 +1582,18 @@ async function submitOrderWithOptions(options) {
 
   const notes = [comment, options.extraNote].filter(Boolean).join("\n");
 
-  const res = await fetch("/api/orders", {
+  const orderEndpoint = isSampleOrder ? "/api/sample-orders" : "/api/orders";
+  const orderPayload = isSampleOrder
+    ? { client_id: state.client.id, payment_mode: "advance", lines, discount_pct: 0, notes: notes || null }
+    : { client_id: state.client.id, payment_mode: "invoice", lines,
+        shipping_address_id: state.address_id, billing_address_id: state.address_id,
+        consignee_name: state.consignee ? state.consignee.business_name : null,
+        collateral: options.collateral !== undefined ? options.collateral : state.collateral,
+        discount_pct: 0, notes: notes || null };
+
+  const res = await fetch(orderEndpoint, {
     method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({
-      client_id: state.client.id,
-      payment_mode: "invoice",
-      lines,
-      shipping_address_id: state.address_id,
-      billing_address_id: state.address_id,
-      consignee_name: state.consignee ? state.consignee.business_name : null,
-      collateral: options.collateral !== undefined ? options.collateral : state.collateral,
-      discount_pct: 0,
-      notes: notes || null,
-    }),
+    body: JSON.stringify(orderPayload),
   }).then(r => r.json());
 
   btn.disabled = false; btn.innerHTML = `${icon("check")} Confirm &amp; Place Order`;
@@ -1597,8 +1607,16 @@ async function submitOrderWithOptions(options) {
 }
 
 (async () => {
+  if (isSampleOrder) document.getElementById("sampleBanner").classList.add("visible");
   loadFlavourOptions();  // pre-load with default prices for speed
   await loadClientOptions();
+  if (isSampleOrder && _preselectedClientId) {
+    const client = (clientOptionsCache || []).find(c => String(c.id) === String(_preselectedClientId));
+    if (client) {
+      await selectClient(client);
+      return;
+    }
+  }
   const restored = await restoreOrderDraft();
   if (!restored) show("step-client");
 })();

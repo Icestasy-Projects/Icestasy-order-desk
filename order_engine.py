@@ -445,6 +445,156 @@ def _next_order_no(sb, city_code: str) -> str:
     return f"{city_code}/{yy}/{mm}/{seq:04d}"
 
 
+def _next_sample_order_no(sb, city_code: str) -> str:
+    today = date.today()
+    yy = f"{today.year % 100:02d}"
+    mm = f"{today.month:02d}"
+    seq = sb.schema("sales").rpc("next_sample_order_seq", {"p_city_code": city_code, "p_fy": yy}).execute().data
+    return f"S-{city_code}/{yy}/{mm}/{seq:04d}"
+
+
+def create_sample_order(client_id, payment_mode, lines, user_id, notes=None, discount_pct=0.0):
+    sb = _sb()
+    payment_mode = payment_mode or "advance"
+    if not lines:
+        raise ValueError("At least one order line is required")
+    for l in lines:
+        if l.get("sku_id") is None:
+            raise ValueError("Each order line needs a sku_id")
+        if not l["quantity"] > 0:
+            raise ValueError("Line quantity must be positive")
+        if not l["unit_price"] >= 0:
+            raise ValueError("Line price must not be negative")
+    if not 0 <= discount_pct <= 100:
+        raise ValueError("Discount % must be between 0 and 100")
+    subtotal = round(sum(l["quantity"] * l["unit_price"] for l in lines), 2)
+    line_discount = sum(l.get("line_discount", 0.0) * l["quantity"] for l in lines)
+    pct_discount = round(subtotal * (discount_pct / 100), 2) if discount_pct else 0.0
+    discount = round(line_discount + pct_discount, 2)
+    total = round(subtotal - discount, 2)
+    if total < 0:
+        raise ValueError("Discount cannot exceed the order subtotal")
+
+    city_code = "ROI"
+    client_row = sb.schema("sales").from_("clients").select("city").eq("id", client_id).limit(1).execute()
+    if client_row.data:
+        client_city = (client_row.data[0].get("city") or "").strip()
+        if client_city:
+            city_code = _order_city_code(client_city)
+
+    order_no = _next_sample_order_no(sb, city_code)
+    order_row = {
+        "order_no": order_no, "client_id": client_id,
+        "channel": "field_sales", "order_type": "sample",
+        "payment_mode": payment_mode,
+        "status": "draft", "salesperson_id": user_id, "created_by_user_id": user_id,
+        "placed_by_client": False, "source": "field_sales",
+        "is_urgent": False,
+        "subtotal_amount": str(subtotal), "discount_amount": str(discount),
+        "tax_amount": "0.00", "total_amount": str(total), "notes": notes,
+    }
+    line_totals = []
+    line_discs = []
+    for l in lines:
+        qty = l["quantity"]; price = l["unit_price"]
+        base_disc = l.get("line_discount", 0.0) * qty
+        pct_share = round(qty * price * (discount_pct / 100), 2) if discount_pct else 0.0
+        line_discs.append(round(base_disc + pct_share, 2))
+        line_totals.append(round(qty * price - line_discs[-1], 2))
+    residue = round(total - sum(line_totals), 2)
+    if residue:
+        line_totals[-1] = round(line_totals[-1] + residue, 2)
+        line_discs[-1] = round(line_discs[-1] - residue, 2)
+
+    order_res = sb.schema("sales").from_("sample_orders").insert(order_row).execute()
+    order_id = order_res.data[0]["id"]
+    try:
+        line_rows = [{
+            "order_id": order_id, "sku_id": l["sku_id"],
+            "quantity": str(l["quantity"]), "unit_price": str(l["unit_price"]),
+            "line_discount_amount": str(line_discs[i]),
+            "line_total": str(line_totals[i]), "status": "active",
+        } for i, l in enumerate(lines)]
+        sb.schema("sales").from_("sample_order_lines").insert(line_rows).execute()
+    except Exception:
+        try:
+            sb.schema("sales").from_("sample_order_lines").delete().eq("order_id", order_id).execute()
+            sb.schema("sales").from_("sample_orders").delete().eq("id", order_id).execute()
+        except Exception:
+            pass
+        raise
+
+    return {**order_res.data[0], "subtotal": subtotal, "discount": discount, "total": total,
+            "lines": [{"sku_code": l.get("sku_code"), "flavour_name": l.get("flavour_name"),
+                       "format_name": l.get("format_name"), "quantity": l["quantity"],
+                       "unit_price": l["unit_price"], "line_total": line_totals[i]}
+                      for i, l in enumerate(lines)]}
+
+
+def list_sample_orders(user_id: int, role: str) -> list:
+    sb = _sb()
+    rows = sb.rpc("get_sample_orders", {"p_user_id": user_id, "p_role": role}).execute().data
+    if not rows:
+        return []
+    out = []
+    for r in rows:
+        city = r.get("place", "—")
+        if city == "—":
+            city = _city_from_order_no(r["order_no"].replace("S-", ""))
+        else:
+            city = city_for_place(city) if city != "—" else "—"
+        out.append({
+            "id": r["id"], "order_no": r["order_no"], "status": r["status"],
+            "total_amount": float(r["total_amount"]), "created_at": r["created_at"],
+            "client_name": r.get("client_name", "—"),
+            "client_type": r.get("client_type", "horeca"),
+            "place": r.get("place", "—"),
+            "city": city,
+            "salesperson_name": r.get("salesperson_name", "—"),
+            "source": r.get("source", "field_sales"),
+            "payment_status": r.get("payment_status", "not_recorded"),
+            "payment_mode": r.get("payment_mode", "advance"),
+            "has_lines": r.get("has_lines", False),
+            "notes": r.get("notes", ""),
+            "is_sample": True,
+        })
+    return out
+
+
+def get_sample_order_lines(order_id: int) -> list:
+    sb = _sb()
+    rows = (sb.schema("sales").from_("sample_order_lines")
+            .select("id, sku_id, quantity, unit_price, line_discount_amount, line_total, status")
+            .eq("order_id", order_id).execute())
+    if not rows.data:
+        return []
+    sku_ids = list({r["sku_id"] for r in rows.data})
+    skus = (sb.schema("sales").from_("skus")
+            .select("id, sku_code, flavour_id, pack_format_id")
+            .in_("id", sku_ids).execute())
+    sku_map = {s["id"]: s for s in (skus.data or [])}
+    flavour_ids = list({s["flavour_id"] for s in sku_map.values() if s.get("flavour_id")})
+    flavours = {}
+    if flavour_ids:
+        fl = sb.schema("sales").from_("flavours").select("id, name").in_("id", flavour_ids).execute()
+        flavours = {f["id"]: f["name"] for f in (fl.data or [])}
+    fmt_ids = list({s["pack_format_id"] for s in sku_map.values() if s.get("pack_format_id")})
+    formats = {}
+    if fmt_ids:
+        fm = sb.schema("sales").from_("pack_formats").select("id, name").in_("id", fmt_ids).execute()
+        formats = {f["id"]: f["name"] for f in (fm.data or [])}
+    out = []
+    for r in rows.data:
+        sku = sku_map.get(r["sku_id"], {})
+        out.append({
+            **r,
+            "sku_code": sku.get("sku_code", ""),
+            "flavour_name": flavours.get(sku.get("flavour_id"), ""),
+            "format_name": formats.get(sku.get("pack_format_id"), ""),
+        })
+    return out
+
+
 def add_order_collateral(sb, order_id: int, collateral: list) -> list:
     rows = [{
         "order_id": order_id,
