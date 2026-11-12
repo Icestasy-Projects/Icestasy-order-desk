@@ -81,6 +81,87 @@
 .bulk-btn-clear { background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); }
 .bulk-btn-clear:hover { background: rgba(255,255,255,.15); color: #fff; }
 .client-checkbox { width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; accent-color: var(--brand, #3b82f6); }
+
+/* ── MIS Tab ─────────────────────────────────────────────────── */
+.mis-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
+}
+.mis-date-wrap {
+  display: flex; align-items: center; gap: 6px;
+}
+.mis-date-input {
+  padding: 7px 12px; border: 1px solid var(--slate-200, #e2e8f0);
+  border-radius: 8px; font-size: 13px; font-weight: 600;
+  font-family: inherit; background: var(--white, #fff);
+  color: var(--slate-700, #334155);
+}
+.mis-nav-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: 1px solid var(--slate-200, #e2e8f0);
+  border-radius: 8px; background: var(--white, #fff); cursor: pointer;
+  color: var(--slate-600, #475569); transition: all .15s;
+}
+.mis-nav-btn:hover { background: var(--slate-50, #f8fafc); border-color: var(--brand, #3b82f6); color: var(--brand, #3b82f6); }
+.mis-today-btn {
+  padding: 7px 14px; border: 1px solid var(--brand, #3b82f6);
+  border-radius: 8px; background: var(--brand-soft, #eff6ff);
+  color: var(--brand, #3b82f6); font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: all .15s; font-family: inherit;
+}
+.mis-today-btn:hover { background: var(--brand, #3b82f6); color: #fff; }
+
+.mis-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+}
+@media (max-width: 768px) {
+  .mis-grid { grid-template-columns: 1fr; }
+}
+.mis-panel {
+  background: var(--white, #fff); border: 1px solid var(--slate-200, #e2e8f0);
+  border-radius: 12px; overflow: hidden;
+}
+.mis-panel-head {
+  padding: 14px 18px; font-size: 14px; font-weight: 700; letter-spacing: .3px;
+  background: var(--brand, #3b82f6); color: #fff;
+  display: flex; align-items: center; gap: 10px;
+}
+.mis-pack-label {
+  font-weight: 500; font-size: 12px; opacity: .8;
+}
+.mis-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.mis-table thead { background: var(--slate-50, #f8fafc); }
+.mis-table th {
+  padding: 10px 16px; text-align: left; font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .5px;
+  color: var(--slate-500, #64748b);
+  border-bottom: 1px solid var(--slate-200, #e2e8f0);
+}
+.mis-th-num, .mis-td-num { text-align: center !important; }
+.mis-table td {
+  padding: 9px 16px; border-bottom: 1px solid var(--slate-100, #f1f5f9);
+  color: var(--slate-700, #334155);
+}
+.mis-td-flavour { font-weight: 500; }
+.mis-td-num { font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; }
+.mis-table tbody tr:hover { background: var(--slate-50, #f8fafc); }
+.mis-total-row {
+  background: var(--slate-50, #f8fafc);
+}
+.mis-total-row td {
+  padding: 12px 16px; font-weight: 700; font-size: 14px;
+  color: var(--slate-900, #0f172a);
+  border-top: 2px solid var(--slate-300, #cbd5e1);
+}
+.mis-total-row td:last-child { text-align: center; }
+.mis-loading {
+  text-align: center; padding: 40px; color: var(--slate-500, #64748b); font-size: 14px;
+}
+.mis-empty {
+  text-align: center; padding: 40px; color: var(--slate-400, #94a3b8); font-size: 14px;
+}
 </style>
 </head>
 <body>
@@ -156,6 +237,10 @@
       {# Insights, Dues, Stock tabs hidden — re-enable when ready #}
       {% endif %}
       {% if is_admin %}
+      <button class="tab-btn" id="page-tab-mis" onclick="switchPage('mis', this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 11.207V17"/><path d="M11 8.207V17"/><path d="M15 12.207V17"/><path d="M19 5.207V17"/></svg>
+        MIS
+      </button>
       <button class="tab-btn" id="page-tab-flavours" onclick="switchPage('flavours', this)">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17c5 0 8-2.69 8-6H4c0 3.31 3 6 8 6m-4 4h8m-4-3v3M5.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M12.14 11a3.5 3.5 0 1 1 6.71 0"/><path d="M15.5 6.5a3.5 3.5 0 1 0-7 0"/></svg>
         Flavours
@@ -367,6 +452,52 @@
     {% endif %}
 
     {% if is_admin %}
+    <div id="page-mis" class="hidden">
+      <section class="step">
+        <div class="mis-toolbar">
+          <div class="step-label" style="margin-bottom:0">Daily Sales — MIS</div>
+          <div class="mis-date-wrap">
+            <button class="mis-nav-btn" id="misPrev" onclick="misPrevDay()" title="Previous day">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <input type="date" id="misDate" class="mis-date-input" onchange="loadMIS()">
+            <button class="mis-nav-btn" id="misNext" onclick="misNextDay()" title="Next day">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <button class="mis-today-btn" onclick="misTodayClick()">Today</button>
+          </div>
+        </div>
+        <div id="misLoading" class="mis-loading hidden">Loading…</div>
+        <div id="misContent" class="mis-grid">
+          <div class="mis-panel">
+            <div class="mis-panel-head">BULKS SUMMARY <span class="mis-pack-label">4 Ltrs</span></div>
+            <table class="mis-table" id="misBulksTable">
+              <thead>
+                <tr><th class="mis-th-flavour">Flavours</th><th class="mis-th-num">Sales</th></tr>
+              </thead>
+              <tbody id="misBulksBody"></tbody>
+              <tfoot>
+                <tr class="mis-total-row"><td>Grand Total</td><td id="misBulksTotal">0</td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="mis-panel">
+            <div class="mis-panel-head">12-SQUARE SUMMARY</div>
+            <table class="mis-table" id="misSquaresTable">
+              <thead>
+                <tr><th class="mis-th-flavour">Flavours</th><th class="mis-th-num">Sales</th></tr>
+              </thead>
+              <tbody id="misSquaresBody"></tbody>
+              <tfoot>
+                <tr class="mis-total-row"><td>Grand Total</td><td id="misSquaresTotal">0</td></tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <div id="misEmpty" class="mis-empty hidden">No sales data for this date.</div>
+      </section>
+    </div>
+
     <div id="page-flavours" class="hidden">
       <section class="step flavour-mgmt">
         <div class="fm-toolbar">
@@ -592,7 +723,7 @@ function filteredOrders() {
 // so it's bookmarkable/shareable and the browser back/forward buttons work.
 // switchPage() (tab-bar clicks) pushes a new URL; popstate (back/forward)
 // re-activates a page without pushing again.
-const DASHBOARD_PAGES = ["orders", "clients", "team", "insights", "dues", "stock", "flavours"];
+const DASHBOARD_PAGES = ["orders", "clients", "team", "insights", "dues", "stock", "flavours", "mis"];
 
 function _pageFromPath(path) {
   const seg = path.replace(/^\/+|\/+$/g, "");
@@ -613,6 +744,8 @@ function activatePage(page, pushState) {
   if (stockPage) stockPage.classList.toggle("hidden", page !== "stock");
   const flavoursPage = document.getElementById("page-flavours");
   if (flavoursPage) flavoursPage.classList.toggle("hidden", page !== "flavours");
+  const misPage = document.getElementById("page-mis");
+  if (misPage) misPage.classList.toggle("hidden", page !== "mis");
   const insightsPage = document.getElementById("page-insights");
   if (insightsPage) insightsPage.classList.toggle("hidden", page !== "insights");
   const duesPage = document.getElementById("page-dues");
@@ -622,6 +755,7 @@ function activatePage(page, pushState) {
   if (page === "flavours" && !flavoursData.length) loadFlavours();
   if (page === "insights" && !flavourSalesLines.length) loadFlavourSales();
   if (page === "dues") loadDues();
+  if (page === "mis" && !_misLoaded) loadMIS();
   if (pushState) {
     const path = page === "orders" ? "/" : "/" + page;
     if (location.pathname !== path) history.pushState({page}, "", path);
@@ -2591,6 +2725,94 @@ async function submitRejectStockRequest(requestId) {
   const res = await fetch(`/api/stock-requests/${requestId}/reject`, {method: "POST"}).then(r => r.json());
   if (!res.ok) { alert(res.error || "Could not reject request"); return; }
   loadStockRequests();
+}
+
+// ── MIS — Daily flavour sales ────────────────────────────────────────────────
+let _misLoaded = false;
+
+function _initMISDate() {
+  const el = document.getElementById("misDate");
+  if (!el) return;
+  if (!el.value) {
+    el.value = new Date().toISOString().slice(0, 10);
+  }
+}
+
+function misPrevDay() {
+  const el = document.getElementById("misDate");
+  const d = new Date(el.value);
+  d.setDate(d.getDate() - 1);
+  el.value = d.toISOString().slice(0, 10);
+  loadMIS();
+}
+function misNextDay() {
+  const el = document.getElementById("misDate");
+  const d = new Date(el.value);
+  d.setDate(d.getDate() + 1);
+  el.value = d.toISOString().slice(0, 10);
+  loadMIS();
+}
+function misTodayClick() {
+  document.getElementById("misDate").value = new Date().toISOString().slice(0, 10);
+  loadMIS();
+}
+
+async function loadMIS() {
+  _initMISDate();
+  const dt = document.getElementById("misDate").value;
+  const loading = document.getElementById("misLoading");
+  const content = document.getElementById("misContent");
+  const empty = document.getElementById("misEmpty");
+  loading.classList.remove("hidden");
+  content.classList.add("hidden");
+  empty.classList.add("hidden");
+
+  try {
+    const resp = await fetch(`/api/dashboard/mis?date=${dt}`);
+    const data = await resp.json();
+    _misLoaded = true;
+
+    const bulks = data.bulks || {};
+    const squares = data.squares || {};
+    const hasBulks = Object.keys(bulks).length > 0;
+    const hasSquares = Object.keys(squares).length > 0;
+
+    if (!hasBulks && !hasSquares) {
+      loading.classList.add("hidden");
+      empty.classList.remove("hidden");
+      // still show empty tables
+      document.getElementById("misBulksBody").innerHTML = "";
+      document.getElementById("misSquaresBody").innerHTML = "";
+      document.getElementById("misBulksTotal").textContent = "0";
+      document.getElementById("misSquaresTotal").textContent = "0";
+      content.classList.remove("hidden");
+      return;
+    }
+
+    _renderMISTable("misBulksBody", "misBulksTotal", bulks);
+    _renderMISTable("misSquaresBody", "misSquaresTotal", squares);
+
+    loading.classList.add("hidden");
+    content.classList.remove("hidden");
+  } catch (e) {
+    loading.classList.add("hidden");
+    empty.textContent = "Error loading MIS data.";
+    empty.classList.remove("hidden");
+  }
+}
+
+function _renderMISTable(bodyId, totalId, salesMap) {
+  const tbody = document.getElementById(bodyId);
+  const entries = Object.entries(salesMap).sort((a, b) => a[0].localeCompare(b[0]));
+  let total = 0;
+  let html = "";
+  for (const [flavour, qty] of entries) {
+    const q = Math.round(qty);
+    total += q;
+    html += `<tr><td class="mis-td-flavour">${escapeHtml(flavour)}</td><td class="mis-td-num">${q}</td></tr>`;
+  }
+  tbody.innerHTML = html;
+  document.getElementById(totalId).textContent = total;
 }
 
 // ── Flavour management (admin) ───────────────────────────────────────────────
