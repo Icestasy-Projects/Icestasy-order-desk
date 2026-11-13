@@ -39,6 +39,16 @@ COLUMN_WIDTHS = [
 
 COMPANY_STATE = "Maharashtra"
 
+TALLY_VOUCHER_TYPE = {
+    "Mumbai": "Icecream Sale- Mumbai",
+    "Pune": "Icecream Sale - Pune",
+}
+TALLY_GODOWN = {
+    "Mumbai": "Goregaon",
+    "Pune": "Pune",
+}
+TALLY_SALES_LEDGER = "Sales Gst Local - 5%"
+
 CLIENT_TYPE_LABELS = {"horeca": "B2B", "distributor": "Distributor", "retail": "Retail"}
 
 # Mumbai Metropolitan Region: reported as a single "Mumbai" group, matching the dashboard's By City tab.
@@ -217,14 +227,16 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         city = _report_city(o)
         client = o.get("client_name") or ""
         consignee = (o.get("consignee_name") or "").strip() or client
-        sales_ledger = f"Sales - {city}"
+        voucher_type = TALLY_VOUCHER_TYPE.get(city, f"Icecream Sale - {city}")
+        godown = TALLY_GODOWN.get(city, city)
+        sales_ledger = TALLY_SALES_LEDGER
         shipping_state = (o.get("shipping_state") or "").strip()
         is_interstate = bool(shipping_state and shipping_state.lower() != COMPANY_STATE.lower())
 
         lines = o.get("lines") or []
         if not lines:
-            values = [sales_ledger, order_id, order_date, client, consignee, "", "", "", "",
-                      "", "", "", "", "", "", "", "", city, sales_ledger]
+            values = [voucher_type, order_id, order_date, client, consignee, "", "", "", "",
+                      "", "", "", "", "", "", "", "", godown, sales_ledger]
             for col, val in enumerate(values, start=1):
                 ws.cell(row=row, column=col, value=val)
             row += 1
@@ -268,10 +280,10 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 product_info = f"{product_info} - {fmt_name}" if product_info else fmt_name
 
             values = [
-                sales_ledger, order_id, order_date, client, consignee, product_info,
+                voucher_type, order_id, order_date, client, consignee, product_info,
                 qty, rate, taxable,
                 cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt,
-                "", "", city, sales_ledger,
+                "", "", godown, sales_ledger,
             ]
             for col, val in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=col, value=val)
