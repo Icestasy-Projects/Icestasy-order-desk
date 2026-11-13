@@ -109,7 +109,13 @@ def _client_ledger(sb, client_id: int, as_of_iso: str) -> dict:
 
 
 def _parse_ts(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    """Timestamp as an IST datetime, so printed invoice/payment dates match the
+    Indian calendar day rather than the UTC one."""
+    from reports import _to_ist
+    dt = _to_ist(value)
+    if dt is None:
+        raise ValueError(f"Unparseable timestamp: {value!r}")
+    return dt
 
 
 def _esc(value) -> str:
@@ -202,7 +208,7 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
         net = line_net * factor
         extra_discount += line_net - net
         disc_pct = (disc_amt / gross * 100) if gross else 0
-        gst_rate = float(sku.get("gst_rate") or 5.0)
+        gst_rate = 5.0 if sku.get("gst_rate") is None else float(sku["gst_rate"])
         tax_buckets[gst_rate] = tax_buckets.get(gst_rate, 0.0) + net
         total_qty += qty
         subtotal += net

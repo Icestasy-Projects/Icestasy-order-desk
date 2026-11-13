@@ -399,8 +399,11 @@ function parseFlavourToSku_(flavourStr) {
   var skuMap = DB_SKUS[dbName];
   if (!skuMap) return null;
 
-  var skuId = skuMap[formatId] || skuMap[1];
-  return skuId ? { sku_id: skuId } : null;
+  // No silent fallback to the 4L bulk SKU (format 1): booking a 12-square or
+  // sample line as a bulk tub records the wrong product and price. Report it
+  // as unknown instead so it shows up in the sync summary.
+  var skuId = skuMap[formatId];
+  return skuId ? { sku_id: skuId } : { error: rawName + ' (format ' + formatId + ')' };
 }
 
 
@@ -886,7 +889,14 @@ function syncOrdersToDb() {
           status: 'delivered'
         });
       }
-      supabaseInsert_('order_lines', lineData);
+      try {
+        supabaseInsert_('order_lines', lineData);
+      } catch (lineErr) {
+        // Roll back the header: otherwise the next run sees the order_no as
+        // already present and marks it SYNCED with no lines forever.
+        try { supabaseDelete_('orders', 'id=eq.' + orderId); } catch (delErr) {}
+        throw lineErr;
+      }
 
       // Mark rows as synced
       for (var ri = 0; ri < od.rowIndices.length; ri++) {

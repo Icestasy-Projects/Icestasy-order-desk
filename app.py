@@ -273,7 +273,7 @@ def change_password():
 # Each dashboard tab gets its own bookmarkable/shareable URL, all rendering
 # the same SPA-style template — dashboard.html reads initial_page to open
 # the right tab and pushes further tab switches into the URL client-side.
-DASHBOARD_TABS = ("orders", "clients", "team", "insights", "stock", "flavours")
+DASHBOARD_TABS = ("orders", "clients", "team", "insights", "dues", "stock", "flavours", "mis")
 
 
 def _render_dashboard(initial_page):

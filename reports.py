@@ -71,18 +71,33 @@ def _neutralize_formulas(wb) -> None:
                     cell.data_type = "s"
 
 
-def _format_date(created_at: str) -> str:
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _to_ist(created_at: str):
+    """Parse a Postgres timestamptz string into an IST datetime, or None.
+    Tolerates "Z" and short "+00" offsets; naive values are taken as UTC."""
+    if not created_at or not isinstance(created_at, str):
+        return None
+    value = created_at.replace("Z", "+00:00")
+    value = re.sub(r"([+-]\d{2})$", r"\1:00", value)
     try:
-        return datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d-%m-%Y")
-    except (ValueError, AttributeError):
-        return created_at or ""
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_IST)
+
+
+def _format_date(created_at: str) -> str:
+    dt = _to_ist(created_at)
+    return dt.strftime("%d-%m-%Y") if dt else (created_at or "")
 
 
 def _month_label(created_at: str) -> str:
-    try:
-        return datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%B %Y")
-    except (ValueError, AttributeError):
-        return created_at or "—"
+    dt = _to_ist(created_at)
+    return dt.strftime("%B %Y") if dt else (created_at or "—")
 
 
 def _report_city(o: dict) -> str:
@@ -97,8 +112,6 @@ GROUP_KEY_FUNCS = {
     "salesperson": lambda o: o.get("salesperson_name") or "—",
 }
 
-
-_IST = timezone(timedelta(hours=5, minutes=30))
 
 def _month_key_ist(created_at: str) -> str:
     try:
@@ -116,7 +129,7 @@ def _month_sheet_name(key: str) -> str:
 
 
 def _last_12_months_range() -> tuple:
-    today = date.today()
+    today = datetime.now(_IST).date()
     month_index = today.year * 12 + (today.month - 1) - 11
     start = date(month_index // 12, month_index % 12 + 1, 1)
     return start.isoformat(), today.isoformat()
@@ -129,7 +142,10 @@ def _in_range(created_at: str, date_from: str, date_to: str) -> bool:
     # datetime.fromisoformat() silently reject rows on some Python versions.
     # Plain ISO-date-string comparison sorts identically to real dates and sidesteps
     # that entirely.
-    date_str = (created_at or "")[:10]
+    # Bucket by the IST calendar date (what users pick in the date filter);
+    # fall back to the raw prefix if the timestamp can't be parsed.
+    dt = _to_ist(created_at)
+    date_str = dt.date().isoformat() if dt else (created_at or "")[:10]
     if not date_str:
         return True
     if date_from and date_str < date_from:

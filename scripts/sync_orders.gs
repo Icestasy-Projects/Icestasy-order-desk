@@ -253,12 +253,17 @@ function syncOrders() {
     }
   }
 
-  // Save progress
-  props.setProperty('sync_last_row', String(totalRows));
+  // Save progress — only when every batch went through. Failed batches would
+  // otherwise be skipped forever; re-sending succeeded ones is harmless
+  // because inserts use resolution=ignore-duplicates.
+  if (errs === 0) {
+    props.setProperty('sync_last_row', String(totalRows));
+  }
 
   Logger.log('=== DONE ===');
   Logger.log('Sent: ' + sent + ' | Errors: ' + errs);
-  Logger.log('Next run starts from row ' + totalRows);
+  Logger.log(errs === 0 ? 'Next run starts from row ' + totalRows
+                        : 'Errors occurred — next run retries from the previous checkpoint');
 }
 
 // Reset to re-sync everything from START_DATE

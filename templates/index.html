@@ -657,7 +657,7 @@ function renderFormatButtons() {
   const sorted = Object.entries(formats).sort((a, b) => a[1].localeCompare(b[1]));
   const box = document.getElementById("skuFormatBtns");
   box.innerHTML = sorted.map(([id, name]) =>
-    `<button class="btn-option${selectedPackFormat === Number(id) ? " active" : ""}" onclick="selectPackFormat(${id})">${name}</button>`
+    `<button class="btn-option${selectedPackFormat === Number(id) ? " active" : ""}" onclick="selectPackFormat(${id})">${escapeHtml(name)}</button>`
   ).join("");
   const section = document.getElementById("skuFormSection");
   section.style.display = selectedPackFormat ? "" : "none";
@@ -691,8 +691,8 @@ function renderFormItemRows() {
     return `
       <div class="item-card">
         <div class="item-card-info">
-          <div class="item-card-name">${sku.flavour_name}</div>
-          <div class="item-card-meta">${sku.pack_format_name} · ${fmt(sku.unit_price)} each</div>
+          <div class="item-card-name">${escapeHtml(sku.flavour_name)}</div>
+          <div class="item-card-meta">${escapeHtml(sku.pack_format_name)} · ${fmt(sku.unit_price)} each</div>
         </div>
         <div class="item-card-controls">
           <div class="item-card-qty">
@@ -736,7 +736,7 @@ function filterMainSkuDropdown(query) {
   } else {
     listEl.innerHTML = filtered.map(s =>
       `<div class="sku-picker-option" onmousedown="addSkuToOrder('${s.id}')">
-        <span class="sku-name">${s.flavour_name}</span>
+        <span class="sku-name">${escapeHtml(s.flavour_name)}</span>
         <span class="sku-meta">${fmt(s.unit_price)} each</span>
       </div>`
     ).join("");
@@ -846,7 +846,7 @@ function renderCart() {
 
     if (item.not_found) {
       const opts = (flavourOptionsCache || []).map(s =>
-        `<option value="${s.id}">${s.flavour_name} — ${s.pack_format_name} (${fmt(s.unit_price)})</option>`
+        `<option value="${s.id}">${escapeHtml(s.flavour_name)} — ${escapeHtml(s.pack_format_name)} (${fmt(s.unit_price)})</option>`
       ).join("");
       div.innerHTML = `
         <div class="ambig-label" style="color:#c0392b">${icon("triangle-alert")} No SKU found for item ${idx + 1} (qty: ${item.qty}, "${item.flavour_hint || ""}") — not in active catalogue. Skipped unless you pick one:</div>
@@ -863,8 +863,8 @@ function renderCart() {
       const total = item.qty * item.unit_price;
       div.innerHTML = `
         <div class="ci-info">
-          <span class="ci-name">${sku.flavour_name}</span>
-          <span class="ci-fmt">${sku.pack_format_name}</span>
+          <span class="ci-name">${escapeHtml(sku.flavour_name)}</span>
+          <span class="ci-fmt">${escapeHtml(sku.pack_format_name)}</span>
         </div>
         <div class="ci-right">
           <div class="qty-ctrl">
@@ -879,7 +879,7 @@ function renderCart() {
       allResolved = false;
       const candidates = item.candidates.map((c, ci) => `
         <button class="btn-option btn-sm" onclick="resolveSku(${idx},${ci})">
-          ${c.flavour_name} — ${c.pack_format_name} (${fmt(c.unit_price)})
+          ${escapeHtml(c.flavour_name)} — ${escapeHtml(c.pack_format_name)} (${fmt(c.unit_price)})
         </button>`).join("");
       div.innerHTML = `
         <div class="ambig-label">${icon("triangle-alert")} Select SKU for item ${idx + 1} (qty: ${item.qty})</div>
@@ -941,10 +941,16 @@ async function changeItems() {
 
 
 
-function escapeHtml(s){if(!s)return"";const d=document.createElement("div");d.textContent=s;return d.innerHTML;}
+// Escapes quotes too, so the result is safe inside HTML attributes as well as text.
+function escapeHtml(s){return String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+// A JS literal safe to embed in an inline on*="..." attribute.
+function jsArg(v){return escapeHtml(JSON.stringify(v));}
 
 // ── BU location selector (client-side filter only) ──────────────────────────
-const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",roi:"ROI"};
+const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",delhi:"Delhi",bengaluru:"Bengaluru",hyderabad:"Hyderabad",roi:"ROI"};
+// The dashboard shares the "icestasy_bu" key but names Bangalore "bengaluru",
+// while clients carry the price_region "bangalore".
+const _buPriceRegion = bu => (bu === "bengaluru" ? "bangalore" : bu);
 let selectedBU = "all";
 
 (function initBU() {
@@ -983,9 +989,9 @@ function selectBU(bu) {
   if (_allClientsCache) {
     clientOptionsCache = bu === "all"
       ? _allClientsCache
-      : _allClientsCache.filter(c => c.price_region === bu);
+      : _allClientsCache.filter(c => c.price_region === _buPriceRegion(bu));
   }
-  if (state.client && bu !== "all" && state.client.price_region !== bu) {
+  if (state.client && bu !== "all" && state.client.price_region !== _buPriceRegion(bu)) {
     changeClient();
   }
   renderOrderSummary();
@@ -1006,7 +1012,7 @@ async function loadClientOptions() {
   }
   clientOptionsCache = selectedBU === "all"
     ? _allClientsCache
-    : _allClientsCache.filter(c => c.price_region === selectedBU);
+    : _allClientsCache.filter(c => c.price_region === _buPriceRegion(selectedBU));
 }
 
 function showClientStep() {
@@ -1035,7 +1041,7 @@ function filterClientDropdown(query) {
     listEl.innerHTML = filtered.map(c =>
       `<div class="sku-picker-option" onmousedown="selectClientFromList('${c.id}')">
         <span class="sku-name">${escapeHtml(c.business_name)}</span>
-        <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}</span>
+        <span class="sku-meta">${escapeHtml(`${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}`)}</span>
       </div>`
     ).join("");
   }
@@ -1180,7 +1186,7 @@ function filterConsigneeDropdown(query) {
     listEl.innerHTML = filtered.map(c =>
       `<div class="sku-picker-option" onmousedown="selectConsigneeFromList('${c.id}')">
         <span class="sku-name">${escapeHtml(c.business_name)}</span>
-        <span class="sku-meta">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}</span>
+        <span class="sku-meta">${escapeHtml(`${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone || ""}${c.city && c.city !== "Unassigned" ? " · " + c.city : ""}`)}</span>
       </div>`
     ).join("");
   }
@@ -1224,8 +1230,8 @@ function changeAddress() {
     } else {
       list.innerHTML = addrs.map(a => `
         <button class="option-btn${a.id === state.address_id ? ' active' : ''}" style="text-align:left"
-          onclick="inlineSelectAddress(${a.id}, '${a.label.replace(/'/g,"\\'")}', '${(a.city||"").replace(/'/g,"\\'")}', '${(a.state||"").replace(/'/g,"\\'")}')">
-          ${a.label}
+          onclick="inlineSelectAddress(${a.id}, ${jsArg(a.label)}, ${jsArg(a.city || "")}, ${jsArg(a.state || "")})">
+          ${escapeHtml(a.label)}
         </button>`).join("");
     }
     picker.classList.remove("hidden");
@@ -1328,7 +1334,7 @@ async function showConfirm() {
   const resolved = state.items.filter(i => !i.not_found && i.resolved_sku);
   state._subtotal = resolved.reduce((s,i) => s + i.qty * i.unit_price, 0);
   const itemRows = resolved.map(i =>
-    `<tr><td>${i.resolved_sku.flavour_name}</td><td>${i.resolved_sku.pack_format_name}</td>
+    `<tr><td>${escapeHtml(i.resolved_sku.flavour_name)}</td><td>${escapeHtml(i.resolved_sku.pack_format_name)}</td>
      <td class="num">${i.qty}</td><td class="num">${fmt(i.unit_price)}</td>
      <td class="num">${fmt(i.qty * i.unit_price)}</td></tr>`
   ).join("");
@@ -1463,7 +1469,7 @@ function buildOrderLines(sourceItems) {
 function stockItemList(items) {
   return items.map(i =>
     `<div class="pending-order-row">
-      <strong>${i.flavour_name} ${i.format_name}</strong>
+      <strong>${escapeHtml(i.flavour_name)} ${escapeHtml(i.format_name)}</strong>
       <span>Needed ${i.quantity}; available ${i.qty_on_hand === null ? "not tracked" : i.qty_on_hand}</span>
     </div>`).join("");
 }
@@ -1627,15 +1633,15 @@ function renderDoneOrders(orders, title) {
     const total = fmt(order.total);
     const discLine = "";
     const linesList = (order.lines || []).map(l =>
-      `<li>${l.quantity} × ${l.flavour_name} ${l.format_name} — ${fmt(l.line_total)}</li>`
+      `<li>${l.quantity} × ${escapeHtml(l.flavour_name)} ${escapeHtml(l.format_name)} — ${fmt(l.line_total)}</li>`
     ).join("") + (order.collateral || []).map(c =>
-      `<li>${c.quantity} × ${c.type}${c.notes ? " — " + c.notes : ""}</li>`
+      `<li>${escapeHtml(c.quantity)} × ${escapeHtml(c.type)}${c.notes ? " — " + escapeHtml(c.notes) : ""}</li>`
     ).join("");
     return `
       <div class="done-order-card">
       <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
       <div class="done-title">Order Confirmed</div>
-      <a class="done-no" href="/orders?order=${order.id}" style="text-decoration:none">${order.order_no}</a>
+      <a class="done-no" href="/orders?order=${order.id}${isSampleOrder ? "&sample=1" : ""}" style="text-decoration:none">${escapeHtml(order.order_no)}</a>
       <div class="done-meta">${escapeHtml(state.client.business_name)}</div>
       ${discLine}
       <ul class="done-lines">${linesList}</ul>
@@ -1775,7 +1781,7 @@ function renderOrderSummary() {
   if (state.items.length && pastItems.includes(step)) {
     const chips = state.items.map(it => {
       const name = it.resolved_sku ? it.resolved_sku.flavour_name : "Item";
-      return `<span class="summary-chip">${name} x${it.qty}</span>`;
+      return `<span class="summary-chip">${escapeHtml(name)} x${escapeHtml(it.qty)}</span>`;
     }).join("");
     lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
   }
@@ -1785,13 +1791,13 @@ function renderOrderSummary() {
     if (chosen.length) {
       const chips = chosen.map(r => {
         const sku = options.find(s => String(s.id) === String(r.skuId));
-        return `<span class="summary-chip">${sku ? sku.flavour_name : "Item"} x${r.qty}</span>`;
+        return `<span class="summary-chip">${escapeHtml(sku ? sku.flavour_name : "Item")} x${escapeHtml(r.qty)}</span>`;
       }).join("");
       lines.push(`<div class="summary-line"><span class="summary-label">Items</span><div class="summary-items-list">${chips}</div></div>`);
     }
   }
   if (IS_ADMIN && state.address_label && step === "step-confirm") {
-    lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${state.address_label}</span></div>`);
+    lines.push(`<div class="summary-line"><span class="summary-label">Address</span><span class="summary-value">${escapeHtml(state.address_label)}</span></div>`);
   }
 
   if (lines.length) {

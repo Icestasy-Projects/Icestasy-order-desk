@@ -59,7 +59,10 @@ def _ist_date_str(ts: str | None) -> str:
     if not ts:
         return ""
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(_IST).date().isoformat()
+        dt = datetime.fromisoformat(re.sub(r"([+-]\d{2})$", r"\1:00", ts.replace("Z", "+00:00")))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_IST).date().isoformat()
     except ValueError:
         return ts[:10]
 
@@ -1192,7 +1195,7 @@ def fetch_sample_report_order_lines(order_ids: list) -> dict:
     out = {}
     for l in lines:
         sku = sku_map.get(l["sku_id"], {})
-        gst_rate = float(sku.get("gst_rate") or 5.0)
+        gst_rate = 5.0 if sku.get("gst_rate") is None else float(sku["gst_rate"])
         line_total = float(l["line_total"])
         gst_amt = round(line_total * gst_rate / (100 + gst_rate), 2)
         row = {
@@ -1233,7 +1236,7 @@ def fetch_report_order_lines(order_ids: list) -> dict:
     out = {}
     for l in lines:
         sku = l.get("skus") or {}
-        gst_rate = float(sku.get("gst_rate") or 5.0)
+        gst_rate = 5.0 if sku.get("gst_rate") is None else float(sku["gst_rate"])
         line_total = float(l["line_total"])
         gst_amt = round(line_total * gst_rate / (100 + gst_rate), 2)
         row = {
@@ -1607,7 +1610,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
             qty = float(l["quantity"])
             rate = float(l["unit_price"])
             net = float(l["line_total"]) * factor
-            gst_rate = float(sku.get("gst_rate") or 5.0)
+            gst_rate = 5.0 if sku.get("gst_rate") is None else float(sku["gst_rate"])
             tax_buckets[gst_rate] = tax_buckets.get(gst_rate, 0.0) + net
             subtotal += net
             items.append({
