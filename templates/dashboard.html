@@ -374,10 +374,6 @@
       <section class="step">
         <div class="dash-title-row">
           <div class="step-label" style="margin-bottom:0">Flavour Sales Insights</div>
-          <button class="btn-option btn-sm" onclick="openReportModal('flavour')">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
-            Download Excel
-          </button>
         </div>
         <div class="tab-bar-flat" id="insightsGroupTabs">
           <button class="tab-btn-flat active" onclick="setInsightsGrouping('city', this)">By City</button>
@@ -542,9 +538,19 @@
     <option value="city">City-wise</option>
     <option value="client">Client-wise</option>
     {% endif %}
-    {% if can_view_team %}<option value="flavour">Flavour-wise</option>
-    <option value="sku">SKU-wise (units sold)</option>{% endif %}
   </select>
+  <div id="reportCityWrap">
+    <label class="rpt-label">City</label>
+    <select id="reportCity" class="rpt-input">
+      <option value="">All Cities</option>
+      <option value="Mumbai">Mumbai</option>
+      <option value="Pune">Pune</option>
+      <option value="Bengaluru">Bengaluru</option>
+      <option value="Hyderabad">Hyderabad</option>
+      <option value="Delhi">Delhi</option>
+      <option value="ROI">Rest of India</option>
+    </select>
+  </div>
   <div id="reportDateRange" class="rpt-date-row">
     <div class="rpt-date-col">
       <label class="rpt-label">From</label>
@@ -766,8 +772,9 @@ document.addEventListener("click", (e) => {
 function openReportModal(presetType) {
   const to = new Date();
   const from = new Date();
-  from.setDate(from.getDate() - 13); // default: last 14 days, inclusive
+  from.setDate(from.getDate() - 13);
   document.getElementById("reportFrom").value = from.toISOString().slice(0, 10);
+  document.getElementById("reportCity").value = "";
   document.getElementById("reportTo").value = to.toISOString().slice(0, 10);
   if (presetType) document.getElementById("reportType").value = presetType;
   onReportTypeChange();
@@ -782,13 +789,16 @@ function onReportTypeChange() {
   const val = document.getElementById("reportType").value;
   const hideDates = val === "today";
   document.getElementById("reportDateRange").classList.toggle("hidden", hideDates);
+  document.getElementById("reportCityWrap").classList.toggle("hidden", val === "sample");
 }
 function downloadReport() {
   const type = document.getElementById("reportType").value;
+  const city = document.getElementById("reportCity").value;
   if (type === "sample") {
     const params = new URLSearchParams();
     params.set("from", document.getElementById("reportFrom").value);
     params.set("to", document.getElementById("reportTo").value);
+    if (city) params.set("city", city);
     window.location = `/api/dashboard/export-sample-orders?${params.toString()}`;
     closeReportModal();
     return;
@@ -802,6 +812,7 @@ function downloadReport() {
     params.set("from", document.getElementById("reportFrom").value);
     params.set("to", document.getElementById("reportTo").value);
   }
+  if (city) params.set("city", city);
   window.location = `/api/dashboard/export?${params.toString()}`;
   closeReportModal();
 }
