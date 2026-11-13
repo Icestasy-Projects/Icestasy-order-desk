@@ -1010,11 +1010,8 @@ function orderRow(o) {
   const isPending = (o.status === "draft" || o.status === "pending_approval");
   const isApproved = (o.status === "approved" || o.status === "invoiced");
   const isNotPaid = (o.payment_status !== "received");
-  const initialActions = (IS_ADMIN && isPending)
-    ? `<button class="btn-option btn-sm" onclick="approveOrder(${o.id})">${icon("check")} Approve</button>
-       <button class="btn-option btn-sm" onclick="putOnHold(${o.id})">${icon("pause")} Hold</button>` : "";
-  const holdAction = (IS_ADMIN && o.status === "hold")
-    ? `<button class="btn-option btn-sm" onclick="releaseHold(${o.id})">${icon("play")} Release Hold</button>` : "";
+  const initialActions = "";
+  const holdAction = "";
   const payAction = (IS_ADMIN && isApproved && isNotPaid && o.payment_mode !== "advance")
     ? `<button class="btn-option btn-sm" onclick="markPaid(${o.id})">Mark Paid</button>` : "";
   const completeAction = (IS_ADMIN && isApproved)
