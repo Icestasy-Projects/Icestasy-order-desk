@@ -541,55 +541,64 @@ def api_dashboard_orders():
 
 @app.route("/api/dashboard/export")
 def api_dashboard_export():
-    from reports import build_orders_workbook, build_flavour_sales_workbook
+    from reports import build_orders_workbook, _report_city
     role = session["role"]
     report_type = request.args.get("type", "all")
     date_from = request.args.get("from") or None
     date_to = request.args.get("to") or None
+    city_filter = request.args.get("city") or None
     role_label = ROLE_LABELS.get(role, role)
     full_name = session.get("full_name") or ""
-    if report_type in ("flavour", "sku"):
-        summary = flavour_sales_summary(user_id=session["user_id"], role=role,
-                                        region=session.get("region", ""))
-        buf = build_flavour_sales_workbook(summary["lines"], role_label=role_label, full_name=full_name,
-                                            report_type=report_type, date_from=date_from, date_to=date_to,
-                                            orders_without_lines=summary["orders_without_lines"],
-                                            value_without_lines=summary["value_without_lines"])
-    else:
-        orders = list_dashboard_orders(user_id=session["user_id"], role=role,
-                                       region=session.get("region", ""))
-        # Pre-filter orders by date range before fetching lines — avoids
-        # pulling line items for orders outside the requested window.
-        if date_from or date_to:
-            from reports import _in_range
-            orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
-        order_ids = [o["id"] for o in orders]
-        lines_by_order = fetch_report_order_lines(order_ids)
-        paid_by_order = fetch_payment_summaries(order_ids)
-        shipping_by_order = fetch_report_order_shipping(order_ids)
-        for o in orders:
-            o["lines"] = lines_by_order.get(o["id"], [])
-            o["amount_paid"] = paid_by_order.get(o["id"], 0.0)
-            ship_info = shipping_by_order.get(o["id"], {})
-            o["shipping_state"] = ship_info.get("state", "")
-            o["consignee_name"] = ship_info.get("consignee_name", "")
-        buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
-                                     report_type=report_type, date_from=date_from, date_to=date_to)
-    filename = f"icestasy-orders-{report_type}-{date.today().isoformat()}.xlsx"
+    orders = list_dashboard_orders(user_id=session["user_id"], role=role,
+                                   region=session.get("region", ""))
+    if date_from or date_to:
+        from reports import _in_range
+        orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
+    if city_filter:
+        known = {"Mumbai", "Pune", "Bengaluru", "Hyderabad", "Delhi"}
+        if city_filter == "ROI":
+            orders = [o for o in orders if _report_city(o) not in known]
+        elif city_filter == "Bengaluru":
+            orders = [o for o in orders if _report_city(o) in ("Bengaluru", "Bangalore")]
+        else:
+            orders = [o for o in orders if _report_city(o) == city_filter]
+    order_ids = [o["id"] for o in orders]
+    lines_by_order = fetch_report_order_lines(order_ids)
+    paid_by_order = fetch_payment_summaries(order_ids)
+    shipping_by_order = fetch_report_order_shipping(order_ids)
+    for o in orders:
+        o["lines"] = lines_by_order.get(o["id"], [])
+        o["amount_paid"] = paid_by_order.get(o["id"], 0.0)
+        ship_info = shipping_by_order.get(o["id"], {})
+        o["shipping_state"] = ship_info.get("state", "")
+        o["consignee_name"] = ship_info.get("consignee_name", "")
+    buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
+                                 report_type=report_type, date_from=date_from, date_to=date_to)
+    city_tag = f"-{city_filter}" if city_filter else ""
+    filename = f"icestasy-orders-{report_type}{city_tag}-{date.today().isoformat()}.xlsx"
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                       as_attachment=True, download_name=filename)
 
 
 @app.route("/api/dashboard/export-sample-orders")
 def api_export_sample_orders():
-    from reports import build_orders_workbook
+    from reports import build_orders_workbook, _report_city
     try:
         orders = list_sample_orders(user_id=session["user_id"], role=session["role"])
         date_from = request.args.get("from") or None
         date_to = request.args.get("to") or None
+        city_filter = request.args.get("city") or None
         if date_from or date_to:
             from reports import _in_range
             orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
+        if city_filter:
+            known = {"Mumbai", "Pune", "Bengaluru", "Hyderabad", "Delhi"}
+            if city_filter == "ROI":
+                orders = [o for o in orders if _report_city(o) not in known]
+            elif city_filter == "Bengaluru":
+                orders = [o for o in orders if _report_city(o) in ("Bengaluru", "Bangalore")]
+            else:
+                orders = [o for o in orders if _report_city(o) == city_filter]
         order_ids = [o["id"] for o in orders]
         lines_by_order = fetch_sample_report_order_lines(order_ids)
         for o in orders:
@@ -601,7 +610,8 @@ def api_export_sample_orders():
         full_name = session.get("full_name") or ""
         buf = build_orders_workbook(orders, role_label=role_label, full_name=full_name,
                                      report_type="all", date_from=date_from, date_to=date_to)
-        filename = f"icestasy-sample-orders-{date.today().isoformat()}.xlsx"
+        city_tag = f"-{city_filter}" if city_filter else ""
+        filename = f"icestasy-sample-orders{city_tag}-{date.today().isoformat()}.xlsx"
         return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                           as_attachment=True, download_name=filename)
     except Exception as e:
