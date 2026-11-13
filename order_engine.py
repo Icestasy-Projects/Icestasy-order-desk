@@ -32,6 +32,43 @@ def _fetch_all_pages(build_query) -> list:
         start += _PAGE_SIZE
     return rows
 
+def _fetch_in_chunks(ids: list, build_query, chunk: int = 600) -> list:
+    """Run build_query(chunk_ids) — a fresh, ordered, unexecuted query filtered
+    with .in_(..., chunk_ids) — over `ids` in chunks, paging each chunk. Keeps
+    `in.(...)` URLs short and avoids PostgREST's silent 1000-row cap."""
+    ids = list(ids)
+    rows = []
+    for i in range(0, len(ids), chunk):
+        chunk_ids = ids[i:i + chunk]
+        rows.extend(_fetch_all_pages(
+            lambda start, end, chunk_ids=chunk_ids: build_query(chunk_ids).range(start, end)))
+    return rows
+
+
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _today_ist() -> date:
+    """Business date in India — the server (Vercel) runs in UTC, so plain
+    date.today() is still "yesterday" between 00:00 and 05:30 IST."""
+    return datetime.now(_IST).date()
+
+
+def _ist_date_str(ts: str | None) -> str:
+    """YYYY-MM-DD in IST for a Postgres timestamptz string."""
+    if not ts:
+        return ""
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(_IST).date().isoformat()
+    except ValueError:
+        return ts[:10]
+
+
+def _ist_day_start(d: str) -> str:
+    """A bare YYYY-MM-DD filter value as the start of that day in IST."""
+    return f"{d}T00:00:00+05:30" if len(d) == 10 else d
+
+
 REGION_HEAD_ROLES = {
     "mumbai_head": "Mumbai",
     "pune_head": "Pune",
@@ -387,7 +424,7 @@ def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
     fallback = {sku_id: float(MOCK_PRICES.get(pack_format_id, 0.0)) for sku_id, pack_format_id in normalized}
     try:
         sb = _sb()
-        today = date.today().isoformat()
+        today = _today_ist().isoformat()
         sku_ids = list(fallback.keys())
         # Fallback chain when a region has no price of its own configured yet
         # (e.g. a newly-opened city like Bangalore before admin sets its
@@ -401,15 +438,14 @@ def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
             region_priority.append("default")
         if region != "roi":
             region_priority.append("roi")
-        rows = (
+        rows = _fetch_in_chunks(sku_ids, lambda ids: (
             sb.schema("sales").from_("sku_prices").select("sku_id,price,region,effective_from")
-            .in_("sku_id", sku_ids)
+            .in_("sku_id", ids)
             .in_("region", region_priority)
             .lte("effective_from", today)
             .or_(f"effective_to.is.null,effective_to.gte.{today}")
-            .order("effective_from", desc=True)
-            .execute().data
-        )
+            .order("effective_from", desc=True).order("sku_id").order("region")
+        ))
         current_by_region = {}
         for row in rows:
             sku_id = row["sku_id"]
@@ -438,7 +474,7 @@ def _next_order_no(sb, city_code: str) -> str:
     the sales.next_order_seq() RPC, which does an atomic INSERT ... ON
     CONFLICT DO UPDATE.
     """
-    today = date.today()
+    today = _today_ist()
     yy = f"{today.year % 100:02d}"
     mm = f"{today.month:02d}"
     seq = sb.schema("sales").rpc("next_order_seq", {"p_city_code": city_code, "p_fy": yy}).execute().data
@@ -446,7 +482,7 @@ def _next_order_no(sb, city_code: str) -> str:
 
 
 def _next_sample_order_no(sb, city_code: str) -> str:
-    today = date.today()
+    today = _today_ist()
     yy = f"{today.year % 100:02d}"
     mm = f"{today.month:02d}"
     seq = sb.schema("sales").rpc("next_sample_order_seq", {"p_city_code": city_code, "p_fy": yy}).execute().data
@@ -708,7 +744,7 @@ def _client_has_unpaid_orders(sb, client_id: int) -> bool:
 
 def should_auto_hold(client_id: int) -> dict:
     sb = _sb()
-    today = date.today()
+    today = _today_ist()
     if today.day < 15:
         return {"hold": False}
     if _client_has_unpaid_orders(sb, client_id):
@@ -761,6 +797,12 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     total = round(subtotal - discount, 2)
     if total < 0:
         raise ValueError("Discount cannot exceed the order subtotal")
+
+    for addr_id in {a for a in (billing_address_id, shipping_address_id) if a}:
+        owned = (sb.schema("sales").from_("addresses").select("id")
+                 .eq("id", addr_id).eq("client_id", client_id).limit(1).execute())
+        if not owned.data:
+            raise ValueError("Billing/shipping address does not belong to this client")
 
     city_code = "ROI"
     if shipping_address_id:
@@ -956,6 +998,11 @@ def mark_order_completed(order_id: int, user_id: int, role: str) -> dict:
     # block marking it completed. Only these are truly final.
     if o["status"] in _COMPLETABLE_BLOCKED_STATUSES:
         raise ValueError(f"Order is already {o['status']}")
+    # A salesperson must not be able to push their own unapproved draft
+    # straight to delivered (it would then count in Tally, dues and stock
+    # without ever being approved).
+    if o["status"] == "draft" and role not in REGION_HEAD_ROLES and role != "admin":
+        raise ValueError("Order must be approved before it can be marked completed")
     res = sb.schema("sales").from_("orders").update({"status": "delivered"}).eq("id", order_id).execute()
     return res.data[0]
 
@@ -985,21 +1032,18 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
         return {"lines": [], "order_totals": [], "orders_without_lines": 0, "value_without_lines": 0.0}
 
     addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
-    addrs = {a["id"]: a for a in (
-        sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", addr_ids).execute().data
-        if addr_ids else [])}
+    addrs = {a["id"]: a for a in _fetch_in_chunks(addr_ids, lambda ids: (
+        sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", ids).order("id")))}
     orphan_cids = list({o["client_id"] for o in orders
                         if o.get("client_id") and not o.get("shipping_address_id")})
     _client_fallback = {}
     if orphan_cids:
-        CHUNK_A = 600
-        for i in range(0, len(orphan_cids), CHUNK_A):
-            for a in (sb.schema("sales").from_("addresses")
-                      .select("client_id,city,locality,is_default")
-                      .in_("client_id", orphan_cids[i:i + CHUNK_A])
-                      .order("is_default", desc=True).order("id")
-                      .execute().data):
-                _client_fallback.setdefault(a["client_id"], a)
+        for a in _fetch_in_chunks(orphan_cids, lambda ids: (
+                sb.schema("sales").from_("addresses")
+                .select("client_id,city,locality,is_default")
+                .in_("client_id", ids)
+                .order("is_default", desc=True).order("id"))):
+            _client_fallback.setdefault(a["client_id"], a)
 
     def _addr_place(o):
         addr = addrs.get(o.get("shipping_address_id")) or _client_fallback.get(o.get("client_id")) or {}
@@ -1361,9 +1405,11 @@ def client_dues(role: str | None = None, region: str = "") -> list:
     ))
     order_client = {}
     invoiced_by_client = {}
+    owed_order_ids = set()
     for o in orders:
         order_client[o["id"]] = o["client_id"]
         if o["status"] in _DUES_ORDER_STATUSES:
+            owed_order_ids.add(o["id"])
             invoiced_by_client[o["client_id"]] = invoiced_by_client.get(o["client_id"], 0.0) + float(o["total_amount"])
 
     payments = _fetch_all_pages(lambda start, end: (
@@ -1373,6 +1419,11 @@ def client_dues(role: str | None = None, region: str = "") -> list:
     paid_by_client = {}
     last_payment_by_client = {}
     for p in payments:
+        # Only payments against orders that are actually owed (same statuses as
+        # invoiced_by_client / client_due_detail) — an advance on a draft order
+        # must not cancel out an unpaid delivered one.
+        if p["order_id"] not in owed_order_ids:
+            continue
         cid = order_client.get(p["order_id"])
         if cid is None:
             continue
@@ -1498,9 +1549,9 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
             .order("created_at").order("id")
         )
         if from_date:
-            q = q.gte("created_at", from_date)
+            q = q.gte("created_at", _ist_day_start(from_date))
         if to_date:
-            q = q.lt("created_at", to_date)
+            q = q.lt("created_at", _ist_day_start(to_date))
         return q.range(start, end)
 
     orders = _fetch_all_pages(build_query)
@@ -1511,12 +1562,11 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
     addr_ids = list({o[k] for o in orders for k in ("billing_address_id", "shipping_address_id") if o.get(k)})
     order_ids = [o["id"] for o in orders]
 
-    clients = {c["id"]: c for c in (
+    clients = {c["id"]: c for c in _fetch_in_chunks(client_ids, lambda ids: (
         sb.schema("sales").from_("clients").select("id, business_name, gstin, fssai_no")
-        .in_("id", client_ids).execute().data if client_ids else [])}
-    addrs = {a["id"]: a for a in (
-        sb.schema("sales").from_("addresses").select("*").in_("id", addr_ids).execute().data
-        if addr_ids else [])}
+        .in_("id", ids).order("id")))}
+    addrs = {a["id"]: a for a in _fetch_in_chunks(addr_ids, lambda ids: (
+        sb.schema("sales").from_("addresses").select("*").in_("id", ids).order("id")))}
 
     lines_by_order = {}
     CHUNK = 600
@@ -1586,7 +1636,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
 
         out.append({
             "invoiceNo": o["order_no"],
-            "invoiceDate": (o["created_at"] or "")[:10],
+            "invoiceDate": _ist_date_str(o["created_at"]),
             "partyName": client.get("business_name", ""),
             "partyGstin": (billing_addr or {}).get("gstin") or client.get("gstin") or "",
             "fssaiNo": client.get("fssai_no") or "",
@@ -1946,11 +1996,11 @@ def list_stock_requests(city: str = None, status: str = None) -> list:
         return []
 
     request_ids = [r["id"] for r in requests]
-    lines = (
+    lines = _fetch_in_chunks(request_ids, lambda ids: (
         sb.schema("sales").from_("stock_request_lines")
         .select("id, request_id, sku_id, requested_qty, approved_qty")
-        .in_("request_id", request_ids).execute().data
-    )
+        .in_("request_id", ids).order("id")
+    ))
     sku_by_id = {s["id"]: s for s in ACTIVE_SKUS}
     lines_by_request = {}
     for l in lines:
@@ -2059,18 +2109,17 @@ def city_stock_summary() -> list:
     used = {}
     if orders:
         addr_ids = list({o["shipping_address_id"] for o in orders if o.get("shipping_address_id")})
-        addrs = {a["id"]: a for a in (
-            sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", addr_ids).execute().data
-            if addr_ids else [])}
+        addrs = {a["id"]: a for a in _fetch_in_chunks(addr_ids, lambda ids: (
+            sb.schema("sales").from_("addresses").select("id,city,locality").in_("id", ids).order("id")))}
         _stk_orphans = list({o["client_id"] for o in orders
                              if o.get("client_id") and not o.get("shipping_address_id")})
         _stk_fallback = {}
         if _stk_orphans:
-            for a in (sb.schema("sales").from_("addresses")
-                      .select("client_id,city,locality,is_default")
-                      .in_("client_id", _stk_orphans)
-                      .order("is_default", desc=True).order("id")
-                      .execute().data):
+            for a in _fetch_in_chunks(_stk_orphans, lambda ids: (
+                    sb.schema("sales").from_("addresses")
+                    .select("client_id,city,locality,is_default")
+                    .in_("client_id", ids)
+                    .order("is_default", desc=True).order("id"))):
                 _stk_fallback.setdefault(a["client_id"], a)
         orders_by_id = {o["id"]: o for o in orders}
         order_ids = list(orders_by_id.keys())
@@ -2168,14 +2217,14 @@ def _current_prices_by_sku() -> dict:
     """One batched query for every SKU's currently-effective price per region.
     Returns {sku_id: {"default": 480, "mumbai": 500, ...}}."""
     sb = _sb()
-    today = date.today().isoformat()
-    rows = (
+    today = _today_ist().isoformat()
+    rows = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("sku_prices").select("sku_id,price,region,effective_from")
         .lte("effective_from", today)
         .or_(f"effective_to.is.null,effective_to.gte.{today}")
-        .order("effective_from", desc=True)
-        .execute().data
-    )
+        .order("effective_from", desc=True).order("sku_id").order("region")
+        .range(start, end)
+    ))
     out: dict[int, dict] = {}
     for r in rows:
         sku_map = out.setdefault(r["sku_id"], {})
@@ -2281,8 +2330,8 @@ def set_sku_price(sku_id: int, price: float, set_by: int, region: str = "default
     if region not in ("default", *PRICE_REGIONS):
         raise ValueError("Invalid pricing region")
     sb = _sb()
-    today = date.today().isoformat()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    today = _today_ist().isoformat()
+    yesterday = (_today_ist() - timedelta(days=1)).isoformat()
     sb.schema("sales").from_("sku_prices").update({"effective_to": yesterday}) \
         .eq("sku_id", sku_id).eq("region", region).is_("effective_to", "null").execute()
     row = {

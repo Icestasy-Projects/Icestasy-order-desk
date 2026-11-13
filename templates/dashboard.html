@@ -2604,7 +2604,7 @@ function renderStockRequests() {
     const totalQty = r.lines.reduce((s, l) => s + (l.approved_qty !== null ? l.approved_qty : l.requested_qty), 0);
     let body = "";
     if (isOpen) {
-      const canApprove = IS_ADMIN && r.status === "pending";
+      const canApprove = USER_ROLE === "admin" && r.status === "pending";
       body = canApprove ? `
         <table class="summary-table mt8">
           <thead><tr><th>SKU</th><th>Requested</th><th class="num">Approve Qty</th></tr></thead>

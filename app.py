@@ -106,6 +106,17 @@ def admin_required(view):
     return wrapped
 
 
+def strict_admin_required(view):
+    """Only the true admin role — for company-wide actions (approving stock
+    transfers) that regional heads must not perform on their own requests."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("role") != ADMIN_ROLE:
+            return jsonify({"ok": False, "error": "Admin access required"}), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
 def broad_view_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -113,6 +124,13 @@ def broad_view_required(view):
             return jsonify({"error": "forbidden"}), 403
         return view(*args, **kwargs)
     return wrapped
+
+
+# Regional head role -> the sku_prices region they may edit.
+_REGION_HEAD_PRICE_REGION = {
+    "mumbai_head": "mumbai", "pune_head": "pune", "bangalore_head": "bangalore",
+    "hyderabad_head": "hyderabad", "delhi_head": "delhi", "roi_head": "roi",
+}
 
 
 def _forbid_admin_account_change(target_role):
@@ -924,7 +942,7 @@ def api_create_stock_request():
 
 
 @app.route("/api/stock-requests/<int:request_id>/approve", methods=["POST"])
-@admin_required
+@strict_admin_required
 def api_approve_stock_request(request_id):
     body = _json_body()
     try:
@@ -938,7 +956,7 @@ def api_approve_stock_request(request_id):
 
 
 @app.route("/api/stock-requests/<int:request_id>/reject", methods=["POST"])
-@admin_required
+@strict_admin_required
 def api_reject_stock_request(request_id):
     try:
         req = reject_stock_request(request_id, rejected_by=session["user_id"])
@@ -1007,6 +1025,9 @@ def api_set_sku_price(sku_id):
     try:
         price = float(body.get("price"))
         region = body.get("region", "default")
+        own_price_region = _REGION_HEAD_PRICE_REGION.get(session.get("role"))
+        if own_price_region and region != own_price_region:
+            return jsonify({"ok": False, "error": "You can only set prices for your own region"}), 403
         row = set_sku_price(sku_id, price, set_by=session["user_id"], region=region)
         return jsonify({"ok": True, "price": row})
     except (ValueError, TypeError) as e:
