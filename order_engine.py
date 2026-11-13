@@ -1327,6 +1327,25 @@ def _client_region_role(c: dict) -> str:
     return _region_role_for_city(place)
 
 
+def client_region_roles(client_ids: list) -> dict:
+    """client_id -> owning region-head role, for authorising regional heads'
+    edits/deletes of clients (same scoping as client_dues/client_due_detail)."""
+    if not client_ids:
+        return {}
+    sb = _sb()
+    rows = (sb.schema("sales").from_("clients")
+            .select("id, city, addresses(locality, city, is_default)")
+            .in_("id", list(client_ids)).execute().data) or []
+    return {c["id"]: _client_region_role(c) for c in rows}
+
+
+def client_id_for_address(address_id: int) -> int | None:
+    sb = _sb()
+    rows = (sb.schema("sales").from_("addresses").select("client_id")
+            .eq("id", address_id).limit(1).execute().data)
+    return rows[0]["client_id"] if rows else None
+
+
 def client_dues(role: str | None = None, region: str = "") -> list:
     """Per-client outstanding balance: (invoiced + delivered order totals) minus
     payments received, for clients who still owe money."""
@@ -1631,6 +1650,10 @@ def bulk_delete_clients(client_ids: list) -> dict:
     if orders.data:
         blocked = sorted({r["client_id"] for r in orders.data})
         raise ValueError(f"Cannot delete clients with existing orders (client IDs: {blocked})")
+    sample = sb.schema("sales").from_("sample_orders").select("client_id").in_("client_id", client_ids).execute()
+    if sample.data:
+        blocked = sorted({r["client_id"] for r in sample.data})
+        raise ValueError(f"Cannot delete clients with existing sample orders (client IDs: {blocked})")
     sb.schema("sales").from_("addresses").delete().in_("client_id", client_ids).execute()
     res = sb.schema("sales").from_("clients").delete().in_("id", client_ids).execute()
     return {"deleted": len(res.data) if res.data else 0}
@@ -1673,6 +1696,13 @@ def get_staff_role(staff_id: int) -> str | None:
     sb = _sb()
     row = sb.schema("sales").from_("users").select("role").eq("id", staff_id).limit(1).execute().data
     return row[0]["role"] if row else None
+
+
+def get_staff_role_and_region(staff_id: int) -> dict | None:
+    sb = _sb()
+    row = (sb.schema("sales").from_("users").select("role, region")
+           .eq("id", staff_id).limit(1).execute().data)
+    return row[0] if row else None
 
 
 def list_team(region: str | None = None) -> list:

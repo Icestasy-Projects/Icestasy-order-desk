@@ -17,7 +17,8 @@ from order_engine import (
     register_client, create_address, get_staff_by_email,
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, delete_team_member, hard_delete_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
-    set_user_password, mark_password_changed, get_staff_role, reset_team_member_password,
+    set_user_password, mark_password_changed, get_staff_role, get_staff_role_and_region,
+    reset_team_member_password,
     approve_order, reject_order, list_clients, client_dues, client_due_detail,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
@@ -32,6 +33,7 @@ from order_engine import (
     list_tally_sales,
     create_sample_order, list_sample_orders, get_sample_order_lines,
     fetch_sample_report_order_lines, get_client_for_form,
+    client_region_roles, client_id_for_address,
 )
 # invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
 # imports that only the invoice-download and Excel-export routes need. Kept as
@@ -88,6 +90,13 @@ def require_login():
         return redirect(url_for("change_password"))
 
 
+def _json_body() -> dict:
+    """Parsed JSON request body, or {} when it is missing/malformed/not an
+    object — so `body.get(...)` never raises on a null or array payload."""
+    body = request.get_json(force=True, silent=True)
+    return body if isinstance(body, dict) else {}
+
+
 def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -113,6 +122,39 @@ def _forbid_admin_account_change(target_role):
         return None
     if target_role == ADMIN_ROLE:
         return jsonify({"ok": False, "error": "Only an admin can create or modify admin accounts"}), 403
+    return None
+
+
+def _forbid_cross_region_team_change(target_staff_id=None, new_role=None, new_region=None):
+    """Regional heads only see their own region's team (see api_team), so they
+    must not be able to edit, deactivate or reset the password of staff in
+    another region, or mint/move staff into another region's head role."""
+    role = session.get("role")
+    own_region = REGION_HEAD_ROLES.get(role)
+    if not own_region:
+        return None
+    denied = jsonify({"ok": False, "error": f"You can only manage team members in {own_region}"}), 403
+    if new_role is not None and new_role not in ("salesperson", role):
+        return denied
+    if new_region is not None and new_region != own_region:
+        return denied
+    if target_staff_id is not None:
+        target = get_staff_role_and_region(target_staff_id)
+        if not target or target.get("region") != own_region:
+            return denied
+    return None
+
+
+def _forbid_cross_region_client_change(client_ids):
+    """Regional heads only see their own region's clients (list_clients), so
+    they must not edit, move or delete clients belonging to another region."""
+    role = session.get("role")
+    if role not in REGION_HEAD_ROLES:
+        return None
+    ids = [i for i in client_ids if i is not None]
+    owners = client_region_roles(ids)
+    if not ids or any(owners.get(i) != role for i in ids):
+        return jsonify({"ok": False, "error": "You can only manage clients in your own region"}), 403
     return None
 
 
@@ -273,7 +315,7 @@ def api_flavour_options():
 
 @app.route("/api/reprice", methods=["POST"])
 def api_reprice():
-    body = request.get_json(force=True)
+    body = _json_body()
     city = (body.get("city") or "").strip()
     items = body.get("items") or []
     region = price_region_for_city(city) if city else "default"
@@ -363,7 +405,7 @@ def api_client_due_detail(client_id):
 @app.route("/api/clients", methods=["POST"])
 @admin_required
 def api_register_client():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         client = register_client(body, registered_by=session["user_id"])
         return jsonify({"ok": True, "client": client, "client_id": client["id"]})
@@ -384,7 +426,7 @@ def api_addresses(client_id):
 
 @app.route("/api/clients/<int:client_id>/addresses", methods=["POST"])
 def api_create_address(client_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         addr = create_address(client_id, body)
         return jsonify({"ok": True, "address": {"id": addr["id"], "label": addr_label(addr), "city": addr.get("city") or "", "state": addr.get("state") or ""}})
@@ -450,7 +492,7 @@ def api_release_hold(order_id):
 
 @app.route("/api/orders", methods=["POST"])
 def api_orders():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         order = create_order(
             client_id=body["client_id"],
@@ -485,7 +527,7 @@ def api_orders():
 
 @app.route("/api/sample-orders", methods=["POST"])
 def api_sample_orders():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         order = create_sample_order(
             client_id=body["client_id"],
@@ -517,7 +559,7 @@ def api_sample_orders():
 
 @app.route("/api/orders/stock-check", methods=["POST"])
 def api_stock_check():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         return jsonify({"ok": True, **check_stock_for_order(body.get("lines") or [])})
     except Exception as e:
@@ -631,7 +673,7 @@ def api_sample_order_lines(order_id):
         if not order.data:
             return jsonify({"ok": False, "error": "Order not found"}), 404
         o = order.data[0]
-        if session["role"] != "admin" and session["role"] not in ("region_head_mumbai", "region_head_pune", "region_head_roi"):
+        if session["role"] not in BROAD_VIEW_ROLES:
             if o.get("created_by_user_id") != session["user_id"] and o.get("salesperson_id") != session["user_id"]:
                 return jsonify({"ok": False, "error": "Not authorized"}), 403
         lines = get_sample_order_lines(order_id)
@@ -725,8 +767,13 @@ def api_team():
 @app.route("/api/team", methods=["POST"])
 @admin_required
 def api_create_team_member():
-    body = request.get_json(force=True)
-    denied = _forbid_admin_account_change(body.get("role"))
+    body = _json_body()
+    own_region = REGION_HEAD_ROLES.get(session.get("role"))
+    if own_region and not (body.get("region") or "").strip():
+        body["region"] = own_region  # regional heads add staff to their own region
+    denied = (_forbid_admin_account_change(body.get("role"))
+              or _forbid_cross_region_team_change(new_role=body.get("role") or "salesperson",
+                                                  new_region=(body.get("region") or "").strip()))
     if denied:
         return denied
     try:
@@ -741,11 +788,16 @@ def api_create_team_member():
 @app.route("/api/team/<int:staff_id>", methods=["PATCH"])
 @admin_required
 def api_update_team_member(staff_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     if staff_id == session.get("user_id") and (body.get("is_active") is False or
                                                 ("role" in body and body["role"] != session.get("role"))):
         return jsonify({"ok": False, "error": "You can't deactivate or change the role of your own account"}), 409
-    denied = _forbid_admin_account_change(body.get("role")) or _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = (_forbid_admin_account_change(body.get("role"))
+              or _forbid_admin_account_change(get_staff_role(staff_id))
+              or _forbid_cross_region_team_change(
+                  target_staff_id=staff_id,
+                  new_role=body.get("role") if "role" in body else None,
+                  new_region=(body.get("region") or "").strip() if "region" in body else None))
     if denied:
         return denied
     try:
@@ -762,7 +814,8 @@ def api_update_team_member(staff_id):
 def api_delete_team_member(staff_id):
     if staff_id == session.get("user_id"):
         return jsonify({"ok": False, "error": "You can't deactivate your own account"}), 409
-    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = (_forbid_admin_account_change(get_staff_role(staff_id))
+              or _forbid_cross_region_team_change(target_staff_id=staff_id))
     if denied:
         return denied
     try:
@@ -779,7 +832,8 @@ def api_delete_team_member(staff_id):
 def api_hard_delete_team_member(staff_id):
     if staff_id == session.get("user_id"):
         return jsonify({"ok": False, "error": "You can't delete your own account"}), 409
-    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = (_forbid_admin_account_change(get_staff_role(staff_id))
+              or _forbid_cross_region_team_change(target_staff_id=staff_id))
     if denied:
         return denied
     try:
@@ -794,7 +848,8 @@ def api_hard_delete_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>/reset-password", methods=["POST"])
 @admin_required
 def api_reset_team_member_password(staff_id):
-    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = (_forbid_admin_account_change(get_staff_role(staff_id))
+              or _forbid_cross_region_team_change(target_staff_id=staff_id))
     if denied:
         return denied
     try:
@@ -852,7 +907,7 @@ def api_list_stock_requests():
 @app.route("/api/stock-requests", methods=["POST"])
 @broad_view_required
 def api_create_stock_request():
-    body = request.get_json(force=True)
+    body = _json_body()
     role = session["role"]
     city = body.get("city")
     own_city = REGION_HEAD_ROLES.get(role)
@@ -871,7 +926,7 @@ def api_create_stock_request():
 @app.route("/api/stock-requests/<int:request_id>/approve", methods=["POST"])
 @admin_required
 def api_approve_stock_request(request_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         req = approve_stock_request(request_id, line_approvals=body.get("lines") or {},
                                      approved_by=session["user_id"])
@@ -908,7 +963,7 @@ def api_flavours():
 @app.route("/api/admin/flavours", methods=["POST"])
 @admin_required
 def api_create_flavour():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         flavour = create_flavour(body.get("name"), body.get("pack_format_ids") or [], created_by=session["user_id"])
         return jsonify({"ok": True, "flavour": flavour})
@@ -921,7 +976,7 @@ def api_create_flavour():
 @app.route("/api/admin/flavours/<int:flavour_id>", methods=["PATCH"])
 @admin_required
 def api_update_flavour(flavour_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         flavour = update_flavour(flavour_id, body)
         return jsonify({"ok": True, "flavour": flavour})
@@ -934,7 +989,7 @@ def api_update_flavour(flavour_id):
 @app.route("/api/admin/flavours/bulk-delete", methods=["POST"])
 @admin_required
 def api_bulk_delete_flavours():
-    body = request.get_json(force=True)
+    body = _json_body()
     ids = body.get("ids") or []
     if not ids:
         return jsonify({"ok": False, "error": "No flavour IDs provided"}), 400
@@ -948,7 +1003,7 @@ def api_bulk_delete_flavours():
 @app.route("/api/admin/skus/<int:sku_id>/price", methods=["POST"])
 @admin_required
 def api_set_sku_price(sku_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         price = float(body.get("price"))
         region = body.get("region", "default")
@@ -963,7 +1018,7 @@ def api_set_sku_price(sku_id):
 @app.route("/api/admin/flavours/<int:flavour_id>/skus", methods=["POST"])
 @admin_required
 def api_add_sku(flavour_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         pack_format_id = int(body.get("pack_format_id"))
         sku = add_sku_to_flavour(flavour_id, pack_format_id)
@@ -977,7 +1032,7 @@ def api_add_sku(flavour_id):
 @app.route("/api/admin/skus/<int:sku_id>/status", methods=["POST"])
 @admin_required
 def api_set_sku_status(sku_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         sku = set_sku_status(sku_id, body.get("status"))
         return jsonify({"ok": True, "sku": sku})
@@ -990,7 +1045,10 @@ def api_set_sku_status(sku_id):
 @app.route("/api/admin/clients/<int:client_id>", methods=["PATCH"])
 @admin_required
 def api_update_client(client_id):
-    body = request.get_json(force=True)
+    body = _json_body()
+    denied = _forbid_cross_region_client_change([client_id])
+    if denied:
+        return denied
     try:
         client = update_client(client_id, body)
         return jsonify({"ok": True, "client": client})
@@ -1003,7 +1061,10 @@ def api_update_client(client_id):
 @app.route("/api/admin/addresses/<int:address_id>", methods=["PATCH"])
 @admin_required
 def api_update_address(address_id):
-    body = request.get_json(force=True)
+    body = _json_body()
+    denied = _forbid_cross_region_client_change([client_id_for_address(address_id)])
+    if denied:
+        return denied
     try:
         addr = update_address(address_id, body)
         return jsonify({"ok": True, "address": addr})
@@ -1016,6 +1077,9 @@ def api_update_address(address_id):
 @app.route("/api/admin/clients/<int:client_id>", methods=["DELETE"])
 @admin_required
 def api_delete_client(client_id):
+    denied = _forbid_cross_region_client_change([client_id])
+    if denied:
+        return denied
     try:
         deleted = delete_client(client_id)
         return jsonify({"ok": True, "client": deleted})
@@ -1028,13 +1092,16 @@ def api_delete_client(client_id):
 @app.route("/api/admin/clients/bulk-move", methods=["POST"])
 @admin_required
 def api_bulk_move_clients():
-    body = request.get_json(force=True)
+    body = _json_body()
     ids = body.get("client_ids", [])
     city = body.get("city", "")
     if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
         return jsonify({"ok": False, "error": "client_ids must be a list of integers"}), 400
     if not ids:
         return jsonify({"ok": False, "error": "No clients selected"}), 400
+    denied = _forbid_cross_region_client_change(ids)
+    if denied:
+        return denied
     try:
         count = bulk_update_clients_city(ids, city)
         return jsonify({"ok": True, "updated": count})
@@ -1045,12 +1112,15 @@ def api_bulk_move_clients():
 @app.route("/api/admin/clients/bulk-delete", methods=["POST"])
 @admin_required
 def api_bulk_delete_clients():
-    body = request.get_json(force=True)
+    body = _json_body()
     ids = body.get("client_ids", [])
     if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
         return jsonify({"ok": False, "error": "client_ids must be a list of integers"}), 400
     if not ids:
         return jsonify({"ok": False, "error": "No clients selected"}), 400
+    denied = _forbid_cross_region_client_change(ids)
+    if denied:
+        return denied
     try:
         result = bulk_delete_clients(ids)
         return jsonify({"ok": True, **result})
