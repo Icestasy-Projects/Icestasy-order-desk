@@ -805,7 +805,7 @@ function downloadReport() {
   }
   const params = new URLSearchParams({type: type === "today" ? "all" : type});
   if (type === "today") {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _localISODate();
     params.set("from", today);
     params.set("to", today);
   } else {
@@ -836,6 +836,7 @@ const STATUS_CLASS = {
 };
 const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 // Order comments are free text typed by staff — escape before rendering to avoid stored XSS.
+const _localISODate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 // ── Avatar initials — colored circle, deterministic color per name ──────────
@@ -973,16 +974,21 @@ const _COMPLETABLE_BLOCKED_STATUSES = new Set(["delivered", "rejected", "cancell
 let expandedOrderId = null;
 const orderLinesCache = {};
 
+// Sample orders live in their own table, so their ids overlap regular order
+// ids — key expansion state and the lines cache by kind + id.
+const _orderKey = (orderId, isSample) => (isSample ? "s" : "o") + orderId;
+
 async function toggleOrderLines(orderId, isSample) {
-  expandedOrderId = expandedOrderId === orderId ? null : orderId;
-  if (expandedOrderId && !orderLinesCache[orderId]) {
-    orderLinesCache[orderId] = "loading";
+  const key = _orderKey(orderId, isSample);
+  expandedOrderId = expandedOrderId === key ? null : key;
+  if (expandedOrderId && !orderLinesCache[key]) {
+    orderLinesCache[key] = "loading";
     renderOrders();
     const endpoint = isSample
       ? `/api/dashboard/sample-orders/${orderId}/lines`
       : `/api/dashboard/orders/${orderId}/lines`;
-    const data = await fetch(endpoint).then(r => r.json());
-    orderLinesCache[orderId] = data.ok ? data.lines : [];
+    const data = await fetch(endpoint).then(r => r.json()).catch(() => ({}));
+    orderLinesCache[key] = data.ok ? data.lines : [];
   }
   renderOrders();
 }
@@ -997,8 +1003,8 @@ function orderLinesHtml(orderId) {
       <tbody>
         ${lines.map(l => `
           <tr>
-            <td>${l.flavour_name}</td>
-            <td>${l.pack_format_name}</td>
+            <td>${escapeHtml(l.flavour_name ?? "")}</td>
+            <td>${escapeHtml(l.pack_format_name ?? l.format_name ?? "")}</td>
             <td>${l.quantity}</td>
             <td>${fmt(l.unit_price)}</td>
             <td class="num">${fmt(l.line_total)}</td>
@@ -1018,8 +1024,8 @@ function orderRow(o) {
   const completeAction = (IS_ADMIN && isApproved)
     ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">${icon("check-check")} Mark Completed</button>` : "";
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
-  const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
-  const isOpen = expandedOrderId === o.id;
+  const showPlace = !!o.place && o.place !== "—" && !(o.client_name || "").toLowerCase().includes(o.place.toLowerCase());
+  const isOpen = expandedOrderId === _orderKey(o.id, o.is_sample);
   const orderDate = o.created_at ? new Date(o.created_at).toLocaleDateString("en-IN", {day: "numeric", month: "short", year: "numeric"}) : "";
   const sampleBadge = o.is_sample ? `<span style="display:inline-block;padding:1px 7px;font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;border-radius:4px;margin-left:6px;vertical-align:middle">SAMPLE</span>` : "";
   return `
@@ -1039,7 +1045,7 @@ function orderRow(o) {
         ${payAction}
         ${completeAction}
       </div>
-      ${isOpen ? orderLinesHtml(o.id) : ""}
+      ${isOpen ? orderLinesHtml(_orderKey(o.id, o.is_sample)) : ""}
       ${isOpen && o.notes ? `<div class="order-comment mt8"><strong>Comments:</strong> ${escapeHtml(o.notes)}</div>` : ""}
     </div>`;
 }
@@ -1151,7 +1157,7 @@ function renderOrders() {
     .map(([name, orders]) => {
     const groupTotal = orders.reduce((s, o) => s + o.total_amount, 0);
     const isOpen = expandedGroup === name;
-    const safeName = JSON.stringify(name).replace(/'/g, "&#39;");
+    const safeName = escapeHtml(JSON.stringify(name));
     let body = "";
     if (isOpen) {
       body = grouping === "city" ? renderPlaceGroups(orders) : orders.map(orderRow).join("");
@@ -1159,7 +1165,7 @@ function renderOrders() {
     return `
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleGroup(${safeName})'>
-          <span>${isOpen ? "▾" : "▸"} ${name}</span>
+          <span>${isOpen ? "▾" : "▸"} ${escapeHtml(name)}</span>
           <span class="opt-sub">${orders.length} orders · ${fmt(groupTotal)}</span>
         </button>
         ${body}
@@ -1185,11 +1191,11 @@ function renderPlaceGroups(orders) {
     .map(([place, placeOrders]) => {
     const placeTotal = placeOrders.reduce((s, o) => s + o.total_amount, 0);
     const isOpen = expandedPlace === place;
-    const safePlace = JSON.stringify(place).replace(/'/g, "&#39;");
+    const safePlace = escapeHtml(JSON.stringify(place));
     return `
       <div class="dash-subgroup">
         <button type="button" class="dash-group-header dash-subgroup-header" onclick='togglePlace(${safePlace})'>
-          <span>${isOpen ? "▾" : "▸"} ${placeLabels[place]}</span>
+          <span>${isOpen ? "▾" : "▸"} ${escapeHtml(placeLabels[place])}</span>
           <span class="opt-sub">${placeOrders.length} orders · ${fmt(placeTotal)}</span>
         </button>
         ${isOpen ? placeOrders.map(orderRow).join("") : ""}
@@ -1322,7 +1328,7 @@ function renderDuesTable() {
           return `
           <tr onclick="toggleDueDetail(${d.id})" style="cursor:pointer">
             <td>${isOpen ? "▾" : "▸"} ${escapeHtml(d.business_name ?? "")}${d.primary_contact_phone ? `<br><span class="opt-sub">${escapeHtml(d.primary_contact_phone)}</span>` : ""}</td>
-            <td>${d.place && d.place !== "—" ? d.place : d.city}</td>
+            <td>${escapeHtml(d.place && d.place !== "—" ? d.place : d.city)}</td>
             <td>${d.last_payment_date ? new Date(d.last_payment_date).toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}) : "—"}</td>
             <td class="num"><span class="badge badge-red">${fmt(d.balance)}</span></td>
           </tr>${body}`;
@@ -1481,15 +1487,15 @@ function addressCardHtml(c, a) {
     <div class="cart-item-card" style="flex-direction:column;align-items:stretch;gap:8px">
       <div class="opt-sub">${a.address_type || "shipping"}${a.is_default ? " · default" : ""}</div>
       <input class="search-input" id="addr-consignee-${a.id}" placeholder="Consignee Name (optional)" value="${escapeHtml(a.consignee_name || "")}">
-      <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${a.line1 || ""}">
-      <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${a.line2 || ""}">
+      <input class="search-input" id="addr-line1-${a.id}" placeholder="Address line 1" value="${escapeHtml(a.line1 || "")}">
+      <input class="search-input" id="addr-line2-${a.id}" placeholder="Address line 2 (optional)" value="${escapeHtml(a.line2 || "")}">
       <div class="btn-group">
-        <input class="search-input" id="addr-city-${a.id}" placeholder="Locality" value="${a.locality || a.city || ""}" style="flex:1">
-        <input class="search-input" id="addr-state-${a.id}" placeholder="State" value="${a.state || ""}" style="flex:1">
+        <input class="search-input" id="addr-city-${a.id}" placeholder="Locality" value="${escapeHtml(a.locality || a.city || "")}" style="flex:1">
+        <input class="search-input" id="addr-state-${a.id}" placeholder="State" value="${escapeHtml(a.state || "")}" style="flex:1">
       </div>
       <div class="btn-group">
-        <input class="search-input" id="addr-pincode-${a.id}" placeholder="Pincode" value="${a.pincode || ""}" style="flex:1">
-        <input class="search-input" id="addr-gstin-${a.id}" placeholder="Address GSTIN (optional)" value="${a.gstin || ""}" style="flex:1">
+        <input class="search-input" id="addr-pincode-${a.id}" placeholder="Pincode" value="${escapeHtml(a.pincode || "")}" style="flex:1">
+        <input class="search-input" id="addr-gstin-${a.id}" placeholder="Address GSTIN (optional)" value="${escapeHtml(a.gstin || "")}" style="flex:1">
       </div>
       <div id="addr-error-${a.id}" class="opt-error"></div>
       <button class="btn-option btn-sm" onclick="submitAddressEdit(${a.id})" style="align-self:flex-start">Save address</button>
@@ -1503,8 +1509,8 @@ function clientRowHtml(c) {
     const addrCards = (c.addresses || []).map(a => addressCardHtml(c, a)).join("");
     body = `
       <div class="register-form mt8">
-        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${c.gstin || ""}">
-        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${c.fssai_no || ""}">
+        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${escapeHtml(c.gstin || "")}">
+        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${escapeHtml(c.fssai_no || "")}">
         <div id="client-error-${c.id}" class="opt-error mt8"></div>
         <button class="btn-option btn-sm mt8" onclick="submitClientEdit(${c.id})">Save GST/FSSAI</button>
       </div>
@@ -1529,7 +1535,7 @@ function clientRowHtml(c) {
           ${avatarHtml(c.business_name)}
           <div class="person-row-info">
             <span class="opt-name">${IS_ADMIN ? (isOpen ? "▾ " : "▸ ") : ""}${escapeHtml(c.business_name ?? "")} <span class="opt-muted" style="font-weight:normal">(${c.order_count || 0} order${c.order_count === 1 ? "" : "s"})</span></span>
-            <span class="opt-sub">${c.primary_contact_name ? c.primary_contact_name + " · " : ""}${c.primary_contact_phone ? c.primary_contact_phone + " · " : ""}${c.place && c.place !== "—" ? c.place : ""}${c.gstin ? " · GSTIN " + c.gstin : ""}</span>
+            <span class="opt-sub">${escapeHtml((c.primary_contact_name ? c.primary_contact_name + " · " : "") + (c.primary_contact_phone ? c.primary_contact_phone + " · " : "") + (c.place && c.place !== "—" ? c.place : "") + (c.gstin ? " · GSTIN " + c.gstin : ""))}</span>
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -1556,7 +1562,7 @@ function renderClientGstFilterTabs() {
   ];
   box.innerHTML = tabs.map(([value, label]) => `
     <button type="button" class="tab-btn-flat ${clientGstFilter === value ? "active" : ""}"
-            onclick='setClientGstFilter(${JSON.stringify(value)}, this)'>${label} (${counts[value]})</button>
+            onclick='setClientGstFilter(${escapeHtml(JSON.stringify(value))}, this)'>${label} (${counts[value]})</button>
   `).join("");
 }
 
@@ -1622,8 +1628,8 @@ function renderClients() {
         const label = place === "—" ? "Other" : placeLabels[place];
         return `
           <div class="dash-subgroup">
-            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${JSON.stringify(place)})'>
-              <span>${placeOpen ? "▾" : "▸"} ${label}</span>
+            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientPlace(${escapeHtml(JSON.stringify(place))})'>
+              <span>${placeOpen ? "▾" : "▸"} ${escapeHtml(label)}</span>
               <span class="opt-sub">${placeClients.length} client${placeClients.length === 1 ? "" : "s"}</span>
             </button>
             ${placeOpen ? placeClients.map(clientRowHtml).join("") : ""}
@@ -1633,9 +1639,9 @@ function renderClients() {
     return `
       <div class="dash-group">
         <div class="dash-group-header" style="display:flex;align-items:center;gap:8px">
-          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${cityClients.every(c => selectedClients.has(c.id)) && cityClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup(${JSON.stringify(city)}) : deselectAllInGroup(${JSON.stringify(city)})" title="Select all ${city}">` : ""}
-          <button type="button" style="flex:1;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit" onclick='toggleClientCity(${JSON.stringify(city)})'>
-            <span>${cityOpen ? "▾" : "▸"} ${city}</span>
+          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${cityClients.every(c => selectedClients.has(c.id)) && cityClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup(${escapeHtml(JSON.stringify(cityClients.map(c => c.id)))}) : deselectAllInGroup(${escapeHtml(JSON.stringify(cityClients.map(c => c.id)))})" title="Select all ${escapeHtml(city)}">` : ""}
+          <button type="button" style="flex:1;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit" onclick='toggleClientCity(${escapeHtml(JSON.stringify(city))})'>
+            <span>${cityOpen ? "▾" : "▸"} ${escapeHtml(city)}</span>
             <span class="opt-sub">${cityClients.length} client${cityClients.length === 1 ? "" : "s"}</span>
           </button>
         </div>
@@ -1676,8 +1682,8 @@ function renderClients() {
             const ckOpen = searching || expandedClientCity === label;
             return `
               <div class="dash-subgroup" style="margin-left:16px">
-                <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientCity(${JSON.stringify(label)})'>
-                  <span>${ckOpen ? "▾" : "▸"} ${label}</span>
+                <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientCity(${escapeHtml(JSON.stringify(label))})'>
+                  <span>${ckOpen ? "▾" : "▸"} ${escapeHtml(label)}</span>
                   <span class="opt-sub">${clients.length} client${clients.length === 1 ? "" : "s"}</span>
                 </button>
                 ${ckOpen ? clients.map(clientRowHtml).join("") : ""}
@@ -1686,8 +1692,8 @@ function renderClients() {
         }
         return `
           <div class="dash-subgroup">
-            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientState(${JSON.stringify(st)})'>
-              <span>${stOpen ? "▾" : "▸"} ${st}</span>
+            <button type="button" class="dash-group-header dash-subgroup-header" onclick='toggleClientState(${escapeHtml(JSON.stringify(st))})'>
+              <span>${stOpen ? "▾" : "▸"} ${escapeHtml(st)}</span>
               <span class="opt-sub">${stClients.length} client${stClients.length === 1 ? "" : "s"}</span>
             </button>
             ${stBody}
@@ -1697,7 +1703,7 @@ function renderClients() {
     html += `
       <div class="dash-group">
         <div class="dash-group-header" style="display:flex;align-items:center;gap:8px">
-          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${roiClients.every(c => selectedClients.has(c.id)) && roiClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup('ROI') : deselectAllInGroup('ROI')" title="Select all ROI">` : ""}
+          ${IS_ADMIN ? `<input type="checkbox" class="client-checkbox" ${roiClients.every(c => selectedClients.has(c.id)) && roiClients.length ? "checked" : ""} onclick="event.stopPropagation(); this.checked ? selectAllInGroup(${escapeHtml(JSON.stringify(roiClients.map(c => c.id)))}) : deselectAllInGroup(${escapeHtml(JSON.stringify(roiClients.map(c => c.id)))})" title="Select all ROI">` : ""}
           <button type="button" style="flex:1;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit" onclick='toggleClientROI()'>
             <span>${roiOpen ? "▾" : "▸"} ROI</span>
             <span class="opt-sub">${roiClients.length} client${roiClients.length === 1 ? "" : "s"}</span>
@@ -2067,7 +2073,7 @@ function showEditTeamForm(staffId, pushState = true) {
     <div class="register-form mt16" id="editTeamForm">
       <div class="opt-name mt8">${escapeHtml(t.email ?? "")}</div>
       <input id="etName" class="search-input mt8" placeholder="Full name *" value="${escapeHtml(t.full_name || "")}">
-      <input id="etPhone" class="search-input mt8" placeholder="Phone (optional)" value="${t.phone || ""}">
+      <input id="etPhone" class="search-input mt8" placeholder="Phone (optional)" value="${escapeHtml(t.phone || "")}">
       <select id="etRole" class="search-input mt8" onchange="syncRegionForRole('etRole','etRegion')">${roleOptionsHtml(t.role)}</select>
       <select id="etRegion" class="search-input mt8">${regionOptionsHtml(t.region)}</select>
       <select id="etActive" class="search-input mt8">
@@ -2268,7 +2274,7 @@ function renderInsights() {
 
   box.innerHTML = groupTotals.map(g => {
     const isOpen = expandedInsightsGroup === g.name;
-    const safeName = JSON.stringify(g.name).replace(/'/g, "&#39;");
+    const safeName = escapeHtml(JSON.stringify(g.name));
     let body = "";
     if (isOpen) {
       const byFlavour = {};
@@ -2370,7 +2376,7 @@ function renderStock() {
   box.innerHTML = Object.entries(groups).map(([type, items]) => {
     const isOpen = searching || expandedStockType === type;
     const critical = items.filter(s => s.stock_status === "critical").length;
-    const safeType = JSON.stringify(type).replace(/'/g, "&#39;");
+    const safeType = escapeHtml(JSON.stringify(type));
     return `
       <div class="dash-group">
         <button type="button" class="dash-group-header" onclick='toggleStockType(${safeType})'>
@@ -2452,7 +2458,7 @@ function renderCityStock() {
   box.innerHTML = Object.entries(groups).map(([city, items]) => {
     const isOpen = expandedCityStockGroup === city;
     const totalAvailable = items.reduce((s, i) => s + i.available, 0);
-    const safeCity = JSON.stringify(city).replace(/'/g, "&#39;");
+    const safeCity = escapeHtml(JSON.stringify(city));
     let body = "";
     if (isOpen) {
       const typeGroups = {};
@@ -2679,7 +2685,7 @@ function _initMISDate() {
   const el = document.getElementById("misDate");
   if (!el) return;
   if (!el.value) {
-    el.value = new Date().toISOString().slice(0, 10);
+    el.value = _localISODate();
   }
 }
 
@@ -2828,9 +2834,17 @@ function toggleFlavourSelect(id, ev) {
   updateBulkUI();
 }
 
-function toggleSelectAll(checked) {
+// Same filtering renderFlavours() applies — select-all must only touch the cards on screen.
+function _visibleFlavours() {
   const q = flavourSearchQuery;
-  const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
+  let filtered = flavoursData;
+  if (flavourStatusFilter !== "all") filtered = filtered.filter(f => f.status === flavourStatusFilter);
+  if (q) filtered = filtered.filter(f => f.name.toLowerCase().includes(q));
+  return filtered;
+}
+
+function toggleSelectAll(checked) {
+  const filtered = _visibleFlavours();
   const pageStart = (flavoursPage - 1) * FLAVOURS_PAGE_SIZE;
   const pageItems = filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
   pageItems.forEach(f => { if (checked) selectedFlavourIds.add(f.id); else selectedFlavourIds.delete(f.id); });
@@ -2850,8 +2864,7 @@ function updateBulkUI() {
   });
   const selectAllCb = document.getElementById("selectAllCb");
   if (selectAllCb) {
-    const q = flavourSearchQuery;
-    const filtered = !q ? flavoursData : flavoursData.filter(f => f.name.toLowerCase().includes(q));
+    const filtered = _visibleFlavours();
     const pageStart = (flavoursPage - 1) * FLAVOURS_PAGE_SIZE;
     const pageItems = filtered.slice(pageStart, pageStart + FLAVOURS_PAGE_SIZE);
     selectAllCb.checked = pageItems.length > 0 && pageItems.every(f => selectedFlavourIds.has(f.id));
@@ -3144,11 +3157,13 @@ async function submitAddFlavour() {
 // Deep link from the "Order Confirmed" screen (/orders?order=<id>) — expand
 // that order's line items and scroll it into view once orders have loaded.
 function _openDeepLinkedOrder() {
-  const orderId = parseInt(new URLSearchParams(location.search).get("order"), 10);
-  if (!orderId || !allOrders.some(o => o.id === orderId)) return;
-  toggleOrderLines(orderId);
+  const params = new URLSearchParams(location.search);
+  const orderId = parseInt(params.get("order"), 10);
+  const isSample = params.get("sample") === "1";
+  if (!orderId || !allOrders.some(o => o.id === orderId && !!o.is_sample === isSample)) return;
+  toggleOrderLines(orderId, isSample);
   setTimeout(() => {
-    document.querySelector(`[onclick="toggleOrderLines(${orderId})"]`)
+    document.querySelector(`[onclick="toggleOrderLines(${orderId}, ${isSample})"]`)
       ?.scrollIntoView({behavior: "smooth", block: "center"});
   }, 200);
 }

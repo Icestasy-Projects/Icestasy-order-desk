@@ -628,8 +628,8 @@ let formItemRows = [];
 let selectedPackFormat = null;
 
 async function switchOrderMode(mode) {
-  document.getElementById("orderModeTab-paste").classList.toggle("active", mode === "paste");
-  document.getElementById("orderModeTab-form").classList.toggle("active", mode === "form");
+  document.getElementById("orderModeTab-paste")?.classList.toggle("active", mode === "paste");
+  document.getElementById("orderModeTab-form")?.classList.toggle("active", mode === "form");
   document.getElementById("orderModeBox-paste").classList.toggle("hidden", mode !== "paste");
   document.getElementById("orderModeBox-form").classList.toggle("hidden", mode !== "form");
   if (mode === "form") {
@@ -944,7 +944,11 @@ async function changeItems() {
 function escapeHtml(s){if(!s)return"";const d=document.createElement("div");d.textContent=s;return d.innerHTML;}
 
 // ── BU location selector (client-side filter only) ──────────────────────────
-const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",roi:"ROI"};
+const _buLabels = {all:"All Locations",mumbai:"Mumbai",pune:"Pune",delhi:"Delhi",bengaluru:"Bengaluru",hyderabad:"Hyderabad",roi:"ROI"};
+// The location picker key is shared with the Dashboard, which spells it
+// "bengaluru"; client price regions use "bangalore".
+const _BU_TO_PRICE_REGION = {bengaluru: "bangalore"};
+const _buPriceRegion = bu => _BU_TO_PRICE_REGION[bu] || bu;
 let selectedBU = "all";
 
 (function initBU() {
@@ -983,7 +987,7 @@ function selectBU(bu) {
   if (_allClientsCache) {
     clientOptionsCache = bu === "all"
       ? _allClientsCache
-      : _allClientsCache.filter(c => c.price_region === bu);
+      : _allClientsCache.filter(c => c.price_region === _buPriceRegion(bu));
   }
   if (state.client && bu !== "all" && state.client.price_region !== bu) {
     changeClient();
@@ -1006,7 +1010,7 @@ async function loadClientOptions() {
   }
   clientOptionsCache = selectedBU === "all"
     ? _allClientsCache
-    : _allClientsCache.filter(c => c.price_region === selectedBU);
+    : _allClientsCache.filter(c => c.price_region === _buPriceRegion(selectedBU));
 }
 
 function showClientStep() {
@@ -1611,7 +1615,7 @@ async function submitOrderWithOptions(options) {
   loadFlavourOptions();  // pre-load with default prices for speed
   await loadClientOptions();
   if (isSampleOrder && _preselectedClientId) {
-    const client = (clientOptionsCache || []).find(c => String(c.id) === String(_preselectedClientId));
+    const client = (_allClientsCache || clientOptionsCache || []).find(c => String(c.id) === String(_preselectedClientId));
     if (client) {
       await selectClient(client);
       return;
@@ -1635,7 +1639,7 @@ function renderDoneOrders(orders, title) {
       <div class="done-order-card">
       <div class="done-icon" style="color:var(--green)">${icon("circle-check-big")}</div>
       <div class="done-title">Order Confirmed</div>
-      <a class="done-no" href="/orders?order=${order.id}" style="text-decoration:none">${order.order_no}</a>
+      <a class="done-no" href="/orders?order=${order.id}${isSampleOrder ? "&sample=1" : ""}" style="text-decoration:none">${order.order_no}</a>
       <div class="done-meta">${escapeHtml(state.client.business_name)}</div>
       ${discLine}
       <ul class="done-lines">${linesList}</ul>

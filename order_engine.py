@@ -52,7 +52,8 @@ PRICE_REGION_LABELS = {
 }
 _CITY_TO_PRICE_REGION = {
     "Mumbai": "mumbai", "Thane": "mumbai", "Navi Mumbai": "mumbai", "Vasai-Virar": "mumbai",
-    "Pune": "pune", "Hyderabad": "hyderabad", "Bangalore": "bangalore", "Delhi": "delhi",
+    "Pune": "pune", "Hyderabad": "hyderabad", "Bangalore": "bangalore", "Bengaluru": "bangalore",
+    "Delhi": "delhi", "New Delhi": "delhi",
 }
 # Address "city" values are entered at locality/neighbourhood precision (e.g. "Bandra West"),
 # not actual city precision — this rolls localities up to their real city for reporting.
@@ -234,7 +235,7 @@ def list_clients_lite() -> list:
     ))
     for c in clients:
         c["city"] = (c.get("city") or "").strip() or "Unassigned"
-        c["price_region"] = _CITY_TO_PRICE_REGION.get(c["city"], "roi")
+        c["price_region"] = price_region_for_city(c["city"])
     return clients
 
 
@@ -1313,7 +1314,7 @@ def list_clients(role: str | None = None, region: str = "") -> list:
     clients = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("clients")
         .select("id, business_name, client_type, primary_contact_name, primary_contact_phone, "
-                "gstin, fssai_no, gst_status, city, addresses(id, address_type, line1, line2, city, locality, state, pincode, gstin, is_default)")
+                "gstin, fssai_no, gst_status, city, addresses(id, address_type, consignee_name, line1, line2, city, locality, state, pincode, gstin, is_default)")
         .eq("status", "active").order("business_name").order("id").range(start, end)
     ))
     order_counts = {}
