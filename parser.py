@@ -409,6 +409,10 @@ def _enrich(raw_items):
                 # nothing to narrow down from — that would return every active
                 # SKU in the catalog, so leave it not-found instead.
                 candidates = _match_skus(flavour_id, format_id)
+        elif flavour_id is None and format_id is None:
+            # Nothing identified at all (e.g. an LLM item with both ids null):
+            # _match_skus(None, None) would offer the entire catalog as options.
+            candidates = []
         else:
             candidates = _match_skus(flavour_id, format_id)
         # Expand to sibling flavours (e.g. "Belgian" → Speculoos + Chocolate)

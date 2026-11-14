@@ -60,7 +60,11 @@ MMR_CITIES = {"Mumbai", "Vasai-Virar", "Thane", "Navi Mumbai"}
 def _city_key(city: str) -> str:
     if not city:
         return ""
-    city = city.strip()
+    # Client city is free text, often entered at locality precision
+    # ("Bandra West", "Kothrud") — roll it up to the real city first, or those
+    # orders silently never reach the Mumbai/Pune form.
+    from order_engine import city_for_place
+    city = city_for_place(city.strip())
     if city in MMR_CITIES:
         return "mumbai"
     return city.lower()

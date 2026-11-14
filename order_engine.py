@@ -533,11 +533,25 @@ def create_sample_order(client_id, payment_mode, lines, user_id, notes=None, dis
                       for i, l in enumerate(lines)]}
 
 
+def sample_order_region_role(order_no: str | None) -> str:
+    """Region-head role that owns a sample order. Sample orders have no
+    shipping address; their number ("S-MUM/26/10/0001") carries the city code
+    create_sample_order() derived from the client's city."""
+    no = order_no or ""
+    if no.startswith("S-"):
+        no = no[2:]
+    return _region_role_for_city(_city_from_order_no(no))
+
+
 def list_sample_orders(user_id: int, role: str) -> list:
     sb = _sb()
     rows = sb.rpc("get_sample_orders", {"p_user_id": user_id, "p_role": role}).execute().data
     if not rows:
         return []
+    # The RPC returns every sample order for regional heads; scope to their region
+    # the same way per-order access (sample-order lines) is checked.
+    if role in REGION_HEAD_ROLES:
+        rows = [r for r in rows if sample_order_region_role(r.get("order_no")) == role]
     out = []
     for r in rows:
         city = r.get("place", "—")
@@ -855,7 +869,13 @@ def list_dashboard_orders(user_id: int, role: str, region: str = "") -> list:
         return []
     out = []
     for r in rows:
-        place = r.get("place", "—")
+        place = r.get("place") or "—"
+        # The RPC returns every order for regional heads. Every per-order action
+        # (lines, approve, payment, invoice...) is region-checked, so the list and
+        # the Excel export built from it must be scoped the same way.
+        if role in REGION_HEAD_ROLES and _region_role_for_city(
+                place if place != "—" else _city_from_order_no(r["order_no"])) != role:
+            continue
         city = city_for_place(place) if place != "—" else _city_from_order_no(r["order_no"])
         out.append({
             "id": r["id"], "order_no": r["order_no"], "status": r["status"],
@@ -1088,6 +1108,7 @@ def mis_daily_sales(dt: str) -> dict:
         .select("id")
         .gte("created_at", ist_start)
         .lte("created_at", ist_end)
+        .not_.in_("status", ["rejected", "cancelled"])
         .execute().data
     )
     if not orders:
@@ -1631,6 +1652,10 @@ def bulk_delete_clients(client_ids: list) -> dict:
     if orders.data:
         blocked = sorted({r["client_id"] for r in orders.data})
         raise ValueError(f"Cannot delete clients with existing orders (client IDs: {blocked})")
+    sample = sb.schema("sales").from_("sample_orders").select("client_id").in_("client_id", client_ids).execute()
+    if sample.data:
+        blocked = sorted({r["client_id"] for r in sample.data})
+        raise ValueError(f"Cannot delete clients with existing sample orders (client IDs: {blocked})")
     sb.schema("sales").from_("addresses").delete().in_("client_id", client_ids).execute()
     res = sb.schema("sales").from_("clients").delete().in_("id", client_ids).execute()
     return {"deleted": len(res.data) if res.data else 0}
@@ -1810,7 +1835,7 @@ def hard_delete_team_member(staff_id: int) -> dict:
     clear error pointing back at deactivation instead.
     """
     sb = _sb()
-    existing = sb.schema("sales").from_("users").select("id,full_name").eq("id", staff_id).execute().data
+    existing = sb.schema("sales").from_("users").select("id,full_name,auth_user_id").eq("id", staff_id).execute().data
     if not existing:
         raise ValueError("Staff member not found")
     try:
@@ -1821,6 +1846,14 @@ def hard_delete_team_member(staff_id: int) -> dict:
                 "Can't permanently delete — this person has orders, payments, or other history on file. Deactivate them instead."
             )
         raise
+    # Also remove the Supabase Auth login: left behind, it keeps the email
+    # registered, so re-adding the same person later fails in create_user().
+    auth_user_id = existing[0].pop("auth_user_id", None)
+    if auth_user_id:
+        try:
+            sb.auth.admin.delete_user(auth_user_id)
+        except Exception:
+            pass
     return existing[0]
 
 

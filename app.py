@@ -1,6 +1,7 @@
 import hmac
 import json
 import os
+import time
 from datetime import date, timedelta
 from functools import lru_cache, wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
@@ -31,7 +32,7 @@ from order_engine import (
     approve_stock_request, reject_stock_request, city_stock_summary,
     list_tally_sales,
     create_sample_order, list_sample_orders, get_sample_order_lines,
-    fetch_sample_report_order_lines, get_client_for_form,
+    fetch_sample_report_order_lines, get_client_for_form, sample_order_region_role,
 )
 # invoicing/reports pull in reportlab, Pillow and openpyxl — heavy C-extension
 # imports that only the invoice-download and Excel-export routes need. Kept as
@@ -64,6 +65,51 @@ TALLY_API_KEY = os.environ.get("TALLY_API_KEY")
 TALLY_ENDPOINTS = {"api_tally_sales"}
 
 
+def _json_body() -> dict:
+    """Parsed JSON request body, or {} when it is missing, malformed or not an
+    object — so a bad request gets a clean 4xx from the route's own validation
+    instead of an AttributeError ("'NoneType' has no attribute 'get'") 500."""
+    body = request.get_json(force=True, silent=True)
+    return body if isinstance(body, dict) else {}
+
+
+def _valid_iso_date(value: str | None) -> str | None:
+    """Return value if it is a YYYY-MM-DD date, else None."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value).isoformat()
+    except (TypeError, ValueError):
+        return None
+
+
+# How often a logged-in session is re-checked against sales.users, so that
+# deactivating an account or changing its role takes effect within minutes
+# instead of only when the 30-day session cookie expires.
+_SESSION_RECHECK_SECONDS = 300
+
+
+def _revalidate_session() -> bool:
+    """Refresh role/region/active flag from the DB at most every
+    _SESSION_RECHECK_SECONDS. Returns False if the account is no longer
+    an active staff member (caller must log the session out)."""
+    now = int(time.time())
+    if now - int(session.get("checked_at") or 0) < _SESSION_RECHECK_SECONDS:
+        return True
+    try:
+        staff = get_staff_by_email(session.get("user_email") or "")
+    except Exception:
+        # DB hiccup: don't lock everyone out; try again on the next request.
+        return True
+    if not staff or not staff.get("is_active") or staff.get("id") != session.get("user_id"):
+        return False
+    session["role"] = staff["role"]
+    session["full_name"] = staff["full_name"]
+    session["region"] = staff.get("region") or ""
+    session["checked_at"] = now
+    return True
+
+
 @lru_cache(maxsize=1)
 def _auth_client():
     from supabase import create_client
@@ -82,6 +128,11 @@ def require_login():
         if request.path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
         return redirect(url_for("login"))
+    if not _revalidate_session():
+        session.clear()
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "unauthorized"}), 401
+        return redirect(url_for("login", error="Your account is no longer active."))
     if session.get("must_change_password") and request.endpoint not in PASSWORD_CHANGE_ENDPOINTS:
         if request.path.startswith("/api/"):
             return jsonify({"error": "password_change_required"}), 403
@@ -149,6 +200,7 @@ def login():
         session["auth_user_id"] = result.user.id
         session["must_change_password"] = staff["must_change_password"]
         session["region"] = staff.get("region") or ""
+        session["checked_at"] = int(time.time())
     except Exception:
         return redirect(url_for("login", error="Invalid email or password"))
     return redirect(url_for("index"))
@@ -250,8 +302,8 @@ def new_order():
 
 @app.route("/api/parse", methods=["POST"])
 def api_parse():
-    body = request.get_json(force=True, silent=True)
-    if not isinstance(body, dict):
+    body = _json_body()
+    if not body:
         return jsonify({"error": "invalid body"}), 400
     text = (body.get("text") or "").strip()
     if not text:
@@ -273,7 +325,7 @@ def api_flavour_options():
 
 @app.route("/api/reprice", methods=["POST"])
 def api_reprice():
-    body = request.get_json(force=True)
+    body = _json_body()
     city = (body.get("city") or "").strip()
     items = body.get("items") or []
     region = price_region_for_city(city) if city else "default"
@@ -363,7 +415,7 @@ def api_client_due_detail(client_id):
 @app.route("/api/clients", methods=["POST"])
 @admin_required
 def api_register_client():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         client = register_client(body, registered_by=session["user_id"])
         return jsonify({"ok": True, "client": client, "client_id": client["id"]})
@@ -384,7 +436,7 @@ def api_addresses(client_id):
 
 @app.route("/api/clients/<int:client_id>/addresses", methods=["POST"])
 def api_create_address(client_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         addr = create_address(client_id, body)
         return jsonify({"ok": True, "address": {"id": addr["id"], "label": addr_label(addr), "city": addr.get("city") or "", "state": addr.get("state") or ""}})
@@ -450,7 +502,7 @@ def api_release_hold(order_id):
 
 @app.route("/api/orders", methods=["POST"])
 def api_orders():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         order = create_order(
             client_id=body["client_id"],
@@ -485,7 +537,7 @@ def api_orders():
 
 @app.route("/api/sample-orders", methods=["POST"])
 def api_sample_orders():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         order = create_sample_order(
             client_id=body["client_id"],
@@ -517,7 +569,7 @@ def api_sample_orders():
 
 @app.route("/api/orders/stock-check", methods=["POST"])
 def api_stock_check():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         return jsonify({"ok": True, **check_stock_for_order(body.get("lines") or [])})
     except Exception as e:
@@ -539,9 +591,26 @@ def api_dashboard_orders():
         return jsonify({"orders": [], "error": str(e)}), 200
 
 
+# Excel export city filter. Order "city" values come from city_for_place(),
+# which spells the city "Bangalore"; the UI sends "Bengaluru". Both spellings
+# must count as a named city, otherwise "ROI" exports wrongly include every
+# Bangalore order.
+_BANGALORE_NAMES = {"Bengaluru", "Bangalore"}
+_NAMED_REPORT_CITIES = {"Mumbai", "Pune", "Hyderabad", "Delhi", *_BANGALORE_NAMES}
+
+
+def _filter_orders_by_report_city(orders: list, city_filter: str) -> list:
+    from reports import _report_city
+    if city_filter == "ROI":
+        return [o for o in orders if _report_city(o) not in _NAMED_REPORT_CITIES]
+    if city_filter in _BANGALORE_NAMES:
+        return [o for o in orders if _report_city(o) in _BANGALORE_NAMES]
+    return [o for o in orders if _report_city(o) == city_filter]
+
+
 @app.route("/api/dashboard/export")
 def api_dashboard_export():
-    from reports import build_orders_workbook, _report_city
+    from reports import build_orders_workbook
     role = session["role"]
     report_type = request.args.get("type", "all")
     date_from = request.args.get("from") or None
@@ -555,13 +624,7 @@ def api_dashboard_export():
         from reports import _in_range
         orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
     if city_filter:
-        known = {"Mumbai", "Pune", "Bengaluru", "Hyderabad", "Delhi"}
-        if city_filter == "ROI":
-            orders = [o for o in orders if _report_city(o) not in known]
-        elif city_filter == "Bengaluru":
-            orders = [o for o in orders if _report_city(o) in ("Bengaluru", "Bangalore")]
-        else:
-            orders = [o for o in orders if _report_city(o) == city_filter]
+        orders = _filter_orders_by_report_city(orders, city_filter)
     order_ids = [o["id"] for o in orders]
     lines_by_order = fetch_report_order_lines(order_ids)
     paid_by_order = fetch_payment_summaries(order_ids)
@@ -582,7 +645,7 @@ def api_dashboard_export():
 
 @app.route("/api/dashboard/export-sample-orders")
 def api_export_sample_orders():
-    from reports import build_orders_workbook, _report_city
+    from reports import build_orders_workbook
     try:
         orders = list_sample_orders(user_id=session["user_id"], role=session["role"])
         date_from = request.args.get("from") or None
@@ -592,13 +655,7 @@ def api_export_sample_orders():
             from reports import _in_range
             orders = [o for o in orders if _in_range(o.get("created_at", ""), date_from, date_to)]
         if city_filter:
-            known = {"Mumbai", "Pune", "Bengaluru", "Hyderabad", "Delhi"}
-            if city_filter == "ROI":
-                orders = [o for o in orders if _report_city(o) not in known]
-            elif city_filter == "Bengaluru":
-                orders = [o for o in orders if _report_city(o) in ("Bengaluru", "Bangalore")]
-            else:
-                orders = [o for o in orders if _report_city(o) == city_filter]
+            orders = _filter_orders_by_report_city(orders, city_filter)
         order_ids = [o["id"] for o in orders]
         lines_by_order = fetch_sample_report_order_lines(order_ids)
         for o in orders:
@@ -636,12 +693,16 @@ def api_sample_order_lines(order_id):
         from order_engine import _sb
         sb = _sb()
         order = (sb.schema("sales").from_("sample_orders")
-                 .select("id, salesperson_id, created_by_user_id")
+                 .select("id, order_no, salesperson_id, created_by_user_id")
                  .eq("id", order_id).limit(1).execute())
         if not order.data:
             return jsonify({"ok": False, "error": "Order not found"}), 404
         o = order.data[0]
-        if session["role"] != "admin" and session["role"] not in ("region_head_mumbai", "region_head_pune", "region_head_roi"):
+        role = session["role"]
+        if role in REGION_HEAD_ROLES:
+            if sample_order_region_role(o.get("order_no")) != role:
+                return jsonify({"ok": False, "error": "Not authorized"}), 403
+        elif role != ADMIN_ROLE:
             if o.get("created_by_user_id") != session["user_id"] and o.get("salesperson_id") != session["user_id"]:
                 return jsonify({"ok": False, "error": "Not authorized"}), 403
         lines = get_sample_order_lines(order_id)
@@ -665,7 +726,10 @@ def api_complete_order(order_id):
 @broad_view_required
 def api_mis():
     """Daily flavour-wise sales for the MIS tab, grouped by pack format."""
-    dt = request.args.get("date") or date.today().isoformat()
+    raw_dt = request.args.get("date")
+    dt = _valid_iso_date(raw_dt) if raw_dt else date.today().isoformat()
+    if not dt:
+        return jsonify({"bulks": {}, "squares": {}, "date": raw_dt, "error": "Invalid date — use YYYY-MM-DD"}), 400
     try:
         data = mis_daily_sales(dt)
         return jsonify(data)
@@ -735,7 +799,7 @@ def api_team():
 @app.route("/api/team", methods=["POST"])
 @admin_required
 def api_create_team_member():
-    body = request.get_json(force=True)
+    body = _json_body()
     denied = _forbid_admin_account_change(body.get("role"))
     if denied:
         return denied
@@ -751,7 +815,7 @@ def api_create_team_member():
 @app.route("/api/team/<int:staff_id>", methods=["PATCH"])
 @admin_required
 def api_update_team_member(staff_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     if staff_id == session.get("user_id") and (body.get("is_active") is False or
                                                 ("role" in body and body["role"] != session.get("role"))):
         return jsonify({"ok": False, "error": "You can't deactivate or change the role of your own account"}), 409
@@ -862,7 +926,7 @@ def api_list_stock_requests():
 @app.route("/api/stock-requests", methods=["POST"])
 @broad_view_required
 def api_create_stock_request():
-    body = request.get_json(force=True)
+    body = _json_body()
     role = session["role"]
     city = body.get("city")
     own_city = REGION_HEAD_ROLES.get(role)
@@ -881,7 +945,11 @@ def api_create_stock_request():
 @app.route("/api/stock-requests/<int:request_id>/approve", methods=["POST"])
 @admin_required
 def api_approve_stock_request(request_id):
-    body = request.get_json(force=True)
+    # Regional heads raise stock requests for their own city; letting them
+    # approve (or reject) one would mean approving their own requisition.
+    if session.get("role") != ADMIN_ROLE:
+        return jsonify({"ok": False, "error": "Only an admin can approve or reject stock requests"}), 403
+    body = _json_body()
     try:
         req = approve_stock_request(request_id, line_approvals=body.get("lines") or {},
                                      approved_by=session["user_id"])
@@ -895,6 +963,10 @@ def api_approve_stock_request(request_id):
 @app.route("/api/stock-requests/<int:request_id>/reject", methods=["POST"])
 @admin_required
 def api_reject_stock_request(request_id):
+    # Regional heads raise stock requests for their own city; letting them
+    # approve (or reject) one would mean approving their own requisition.
+    if session.get("role") != ADMIN_ROLE:
+        return jsonify({"ok": False, "error": "Only an admin can approve or reject stock requests"}), 403
     try:
         req = reject_stock_request(request_id, rejected_by=session["user_id"])
         return jsonify({"ok": True, "request": req})
@@ -918,7 +990,7 @@ def api_flavours():
 @app.route("/api/admin/flavours", methods=["POST"])
 @admin_required
 def api_create_flavour():
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         flavour = create_flavour(body.get("name"), body.get("pack_format_ids") or [], created_by=session["user_id"])
         return jsonify({"ok": True, "flavour": flavour})
@@ -931,7 +1003,7 @@ def api_create_flavour():
 @app.route("/api/admin/flavours/<int:flavour_id>", methods=["PATCH"])
 @admin_required
 def api_update_flavour(flavour_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         flavour = update_flavour(flavour_id, body)
         return jsonify({"ok": True, "flavour": flavour})
@@ -944,7 +1016,7 @@ def api_update_flavour(flavour_id):
 @app.route("/api/admin/flavours/bulk-delete", methods=["POST"])
 @admin_required
 def api_bulk_delete_flavours():
-    body = request.get_json(force=True)
+    body = _json_body()
     ids = body.get("ids") or []
     if not ids:
         return jsonify({"ok": False, "error": "No flavour IDs provided"}), 400
@@ -958,7 +1030,7 @@ def api_bulk_delete_flavours():
 @app.route("/api/admin/skus/<int:sku_id>/price", methods=["POST"])
 @admin_required
 def api_set_sku_price(sku_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         price = float(body.get("price"))
         region = body.get("region", "default")
@@ -973,7 +1045,7 @@ def api_set_sku_price(sku_id):
 @app.route("/api/admin/flavours/<int:flavour_id>/skus", methods=["POST"])
 @admin_required
 def api_add_sku(flavour_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         pack_format_id = int(body.get("pack_format_id"))
         sku = add_sku_to_flavour(flavour_id, pack_format_id)
@@ -987,7 +1059,7 @@ def api_add_sku(flavour_id):
 @app.route("/api/admin/skus/<int:sku_id>/status", methods=["POST"])
 @admin_required
 def api_set_sku_status(sku_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         sku = set_sku_status(sku_id, body.get("status"))
         return jsonify({"ok": True, "sku": sku})
@@ -1000,7 +1072,7 @@ def api_set_sku_status(sku_id):
 @app.route("/api/admin/clients/<int:client_id>", methods=["PATCH"])
 @admin_required
 def api_update_client(client_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         client = update_client(client_id, body)
         return jsonify({"ok": True, "client": client})
@@ -1013,7 +1085,7 @@ def api_update_client(client_id):
 @app.route("/api/admin/addresses/<int:address_id>", methods=["PATCH"])
 @admin_required
 def api_update_address(address_id):
-    body = request.get_json(force=True)
+    body = _json_body()
     try:
         addr = update_address(address_id, body)
         return jsonify({"ok": True, "address": addr})
@@ -1038,7 +1110,7 @@ def api_delete_client(client_id):
 @app.route("/api/admin/clients/bulk-move", methods=["POST"])
 @admin_required
 def api_bulk_move_clients():
-    body = request.get_json(force=True)
+    body = _json_body()
     ids = body.get("client_ids", [])
     city = body.get("city", "")
     if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
@@ -1055,7 +1127,7 @@ def api_bulk_move_clients():
 @app.route("/api/admin/clients/bulk-delete", methods=["POST"])
 @admin_required
 def api_bulk_delete_clients():
-    body = request.get_json(force=True)
+    body = _json_body()
     ids = body.get("client_ids", [])
     if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
         return jsonify({"ok": False, "error": "client_ids must be a list of integers"}), 400
@@ -1088,6 +1160,8 @@ def api_order_invoice(order_id):
 def api_tally_sales():
     from_date = request.args.get("from_date")
     to_date = request.args.get("to_date")
+    if (from_date and not _valid_iso_date(from_date)) or (to_date and not _valid_iso_date(to_date)):
+        return jsonify({"error": "from_date/to_date must be YYYY-MM-DD"}), 400
     try:
         sales = list_tally_sales(from_date=from_date, to_date=to_date)
     except Exception as e:

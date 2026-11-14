@@ -596,6 +596,7 @@ function icon(name, cls) {
 
 const IS_ADMIN = {{ "true" if is_admin else "false" }};
 const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
+const IS_SUPER_ADMIN = {{ "true" if role == "admin" else "false" }};
 const ROLE_LABELS = {{ role_labels_json | safe }};
 const REGION_OPTIONS = {{ region_options_json | safe }};
 const REGION_HEAD_ROLE_TO_REGION = {{ region_head_roles_json | safe }};
@@ -2611,7 +2612,7 @@ function renderStockRequests() {
     const totalQty = r.lines.reduce((s, l) => s + (l.approved_qty !== null ? l.approved_qty : l.requested_qty), 0);
     let body = "";
     if (isOpen) {
-      const canApprove = IS_ADMIN && r.status === "pending";
+      const canApprove = IS_SUPER_ADMIN && r.status === "pending";  // server allows only the admin role
       body = canApprove ? `
         <table class="summary-table mt8">
           <thead><tr><th>SKU</th><th>Requested</th><th class="num">Approve Qty</th></tr></thead>
