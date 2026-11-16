@@ -2048,8 +2048,8 @@ async function submitTeamMember() {
   }
   cancelAddTeamForm();
   loadTeam();
-  if (res.member && res.member.temp_password) {
-    alert(`${res.member.full_name}'s account is ready.\n\nTemporary password: ${res.member.temp_password}\n\nShare this with them directly — it won't be shown again. They'll be asked to set their own password on first login.`);
+  if (res.member) {
+    alert(`${res.member.full_name}'s account is ready.\n\nThey'll log in with the default password test@123 and must change it on first login.`);
   }
 }
 
@@ -2139,7 +2139,7 @@ async function resetTeamMemberPassword(staffId) {
     else alert(res.error || "Could not reset password");
     return;
   }
-  alert(`${res.full_name}'s password has been reset.\n\nTemporary password: ${res.temp_password}\n\nShare this with them directly — it won't be shown again. They'll be asked to set their own password on next login.`);
+  alert(`${res.full_name}'s password has been reset to test@123. They'll be asked to set their own password on next login.`);
 }
 
 async function deleteTeamMember(staffId) {
