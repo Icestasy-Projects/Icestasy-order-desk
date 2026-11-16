@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from order_engine import _ist_date_str, _today_ist, is_interstate_supply
 
 BRAND_FILL = PatternFill(start_color="1D4ED8", end_color="1D4ED8", fill_type="solid")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
@@ -82,16 +83,18 @@ def _neutralize_formulas(wb) -> None:
 
 
 def _format_date(created_at: str) -> str:
+    d = _ist_date_str(created_at)
     try:
-        return datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d-%m-%Y")
-    except (ValueError, AttributeError):
+        return date.fromisoformat(d).strftime("%d-%m-%Y")
+    except (ValueError, TypeError):
         return created_at or ""
 
 
 def _month_label(created_at: str) -> str:
+    d = _ist_date_str(created_at)
     try:
-        return datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%B %Y")
-    except (ValueError, AttributeError):
+        return date.fromisoformat(d).strftime("%B %Y")
+    except (ValueError, TypeError):
         return created_at or "—"
 
 
@@ -126,7 +129,7 @@ def _month_sheet_name(key: str) -> str:
 
 
 def _last_12_months_range() -> tuple:
-    today = date.today()
+    today = _today_ist()
     month_index = today.year * 12 + (today.month - 1) - 11
     start = date(month_index // 12, month_index % 12 + 1, 1)
     return start.isoformat(), today.isoformat()
@@ -139,7 +142,9 @@ def _in_range(created_at: str, date_from: str, date_to: str) -> bool:
     # datetime.fromisoformat() silently reject rows on some Python versions.
     # Plain ISO-date-string comparison sorts identically to real dates and sidesteps
     # that entirely.
-    date_str = (created_at or "")[:10]
+    # Compared as an IST calendar day so orders placed 00:00-05:30 IST aren't
+    # filed under the previous day (created_at is stored in UTC).
+    date_str = _ist_date_str(created_at)
     if not date_str:
         return True
     if date_from and date_str < date_from:
@@ -231,7 +236,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         godown = TALLY_GODOWN.get(city, city)
         sales_ledger = TALLY_SALES_LEDGER
         shipping_state = (o.get("shipping_state") or "").strip()
-        is_interstate = bool(shipping_state and shipping_state.lower() != COMPANY_STATE.lower())
+        is_interstate = is_interstate_supply(shipping_state)
 
         lines = o.get("lines") or []
         if not lines:
