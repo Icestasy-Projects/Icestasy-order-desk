@@ -27,7 +27,7 @@ from order_engine import (
     fetch_report_order_lines, fetch_report_order_shipping, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
     check_pending_orders, cancel_order, should_auto_hold, put_on_hold, release_hold,
-    check_stock_for_order, mis_daily_sales,
+    check_stock_for_order, mis_daily_sales, mis_weekly_sales, mis_monthly_sales,
     STOCK_REQUEST_CITIES, create_stock_request, list_stock_requests,
     approve_stock_request, reject_stock_request, city_stock_summary,
     list_tally_sales,
@@ -730,10 +730,16 @@ def api_complete_order(order_id):
 @app.route("/api/dashboard/mis")
 @broad_view_required
 def api_mis():
-    """Daily flavour-wise sales for the MIS tab, grouped by pack format."""
+    """Flavour-wise sales for the MIS tab (daily / weekly / monthly)."""
     dt = request.args.get("date") or date.today().isoformat()
+    mode = request.args.get("mode", "daily")
     try:
-        data = mis_daily_sales(dt)
+        if mode == "weekly":
+            data = mis_weekly_sales(dt)
+        elif mode == "monthly":
+            data = mis_monthly_sales(dt)
+        else:
+            data = mis_daily_sales(dt)
         return jsonify(data)
     except Exception as e:
         return jsonify({"bulks": {}, "squares": {}, "date": dt, "error": str(e)}), 200

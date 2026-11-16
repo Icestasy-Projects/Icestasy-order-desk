@@ -110,6 +110,21 @@
   cursor: pointer; transition: all .15s; font-family: inherit;
 }
 .mis-today-btn:hover { background: var(--brand, #3b82f6); color: #fff; }
+.mis-mode-tabs {
+  display: flex; border: 1px solid var(--slate-200, #e2e8f0); border-radius: 8px; overflow: hidden;
+}
+.mis-mode-btn {
+  padding: 6px 14px; font-size: 12px; font-weight: 600; font-family: inherit;
+  border: none; background: var(--white, #fff); color: var(--slate-500, #64748b);
+  cursor: pointer; transition: all .15s; letter-spacing: .3px;
+}
+.mis-mode-btn:not(:last-child) { border-right: 1px solid var(--slate-200, #e2e8f0); }
+.mis-mode-btn:hover { background: var(--slate-50, #f8fafc); color: var(--slate-700, #334155); }
+.mis-mode-btn.active { background: var(--brand, #3b82f6); color: #fff; }
+.mis-range-label {
+  padding: 7px 12px; font-size: 13px; font-weight: 600;
+  color: var(--slate-700, #334155); white-space: nowrap;
+}
 
 .mis-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
@@ -440,13 +455,21 @@
     <div id="page-mis" class="hidden">
       <section class="step">
         <div class="mis-toolbar">
-          <div class="step-label" style="margin-bottom:0">Daily Sales — MIS</div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div class="step-label" style="margin-bottom:0" id="misTitle">Daily Sales — MIS</div>
+            <div class="mis-mode-tabs">
+              <button class="mis-mode-btn active" data-mode="daily" onclick="setMISMode('daily')">Daily</button>
+              <button class="mis-mode-btn" data-mode="weekly" onclick="setMISMode('weekly')">Weekly</button>
+              <button class="mis-mode-btn" data-mode="monthly" onclick="setMISMode('monthly')">Monthly</button>
+            </div>
+          </div>
           <div class="mis-date-wrap">
-            <button class="mis-nav-btn" id="misPrev" onclick="misPrevDay()" title="Previous day">
+            <button class="mis-nav-btn" id="misPrev" onclick="misPrevStep()" title="Previous">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </button>
             <input type="date" id="misDate" class="mis-date-input" onchange="loadMIS()">
-            <button class="mis-nav-btn" id="misNext" onclick="misNextDay()" title="Next day">
+            <span id="misRangeLabel" class="mis-range-label hidden"></span>
+            <button class="mis-nav-btn" id="misNext" onclick="misNextStep()" title="Next">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             </button>
             <button class="mis-today-btn" onclick="misTodayClick()">Today</button>
@@ -479,7 +502,7 @@
             </table>
           </div>
         </div>
-        <div id="misEmpty" class="mis-empty hidden">No sales data for this date.</div>
+        <div id="misEmpty" class="mis-empty hidden">No sales data for this period.</div>
       </section>
     </div>
 
@@ -2689,31 +2712,61 @@ async function submitRejectStockRequest(requestId) {
 
 // ── MIS — Daily flavour sales ────────────────────────────────────────────────
 let _misLoaded = false;
+let _misMode = "daily";
 
 function _initMISDate() {
   const el = document.getElementById("misDate");
   if (!el) return;
-  if (!el.value) {
-    el.value = new Date().toISOString().slice(0, 10);
-  }
+  if (!el.value) el.value = new Date().toISOString().slice(0, 10);
 }
 
-function misPrevDay() {
-  const el = document.getElementById("misDate");
-  const d = new Date(el.value);
-  d.setDate(d.getDate() - 1);
-  el.value = d.toISOString().slice(0, 10);
+function _isoStr(d) { return d.toISOString().slice(0, 10); }
+
+function setMISMode(mode) {
+  _misMode = mode;
+  _misLoaded = false;
+  document.querySelectorAll(".mis-mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.mode === mode);
+  });
+  const dateEl = document.getElementById("misDate");
+  const rangeEl = document.getElementById("misRangeLabel");
+  if (mode === "daily") {
+    dateEl.classList.remove("hidden");
+    rangeEl.classList.add("hidden");
+  } else {
+    dateEl.classList.add("hidden");
+    rangeEl.classList.remove("hidden");
+  }
+  _updateMISTitle();
   loadMIS();
 }
-function misNextDay() {
+
+function _updateMISTitle() {
+  const titles = { daily: "Daily Sales — MIS", weekly: "Weekly Sales — MIS", monthly: "Monthly Sales — MIS" };
+  const el = document.getElementById("misTitle");
+  if (el) el.textContent = titles[_misMode] || titles.daily;
+}
+
+function misPrevStep() {
   const el = document.getElementById("misDate");
   const d = new Date(el.value);
-  d.setDate(d.getDate() + 1);
-  el.value = d.toISOString().slice(0, 10);
+  if (_misMode === "daily") d.setDate(d.getDate() - 1);
+  else if (_misMode === "weekly") d.setDate(d.getDate() - 7);
+  else d.setMonth(d.getMonth() - 1);
+  el.value = _isoStr(d);
+  loadMIS();
+}
+function misNextStep() {
+  const el = document.getElementById("misDate");
+  const d = new Date(el.value);
+  if (_misMode === "daily") d.setDate(d.getDate() + 1);
+  else if (_misMode === "weekly") d.setDate(d.getDate() + 7);
+  else d.setMonth(d.getMonth() + 1);
+  el.value = _isoStr(d);
   loadMIS();
 }
 function misTodayClick() {
-  document.getElementById("misDate").value = new Date().toISOString().slice(0, 10);
+  document.getElementById("misDate").value = _isoStr(new Date());
   loadMIS();
 }
 
@@ -2728,9 +2781,15 @@ async function loadMIS() {
   empty.classList.add("hidden");
 
   try {
-    const resp = await fetch(`/api/dashboard/mis?date=${dt}`);
+    const resp = await fetch(`/api/dashboard/mis?date=${dt}&mode=${_misMode}`);
     const data = await resp.json();
     _misLoaded = true;
+
+    const rangeEl = document.getElementById("misRangeLabel");
+    if (_misMode !== "daily" && data.label) {
+      rangeEl.textContent = data.label;
+      rangeEl.classList.remove("hidden");
+    }
 
     const bulks = data.bulks || {};
     const squares = data.squares || {};
@@ -2739,8 +2798,8 @@ async function loadMIS() {
 
     if (!hasBulks && !hasSquares) {
       loading.classList.add("hidden");
+      empty.textContent = "No sales data for this period.";
       empty.classList.remove("hidden");
-      // still show empty tables
       document.getElementById("misBulksBody").innerHTML = "";
       document.getElementById("misSquaresBody").innerHTML = "";
       document.getElementById("misBulksTotal").textContent = "0";

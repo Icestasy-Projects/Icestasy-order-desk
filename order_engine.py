@@ -1153,15 +1153,14 @@ def flavour_sales_summary(user_id: int, role: str, region: str = "") -> dict:
     }
 
 
-def mis_daily_sales(dt: str) -> dict:
-    """Flavour-wise daily sales grouped by pack format (4L Bulk / 12 Square).
+def _mis_sales_range(start_date: str, end_date: str) -> dict:
+    """Flavour-wise sales grouped by pack format for a date range (inclusive).
 
-    Returns {date, bulks: {flavour: qty}, squares: {flavour: qty}}.
+    Returns {start, end, bulks: {flavour: qty}, squares: {flavour: qty}}.
     """
     sb = _sb()
-    # Fetch orders for the given date (IST)
-    ist_start = f"{dt}T00:00:00+05:30"
-    ist_end = f"{dt}T23:59:59.999+05:30"
+    ist_start = f"{start_date}T00:00:00+05:30"
+    ist_end = f"{end_date}T23:59:59.999+05:30"
     orders = (
         sb.schema("sales").from_("orders")
         .select("id")
@@ -1170,7 +1169,7 @@ def mis_daily_sales(dt: str) -> dict:
         .execute().data
     )
     if not orders:
-        return {"date": dt, "bulks": {}, "squares": {}}
+        return {"start": start_date, "end": end_date, "bulks": {}, "squares": {}}
 
     order_ids = [o["id"] for o in orders]
     lines = []
@@ -1198,7 +1197,39 @@ def mis_daily_sales(dt: str) -> dict:
         elif pf == 2:
             squares[flavour] = squares.get(flavour, 0) + qty
 
-    return {"date": dt, "bulks": bulks, "squares": squares}
+    return {"start": start_date, "end": end_date, "bulks": bulks, "squares": squares}
+
+
+def mis_daily_sales(dt: str) -> dict:
+    """Flavour-wise daily sales grouped by pack format (4L Bulk / 12 Square)."""
+    data = _mis_sales_range(dt, dt)
+    data["date"] = dt
+    return data
+
+
+def mis_weekly_sales(dt: str) -> dict:
+    """Flavour-wise weekly sales (Mon–Sat) for the week containing *dt*."""
+    d = date.fromisoformat(dt)
+    # Monday = 0 … Saturday = 5; week runs Mon–Sat
+    mon = d - timedelta(days=d.weekday())
+    sat = mon + timedelta(days=5)
+    data = _mis_sales_range(mon.isoformat(), sat.isoformat())
+    data["label"] = f"{mon.strftime('%d %b')} – {sat.strftime('%d %b %Y')}"
+    return data
+
+
+def mis_monthly_sales(dt: str) -> dict:
+    """Flavour-wise monthly sales for the month containing *dt*."""
+    d = date.fromisoformat(dt)
+    first = d.replace(day=1)
+    # last day of month
+    if d.month == 12:
+        last = d.replace(day=31)
+    else:
+        last = (first.replace(month=d.month + 1) - timedelta(days=1))
+    data = _mis_sales_range(first.isoformat(), last.isoformat())
+    data["label"] = d.strftime("%B %Y")
+    return data
 
 
 def fetch_sample_report_order_lines(order_ids: list) -> dict:
