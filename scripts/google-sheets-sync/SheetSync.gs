@@ -393,14 +393,17 @@ function parseFlavourToSku_(flavourStr) {
   var dbName = FLAVOUR_MAP[rawName];
   if (!dbName) return { error: rawName };
 
+  // An unrecognised or unmapped pack format is reported like an unknown
+  // flavour instead of being dropped silently or (worse) booked as the 4L
+  // Bulk SKU with the other format's quantity and price.
   var formatId = detectFormatId_(formatPart);
-  if (!formatId) return null;
+  if (!formatId) return { error: rawName + ' - ' + formatPart + ' (unknown pack format)' };
 
   var skuMap = DB_SKUS[dbName];
-  if (!skuMap) return null;
+  if (!skuMap) return { error: rawName + ' (no SKUs mapped)' };
 
-  var skuId = skuMap[formatId] || skuMap[1];
-  return skuId ? { sku_id: skuId } : null;
+  var skuId = skuMap[formatId];
+  return skuId ? { sku_id: skuId } : { error: rawName + ' - ' + formatPart + ' (no SKU for this pack format)' };
 }
 
 
@@ -886,7 +889,14 @@ function syncOrdersToDb() {
           status: 'delivered'
         });
       }
-      supabaseInsert_('order_lines', lineData);
+      try {
+        supabaseInsert_('order_lines', lineData);
+      } catch (lineErr) {
+        // Don't leave a header with no lines behind: the next run would find
+        // the order number, mark the rows SYNCED and never import the lines.
+        try { supabaseDelete_('orders', 'id=eq.' + orderId); } catch (delErr) {}
+        throw lineErr;
+      }
 
       // Mark rows as synced
       for (var ri = 0; ri < od.rowIndices.length; ri++) {

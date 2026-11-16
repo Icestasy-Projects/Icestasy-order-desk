@@ -94,6 +94,11 @@ def _groq_extract(text: str):
 _ZERO_WIDTH_RE = re.compile(r"[​‌‍﻿]")
 _LIST_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]|[•\-\*])\s*")
 _QTY_LITRE_RE = re.compile(r"\b(\d+)\s*(?:ltr|litre|liter|l)\b", re.IGNORECASE)
+_DIGIT_FORMAT_RE = re.compile(r"\b(12)\s*(?:sq|square)s?\b|\b(500|50)\s*ml\b", re.IGNORECASE)
+
+
+def _DIGIT_FORMAT_KEY(m) -> str:
+    return "12sq" if m.group(1) else f"{m.group(2)}ml"
 _STOP_WORDS = {"and", "or", "the", "of", "each", "for", "pls", "please", "send", "required", "requirement",
                # Generic order-message filler that happens to collide with real flavour
                # names as short substrings (e.g. "ice" inside "Chocolate CHOICE (FD)",
@@ -238,13 +243,15 @@ def _keyword_extract(text: str):
         if lower.startswith("client:") or lower.startswith("client "):
             continue
 
-        matched_payment = False
-        for pm in PAYMENT_KEYWORDS:
-            if pm in lower.split():
-                matched_payment = True
-                break
-        if matched_payment:
-            continue
+        # A payment word ("advance"/"credit"/"invoice") is order metadata, but
+        # it can share a line with a real item ("2 Kaju katli advance") — drop
+        # the word, and only skip the line when nothing item-like is left.
+        words = line.split()
+        if any(w.lower() in PAYMENT_KEYWORDS for w in words):
+            line = " ".join(w for w in words if w.lower() not in PAYMENT_KEYWORDS)
+            lower = line.lower()
+            if not re.search(r"\d", line) and not _has_flavour_signal(line):
+                continue
 
         # "4 ltr"/"4 litre" describes the pack format, not an item quantity —
         # pull it out before segmenting so it doesn't get treated as an item's
@@ -254,6 +261,12 @@ def _keyword_extract(text: str):
         if litre_match:
             format_id_line = 1
             line = _QTY_LITRE_RE.sub(" ", line, count=1)
+        # Same for pack-format names that contain digits ("12 square", "50ml",
+        # "500 ml") — otherwise "Gulqand 12 square 2" is read as qty 12.
+        format_match = _DIGIT_FORMAT_RE.search(line)
+        if format_match:
+            format_id_line = format_id_line or FORMAT_ALIASES[_DIGIT_FORMAT_KEY(format_match)]
+            line = _DIGIT_FORMAT_RE.sub(" ", line, count=1)
 
         format_id_line = format_id_line or _find_format(lower)
         segments = _segment_line_items(line)

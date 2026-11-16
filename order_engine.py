@@ -32,6 +32,39 @@ def _fetch_all_pages(build_query) -> list:
         start += _PAGE_SIZE
     return rows
 
+# Business days are Indian days. The server (Vercel) runs in UTC, so a bare
+# date.today() or created_at[:10] is the previous day for anything between
+# 00:00 and 05:30 IST — wrong order-number month/year, invoice dates, etc.
+_IST = timezone(timedelta(hours=5, minutes=30))
+_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _today_ist() -> date:
+    return datetime.now(_IST).date()
+
+
+def _ist_date_str(ts: str | None) -> str:
+    """'YYYY-MM-DD' of a Postgres timestamptz string, in IST."""
+    if not ts:
+        return ""
+    norm = ts.strip().replace(" ", "T", 1).replace("Z", "+00:00")
+    norm = re.sub(r"([+-]\d{2})$", r"\1:00", norm)
+    try:
+        dt = datetime.fromisoformat(norm)
+    except ValueError:
+        return ts[:10]
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_IST).date().isoformat()
+
+
+def _ist_day_start(value: str | None) -> str | None:
+    """Turn a bare 'YYYY-MM-DD' filter bound into IST midnight."""
+    if value and _DATE_ONLY_RE.match(value.strip()):
+        return value.strip() + "T00:00:00+05:30"
+    return value
+
+
 REGION_HEAD_ROLES = {
     "mumbai_head": "Mumbai",
     "pune_head": "Pune",
@@ -114,7 +147,11 @@ _PLACE_TO_CITY = {
 # Strictly the named city itself - Thane/Navi Mumbai/Vasai-Virar are NOT part of
 # "Mumbai" here even though they're in the metro area; they fall through to ROI.
 _CITY_TO_REGION_ROLE = {
-    "Mumbai": "mumbai_head",
+    # The Mumbai head covers the whole MMR (README; pricing and reports roll
+    # these up to Mumbai too) — without them Thane/Navi Mumbai/Vasai-Virar
+    # orders were owned by, and numbered for, the ROI head.
+    "Mumbai": "mumbai_head", "Thane": "mumbai_head", "Navi Mumbai": "mumbai_head",
+    "Vasai-Virar": "mumbai_head",
     "Pune": "pune_head",
     "Bangalore": "bangalore_head",
     "Hyderabad": "hyderabad_head",
@@ -185,6 +222,20 @@ def _state_code_for(state_name: str) -> str:
     return INDIA_STATE_CODES.get(state_name.strip().lower(), "00")
 
 
+_HOME_STATE_SPELLINGS = {"maharashtra", "maharastra", "maharshtra", "mh"}
+
+
+def is_interstate_supply(state: str | None) -> bool:
+    """IGST vs CGST+SGST for a place of supply. The state is free text, so
+    normalise it ("MH", "Maharashtra.", "maharastra") instead of comparing the
+    raw string. A blank state is treated as intrastate everywhere — the
+    invoice PDF, the Excel/Tally export and the Tally API must agree."""
+    norm = re.sub(r"[^a-z]", "", (state or "").lower())
+    if not norm:
+        return False
+    return norm not in _HOME_STATE_SPELLINGS and INDIA_STATE_CODES.get(norm) != "27"
+
+
 @lru_cache(maxsize=1)
 def _sb():
     key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
@@ -234,7 +285,7 @@ def list_clients_lite() -> list:
     ))
     for c in clients:
         c["city"] = (c.get("city") or "").strip() or "Unassigned"
-        c["price_region"] = _CITY_TO_PRICE_REGION.get(c["city"], "roi")
+        c["price_region"] = price_region_for_city(c["city"])
     return clients
 
 
@@ -387,7 +438,7 @@ def get_sku_prices(sku_refs: list, region: str = "default") -> dict:
     fallback = {sku_id: float(MOCK_PRICES.get(pack_format_id, 0.0)) for sku_id, pack_format_id in normalized}
     try:
         sb = _sb()
-        today = date.today().isoformat()
+        today = _today_ist().isoformat()
         sku_ids = list(fallback.keys())
         # Fallback chain when a region has no price of its own configured yet
         # (e.g. a newly-opened city like Bangalore before admin sets its
@@ -438,7 +489,7 @@ def _next_order_no(sb, city_code: str) -> str:
     the sales.next_order_seq() RPC, which does an atomic INSERT ... ON
     CONFLICT DO UPDATE.
     """
-    today = date.today()
+    today = _today_ist()
     yy = f"{today.year % 100:02d}"
     mm = f"{today.month:02d}"
     seq = sb.schema("sales").rpc("next_order_seq", {"p_city_code": city_code, "p_fy": yy}).execute().data
@@ -446,11 +497,36 @@ def _next_order_no(sb, city_code: str) -> str:
 
 
 def _next_sample_order_no(sb, city_code: str) -> str:
-    today = date.today()
+    today = _today_ist()
     yy = f"{today.year % 100:02d}"
     mm = f"{today.month:02d}"
     seq = sb.schema("sales").rpc("next_sample_order_seq", {"p_city_code": city_code, "p_fy": yy}).execute().data
     return f"S-{city_code}/{yy}/{mm}/{seq:04d}"
+
+
+def _apply_catalog_prices(sb, lines: list, place: str | None) -> None:
+    """Overwrite each line's unit_price with the catalog price for the order's
+    delivery place. Prices sent by the browser are never trusted: otherwise a
+    crafted request could book an order (and its tax invoice / Tally voucher)
+    at any price. Uses the same region chain the order form shows."""
+    region = price_region_for_city(place or "")
+    sku_ids = []
+    for l in lines:
+        try:
+            sku_ids.append(int(l["sku_id"]))
+        except (TypeError, ValueError):
+            raise ValueError("Each order line needs a valid sku_id")
+    pack_formats = {}
+    try:
+        rows = (sb.schema("sales").from_("skus").select("id, pack_format_id")
+                .in_("id", sorted(set(sku_ids))).execute().data)
+        pack_formats = {r["id"]: r.get("pack_format_id") or 0 for r in rows}
+    except Exception:
+        pass
+    prices = get_sku_prices([(sid, pack_formats.get(sid, 0)) for sid in sku_ids], region=region)
+    for l, sid in zip(lines, sku_ids):
+        l["sku_id"] = sid
+        l["unit_price"] = float(prices.get(sid, 0.0))
 
 
 def create_sample_order(client_id, payment_mode, lines, user_id, notes=None, discount_pct=0.0):
@@ -458,6 +534,11 @@ def create_sample_order(client_id, payment_mode, lines, user_id, notes=None, dis
     payment_mode = payment_mode or "advance"
     if not lines:
         raise ValueError("At least one order line is required")
+    client_city = ""
+    client_row = sb.schema("sales").from_("clients").select("city").eq("id", client_id).limit(1).execute()
+    if client_row.data:
+        client_city = (client_row.data[0].get("city") or "").strip()
+    _apply_catalog_prices(sb, lines, client_city)
     for l in lines:
         if l.get("sku_id") is None:
             raise ValueError("Each order line needs a sku_id")
@@ -477,12 +558,7 @@ def create_sample_order(client_id, payment_mode, lines, user_id, notes=None, dis
     if total < 0:
         raise ValueError("Discount cannot exceed the order subtotal")
 
-    city_code = "ROI"
-    client_row = sb.schema("sales").from_("clients").select("city").eq("id", client_id).limit(1).execute()
-    if client_row.data:
-        client_city = (client_row.data[0].get("city") or "").strip()
-        if client_city:
-            city_code = _order_city_code(client_city)
+    city_code = _order_city_code(client_city) if client_city else "ROI"
 
     order_no = _next_sample_order_no(sb, city_code)
     order_row = {
@@ -708,7 +784,7 @@ def _client_has_unpaid_orders(sb, client_id: int) -> bool:
 
 def should_auto_hold(client_id: int) -> dict:
     sb = _sb()
-    today = date.today()
+    today = _today_ist()
     if today.day < 15:
         return {"hold": False}
     if _client_has_unpaid_orders(sb, client_id):
@@ -743,6 +819,22 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     payment_mode = payment_mode or "advance"
     if not lines:
         raise ValueError("At least one order line is required")
+
+    # The shipping address decides which region owns the order
+    # (_order_region_role), so it must also decide the order-number code and
+    # the price region. The client's own city is only a fallback when there is
+    # no usable shipping address — not whenever the address resolves to ROI.
+    place = None
+    if shipping_address_id:
+        addr = sb.schema("sales").from_("addresses").select("city,locality").eq("id", shipping_address_id).limit(1).execute()
+        if addr.data:
+            place = addr.data[0].get("locality") or addr.data[0].get("city")
+    if not place:
+        client_row = sb.schema("sales").from_("clients").select("city").eq("id", client_id).limit(1).execute()
+        if client_row.data:
+            place = (client_row.data[0].get("city") or "").strip() or None
+    _apply_catalog_prices(sb, lines, place)
+
     for l in lines:
         if l.get("sku_id") is None:
             raise ValueError("Each order line needs a sku_id")
@@ -762,19 +854,7 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     if total < 0:
         raise ValueError("Discount cannot exceed the order subtotal")
 
-    city_code = "ROI"
-    if shipping_address_id:
-        addr = sb.schema("sales").from_("addresses").select("city,locality").eq("id", shipping_address_id).limit(1).execute()
-        if addr.data:
-            place = addr.data[0].get("locality") or addr.data[0].get("city")
-            if place:
-                city_code = _order_city_code(place)
-    if city_code == "ROI":
-        client_row = sb.schema("sales").from_("clients").select("city").eq("id", client_id).limit(1).execute()
-        if client_row.data:
-            client_city = (client_row.data[0].get("city") or "").strip()
-            if client_city:
-                city_code = _order_city_code(client_city)
+    city_code = _order_city_code(place) if place else "ROI"
 
     status = "draft"
 
@@ -1343,9 +1423,12 @@ def client_dues(role: str | None = None, region: str = "") -> list:
     order_client = {}
     invoiced_by_client = {}
     for o in orders:
+        if o["status"] not in _DUES_ORDER_STATUSES:
+            # Payments against draft/hold/cancelled orders must not offset
+            # dues, since those orders aren't counted as invoiced either.
+            continue
         order_client[o["id"]] = o["client_id"]
-        if o["status"] in _DUES_ORDER_STATUSES:
-            invoiced_by_client[o["client_id"]] = invoiced_by_client.get(o["client_id"], 0.0) + float(o["total_amount"])
+        invoiced_by_client[o["client_id"]] = invoiced_by_client.get(o["client_id"], 0.0) + float(o["total_amount"])
 
     payments = _fetch_all_pages(lambda start, end: (
         sb.schema("sales").from_("payments").select("order_id, amount, received_at")
@@ -1479,9 +1562,9 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
             .order("created_at").order("id")
         )
         if from_date:
-            q = q.gte("created_at", from_date)
+            q = q.gte("created_at", _ist_day_start(from_date))
         if to_date:
-            q = q.lt("created_at", to_date)
+            q = q.lt("created_at", _ist_day_start(to_date))
         return q.range(start, end)
 
     orders = _fetch_all_pages(build_query)
@@ -1520,8 +1603,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
         client = clients.get(o.get("client_id"), {})
         billing_addr = addrs.get(o.get("billing_address_id"))
         shipping_addr = addrs.get(o.get("shipping_address_id")) or billing_addr
-        is_interstate = bool(shipping_addr and (shipping_addr.get("state") or "").strip().lower()
-                              != _COMPANY_STATE.lower())
+        is_interstate = is_interstate_supply((shipping_addr or {}).get("state"))
 
         items = []
         tax_buckets = {}
@@ -1567,7 +1649,7 @@ def list_tally_sales(from_date: str | None = None, to_date: str | None = None) -
 
         out.append({
             "invoiceNo": o["order_no"],
-            "invoiceDate": (o["created_at"] or "")[:10],
+            "invoiceDate": _ist_date_str(o["created_at"]),
             "partyName": client.get("business_name", ""),
             "partyGstin": (billing_addr or {}).get("gstin") or client.get("gstin") or "",
             "fssaiNo": client.get("fssai_no") or "",
@@ -1631,6 +1713,10 @@ def bulk_delete_clients(client_ids: list) -> dict:
     if orders.data:
         blocked = sorted({r["client_id"] for r in orders.data})
         raise ValueError(f"Cannot delete clients with existing orders (client IDs: {blocked})")
+    sample = sb.schema("sales").from_("sample_orders").select("client_id").in_("client_id", client_ids).execute()
+    if sample.data:
+        blocked = sorted({r["client_id"] for r in sample.data})
+        raise ValueError(f"Cannot delete clients with existing sample orders (client IDs: {blocked})")
     sb.schema("sales").from_("addresses").delete().in_("client_id", client_ids).execute()
     res = sb.schema("sales").from_("clients").delete().in_("id", client_ids).execute()
     return {"deleted": len(res.data) if res.data else 0}
@@ -1673,6 +1759,12 @@ def get_staff_role(staff_id: int) -> str | None:
     sb = _sb()
     row = sb.schema("sales").from_("users").select("role").eq("id", staff_id).limit(1).execute().data
     return row[0]["role"] if row else None
+
+
+def get_staff_scope(staff_id: int) -> dict | None:
+    sb = _sb()
+    row = sb.schema("sales").from_("users").select("role, region").eq("id", staff_id).limit(1).execute().data
+    return row[0] if row else None
 
 
 def list_team(region: str | None = None) -> list:
@@ -2138,7 +2230,7 @@ def _current_prices_by_sku() -> dict:
     """One batched query for every SKU's currently-effective price per region.
     Returns {sku_id: {"default": 480, "mumbai": 500, ...}}."""
     sb = _sb()
-    today = date.today().isoformat()
+    today = _today_ist().isoformat()
     rows = (
         sb.schema("sales").from_("sku_prices").select("sku_id,price,region,effective_from")
         .lte("effective_from", today)
@@ -2251,8 +2343,8 @@ def set_sku_price(sku_id: int, price: float, set_by: int, region: str = "default
     if region not in ("default", *PRICE_REGIONS):
         raise ValueError("Invalid pricing region")
     sb = _sb()
-    today = date.today().isoformat()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    today = _today_ist().isoformat()
+    yesterday = (_today_ist() - timedelta(days=1)).isoformat()
     sb.schema("sales").from_("sku_prices").update({"effective_to": yesterday}) \
         .eq("sku_id", sku_id).eq("region", region).is_("effective_to", "null").execute()
     row = {

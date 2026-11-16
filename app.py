@@ -1,6 +1,7 @@
 import hmac
 import json
 import os
+import time
 from datetime import date, timedelta
 from functools import lru_cache, wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
@@ -17,7 +18,7 @@ from order_engine import (
     register_client, create_address, get_staff_by_email,
     list_dashboard_orders, mark_payment_received, list_team, create_team_member,
     update_team_member, delete_team_member, hard_delete_team_member, REGION_HEAD_ROLES, ROLE_LABELS,
-    set_user_password, mark_password_changed, get_staff_role, reset_team_member_password,
+    set_user_password, mark_password_changed, get_staff_scope, reset_team_member_password,
     approve_order, reject_order, list_clients, client_dues, client_due_detail,
     list_sku_stock, list_flavours_admin, create_flavour, update_flavour,
     set_sku_price, list_pack_formats, add_sku_to_flavour, set_sku_status, delete_flavours,
@@ -74,11 +75,36 @@ def _auth_client():
     return create_client(url, key)
 
 
+# Role/region/active flag are cached in a 30-day cookie session, so re-read
+# the staff row every few minutes: a deactivated or demoted user must lose
+# access promptly, not when their cookie expires.
+SESSION_REVALIDATE_SECONDS = 300
+
+
+def _session_still_valid() -> bool:
+    now = time.time()
+    if now - session.get("revalidated_at", 0) < SESSION_REVALIDATE_SECONDS:
+        return True
+    try:
+        staff = get_staff_by_email(session.get("user_email") or "")
+    except Exception:
+        # Transient DB/network error: don't log everyone out; retry next request.
+        return True
+    if not staff or not staff.get("is_active") or staff.get("id") != session.get("user_id"):
+        return False
+    session["role"] = staff["role"]
+    session["region"] = staff.get("region") or ""
+    session["full_name"] = staff["full_name"]
+    session["revalidated_at"] = now
+    return True
+
+
 @app.before_request
 def require_login():
     if request.endpoint in PUBLIC_ENDPOINTS or request.endpoint in TALLY_ENDPOINTS or request.path.startswith("/static/"):
         return
-    if not session.get("user_id"):
+    if not session.get("user_id") or not _session_still_valid():
+        session.clear()
         if request.path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
         return redirect(url_for("login"))
@@ -106,13 +132,34 @@ def broad_view_required(view):
     return wrapped
 
 
-def _forbid_admin_account_change(target_role):
-    """Regional heads share the team-management endpoints but must not be able to
-    mint admins or touch existing admin accounts (privilege escalation)."""
-    if session.get("role") == ADMIN_ROLE:
+def _forbid_team_change(target_id=None, body=None):
+    """Regional heads share the team-management endpoints but may only manage
+    salespeople in their own region. Without this a head could mint admins,
+    reset another region head's password (the response returns the new
+    temporary password) and log in as them, or promote anyone to a head role.
+    A head may still edit their own account as long as role/region stay put.
+    Mutates `body` to default a new member's region to the head's region."""
+    role = session.get("role")
+    if role == ADMIN_ROLE:
         return None
-    if target_role == ADMIN_ROLE:
-        return jsonify({"ok": False, "error": "Only an admin can create or modify admin accounts"}), 403
+    own_region = REGION_HEAD_ROLES.get(role)
+    if not own_region:
+        return jsonify({"ok": False, "error": "Admin access required"}), 403
+    body = body if body is not None else {}
+    is_self = target_id is not None and target_id == session.get("user_id")
+    allowed_role = role if is_self else "salesperson"
+    if "role" in body and body.get("role") != allowed_role:
+        return jsonify({"ok": False, "error": "Regional heads can only manage salesperson accounts"}), 403
+    if target_id is None and not (body.get("region") or "").strip():
+        body["region"] = own_region
+    if "region" in body and (body.get("region") or "").strip() != own_region:
+        return jsonify({"ok": False, "error": "Regional heads can only manage staff in their own region"}), 403
+    if target_id is not None and not is_self:
+        target = get_staff_scope(target_id)
+        if not target:
+            return jsonify({"ok": False, "error": "Staff member not found"}), 404
+        if target.get("role") != "salesperson" or (target.get("region") or "") != own_region:
+            return jsonify({"ok": False, "error": "Regional heads can only manage salespeople in their own region"}), 403
     return None
 
 
@@ -149,6 +196,7 @@ def login():
         session["auth_user_id"] = result.user.id
         session["must_change_password"] = staff["must_change_password"]
         session["region"] = staff.get("region") or ""
+        session["revalidated_at"] = time.time()
     except Exception:
         return redirect(url_for("login", error="Invalid email or password"))
     return redirect(url_for("index"))
@@ -213,7 +261,7 @@ def change_password():
 # Each dashboard tab gets its own bookmarkable/shareable URL, all rendering
 # the same SPA-style template — dashboard.html reads initial_page to open
 # the right tab and pushes further tab switches into the URL client-side.
-DASHBOARD_TABS = ("orders", "clients", "team", "insights", "stock", "flavours")
+DASHBOARD_TABS = ("orders", "clients", "team", "insights", "dues", "stock", "flavours", "mis")
 
 
 def _render_dashboard(initial_page):
@@ -448,20 +496,37 @@ def api_release_hold(order_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _order_discount_inputs(body):
+    """Order-level % and per-line discounts from the request. The order form
+    never offers discounts, so only admins/regional heads may send them —
+    otherwise a crafted request from a salesperson could zero out an order."""
+    lines = body["lines"]
+    if not isinstance(lines, list):
+        raise ValueError("lines must be a list")
+    discount_pct = float(body.get("discount_pct") or 0)
+    if session.get("role") not in BROAD_VIEW_ROLES:
+        discount_pct = 0.0
+        for l in lines:
+            if isinstance(l, dict):
+                l["line_discount"] = 0.0
+    return lines, discount_pct
+
+
 @app.route("/api/orders", methods=["POST"])
 def api_orders():
     body = request.get_json(force=True)
     try:
+        lines, discount_pct = _order_discount_inputs(body)
         order = create_order(
             client_id=body["client_id"],
             payment_mode=body["payment_mode"],
-            lines=body["lines"],
+            lines=lines,
             user_id=session["user_id"],
             billing_address_id=body.get("billing_address_id"),
             shipping_address_id=body.get("shipping_address_id"),
             notes=body.get("notes"),
             collateral=body.get("collateral"),
-            discount_pct=float(body.get("discount_pct") or 0),
+            discount_pct=discount_pct,
             consignee_name=body.get("consignee_name"),
         )
         try:
@@ -487,13 +552,14 @@ def api_orders():
 def api_sample_orders():
     body = request.get_json(force=True)
     try:
+        lines, discount_pct = _order_discount_inputs(body)
         order = create_sample_order(
             client_id=body["client_id"],
             payment_mode=body.get("payment_mode", "advance"),
-            lines=body["lines"],
+            lines=lines,
             user_id=session["user_id"],
             notes=body.get("notes"),
-            discount_pct=float(body.get("discount_pct") or 0),
+            discount_pct=discount_pct,
         )
         try:
             from google_form_sync import submit_order_to_google_form
@@ -641,7 +707,7 @@ def api_sample_order_lines(order_id):
         if not order.data:
             return jsonify({"ok": False, "error": "Order not found"}), 404
         o = order.data[0]
-        if session["role"] != "admin" and session["role"] not in ("region_head_mumbai", "region_head_pune", "region_head_roi"):
+        if session["role"] not in BROAD_VIEW_ROLES:
             if o.get("created_by_user_id") != session["user_id"] and o.get("salesperson_id") != session["user_id"]:
                 return jsonify({"ok": False, "error": "Not authorized"}), 403
         lines = get_sample_order_lines(order_id)
@@ -736,7 +802,7 @@ def api_team():
 @admin_required
 def api_create_team_member():
     body = request.get_json(force=True)
-    denied = _forbid_admin_account_change(body.get("role"))
+    denied = _forbid_team_change(body=body)
     if denied:
         return denied
     try:
@@ -755,7 +821,7 @@ def api_update_team_member(staff_id):
     if staff_id == session.get("user_id") and (body.get("is_active") is False or
                                                 ("role" in body and body["role"] != session.get("role"))):
         return jsonify({"ok": False, "error": "You can't deactivate or change the role of your own account"}), 409
-    denied = _forbid_admin_account_change(body.get("role")) or _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = _forbid_team_change(target_id=staff_id, body=body)
     if denied:
         return denied
     try:
@@ -772,7 +838,7 @@ def api_update_team_member(staff_id):
 def api_delete_team_member(staff_id):
     if staff_id == session.get("user_id"):
         return jsonify({"ok": False, "error": "You can't deactivate your own account"}), 409
-    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = _forbid_team_change(target_id=staff_id)
     if denied:
         return denied
     try:
@@ -789,7 +855,7 @@ def api_delete_team_member(staff_id):
 def api_hard_delete_team_member(staff_id):
     if staff_id == session.get("user_id"):
         return jsonify({"ok": False, "error": "You can't delete your own account"}), 409
-    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = _forbid_team_change(target_id=staff_id)
     if denied:
         return denied
     try:
@@ -804,7 +870,7 @@ def api_hard_delete_team_member(staff_id):
 @app.route("/api/team/<int:staff_id>/reset-password", methods=["POST"])
 @admin_required
 def api_reset_team_member_password(staff_id):
-    denied = _forbid_admin_account_change(get_staff_role(staff_id))
+    denied = _forbid_team_change(target_id=staff_id)
     if denied:
         return denied
     try:
