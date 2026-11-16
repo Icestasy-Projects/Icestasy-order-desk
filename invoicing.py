@@ -17,7 +17,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "logo1_trimmed.png")
 
-from order_engine import _sb, _require_order_in_region, order_discount_factor
+from order_engine import _sb, _require_order_in_region, order_discount_factor, _ist_date_str, is_interstate_supply
 
 COMPANY = {
     "name": "Icestasy Projects Pvt. Ltd.",
@@ -109,7 +109,8 @@ def _client_ledger(sb, client_id: int, as_of_iso: str) -> dict:
 
 
 def _parse_ts(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    # Timestamps are stored in UTC; the invoice must show the Indian date.
+    return datetime.fromisoformat(_ist_date_str(value))
 
 
 def _esc(value) -> str:
@@ -178,8 +179,7 @@ def build_invoice_pdf(order_id: int, role: str | None = None) -> tuple[io.BytesI
         .eq("order_id", order_id).in_("status", ["active", "delivered"]).execute().data
     )
 
-    is_interstate = bool(shipping_addr and (shipping_addr.get("state") or "").strip().lower()
-                          != COMPANY["state"].lower())
+    is_interstate = is_interstate_supply((shipping_addr or {}).get("state"))
 
     line_rows = []
     tax_buckets = {}  # gst_rate -> taxable amount
