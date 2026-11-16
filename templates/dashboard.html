@@ -513,7 +513,7 @@
             <div class="step-label" style="margin-bottom:0">Flavour Management</div>
             <span id="flavourCount" class="fm-count"></span>
           </div>
-          <div class="fm-toolbar-right" id="fmAdminToolbar">
+          <div class="fm-toolbar-right">
             <button class="fm-btn fm-btn-danger" id="bulkDeleteBtn" style="display:none" onclick="bulkDeleteFlavours()">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
               Delete selected</button>
@@ -2986,9 +2986,7 @@ function renderFlavours() {
 
   const activeCount = flavoursData.filter(f => f.status === "active").length;
   if (countEl) countEl.textContent = `${activeCount} active / ${flavoursData.length} total`;
-  if (selectAllRow) selectAllRow.style.display = IS_STRICT_ADMIN ? "" : "none";
-  const fmAdminToolbar = document.getElementById("fmAdminToolbar");
-  if (fmAdminToolbar) fmAdminToolbar.style.display = IS_STRICT_ADMIN ? "" : "none";
+  if (selectAllRow) selectAllRow.style.display = "";
 
   const cards = pageItems.map(f => {
     const isOpen = expandedFlavour === f.id;
@@ -3051,7 +3049,7 @@ function renderFlavours() {
     return `
       <div class="fm-card ${isSelected ? "fm-card-selected" : ""}" data-fid="${f.id}">
         <div class="fm-card-header" onclick="toggleFlavour(${f.id}, event)">
-          ${IS_STRICT_ADMIN ? `<label class="fm-card-cb" onclick="event.stopPropagation()">
+          <label class="fm-card-cb" onclick="event.stopPropagation()">
             <input type="checkbox" ${isSelected ? "checked" : ""} onchange="toggleFlavourSelect(${f.id}, event)">
           </label>
           <span class="fm-card-name">${escapeHtml(f.name)}</span>
