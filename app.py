@@ -997,7 +997,7 @@ def api_flavours():
 
 
 @app.route("/api/admin/flavours", methods=["POST"])
-@strict_admin_required
+@admin_required
 def api_create_flavour():
     body = request.get_json(force=True)
     try:
@@ -1010,7 +1010,7 @@ def api_create_flavour():
 
 
 @app.route("/api/admin/flavours/<int:flavour_id>", methods=["PATCH"])
-@strict_admin_required
+@admin_required
 def api_update_flavour(flavour_id):
     body = request.get_json(force=True)
     try:
@@ -1023,7 +1023,7 @@ def api_update_flavour(flavour_id):
 
 
 @app.route("/api/admin/flavours/bulk-delete", methods=["POST"])
-@strict_admin_required
+@admin_required
 def api_bulk_delete_flavours():
     body = request.get_json(force=True)
     ids = body.get("ids") or []
@@ -1037,7 +1037,7 @@ def api_bulk_delete_flavours():
 
 
 @app.route("/api/admin/skus/<int:sku_id>/price", methods=["POST"])
-@strict_admin_required
+@admin_required
 def api_set_sku_price(sku_id):
     body = request.get_json(force=True)
     try:
@@ -1052,7 +1052,7 @@ def api_set_sku_price(sku_id):
 
 
 @app.route("/api/admin/flavours/<int:flavour_id>/skus", methods=["POST"])
-@strict_admin_required
+@admin_required
 def api_add_sku(flavour_id):
     body = request.get_json(force=True)
     try:
@@ -1066,7 +1066,7 @@ def api_add_sku(flavour_id):
 
 
 @app.route("/api/admin/skus/<int:sku_id>/status", methods=["POST"])
-@strict_admin_required
+@admin_required
 def api_set_sku_status(sku_id):
     body = request.get_json(force=True)
     try:
