@@ -132,6 +132,15 @@ def broad_view_required(view):
     return wrapped
 
 
+def strict_admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("role") != ADMIN_ROLE:
+            return jsonify({"ok": False, "error": "Admin access required"}), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
 def _forbid_team_change(target_id=None, body=None):
     """Regional heads share the team-management endpoints but may only manage
     salespeople in their own region. Without this a head could mint admins,
