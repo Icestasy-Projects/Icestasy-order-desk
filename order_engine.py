@@ -10,10 +10,9 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 
 
 def _generate_temp_password() -> str:
-    """A fresh, unguessable one-time password per new account — shown once to the
-    admin who creates it, then discarded (never stored in plaintext). The account
-    must still change it on first login (must_change_password)."""
-    return secrets.token_urlsafe(9)
+    """Default password for new accounts. The account must change it on first
+    login (must_change_password)."""
+    return "test@123"
 
 _PAGE_SIZE = 1000  # PostgREST's default max rows per request — must page past it explicitly.
 
