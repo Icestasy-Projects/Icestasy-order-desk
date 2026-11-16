@@ -2009,8 +2009,8 @@ function showAddTeamForm() {
       <div class="opt-muted mt8">They'll log in with the default password <strong>test@123</strong> and must change it on first login.</div>
       <div id="tmError" class="opt-error mt8"></div>
       <div class="btn-group mt8">
-        <button class="btn-primary" onclick="submitTeamMember()">Add Sales Person</button>
-        <button class="btn-ghost" onclick="cancelAddTeamForm()">Cancel</button>
+        <button id="tmSubmitBtn" class="btn-primary" onclick="submitTeamMember()">Add Sales Person</button>
+        <button id="tmCancelBtn" class="btn-ghost" onclick="cancelAddTeamForm()">Cancel</button>
       </div>
     </div>`;
   syncRegionForRole("tmRole", "tmRegion");
@@ -2023,6 +2023,8 @@ function cancelAddTeamForm() {
 
 async function submitTeamMember() {
   const errBox = document.getElementById("tmError");
+  const btn = document.getElementById("tmSubmitBtn");
+  const cancelBtn = document.getElementById("tmCancelBtn");
   const payload = {
     full_name: document.getElementById("tmName").value.trim(),
     email: document.getElementById("tmEmail").value.trim(),
@@ -2034,18 +2036,27 @@ async function submitTeamMember() {
     errBox.textContent = "Full name and email are required";
     return;
   }
-  const res = await fetch("/api/team", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(payload),
-  }).then(r => r.json());
-  if (!res.ok) {
-    errBox.textContent = res.error || "Could not add sales person";
-    return;
-  }
-  cancelAddTeamForm();
-  loadTeam();
-  if (res.member) {
-    alert(`${res.member.full_name}'s account is ready.\n\nThey'll log in with the default password test@123 and must change it on first login.`);
+  btn.disabled = true;
+  btn.textContent = "Adding…";
+  cancelBtn.disabled = true;
+  errBox.textContent = "";
+  try {
+    const res = await fetch("/api/team", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    }).then(r => r.json());
+    if (!res.ok) {
+      errBox.textContent = res.error || "Could not add sales person";
+      return;
+    }
+    cancelAddTeamForm();
+    loadTeam();
+    if (res.member) {
+      alert(`${res.member.full_name}'s account is ready.\n\nThey'll log in with the default password test@123 and must change it on first login.`);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Add Sales Person"; }
+    if (cancelBtn) cancelBtn.disabled = false;
   }
 }
 
