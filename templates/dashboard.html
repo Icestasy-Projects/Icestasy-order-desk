@@ -595,6 +595,7 @@ function icon(name, cls) {
 }
 
 const IS_ADMIN = {{ "true" if is_admin else "false" }};
+const IS_STRICT_ADMIN = {{ "true" if role == 'admin' else "false" }};
 const CAN_VIEW_TEAM = {{ "true" if can_view_team else "false" }};
 const ROLE_LABELS = {{ role_labels_json | safe }};
 const REGION_OPTIONS = {{ region_options_json | safe }};
@@ -2088,7 +2089,7 @@ function showEditTeamForm(staffId, pushState = true) {
       <div class="btn-group mt8">
         <button class="btn-primary" onclick="submitEditTeamMember(${staffId})">Save</button>
       </div>
-      ${IS_ADMIN ? `<div class="btn-group mt8">
+      ${IS_STRICT_ADMIN ? `<div class="btn-group mt8">
         <button class="btn-option btn-sm" onclick="resetTeamMemberPassword(${staffId})">Reset Password</button>
       </div>
       <div class="btn-group mt8">
