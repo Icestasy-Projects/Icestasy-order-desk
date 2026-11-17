@@ -309,6 +309,7 @@ def register_client(data: dict, registered_by: int) -> dict:
     existing = (
         sb.schema("sales").from_("clients")
         .select("id, business_name, gstin, fssai_no, primary_contact_phone")
+        .eq("status", "active")
         .or_(",".join(or_parts))
         .execute()
     )
@@ -322,12 +323,23 @@ def register_client(data: dict, registered_by: int) -> dict:
             reason = "phone number"
         raise ValueError(f"A client already exists with this {reason}: {dupe['business_name']}")
 
+    name_check = (
+        sb.schema("sales").from_("clients")
+        .select("id, business_name")
+        .eq("status", "active")
+        .ilike("business_name", business_name)
+        .execute()
+    )
+    if name_check.data:
+        raise ValueError(f"A client already exists with this name: {name_check.data[0]['business_name']}")
+
     city = (data.get("city") or "").strip() or None
     row = {
         "business_name": business_name,
         "client_type": data.get("client_type") or "horeca",
         "is_roi_dealer": False,
         "gstin": gstin,
+        "gst_status": "registered" if gstin else "unregistered",
         "fssai_no": fssai_no,
         "primary_contact_name": (data.get("primary_contact_name") or "").strip() or None,
         "primary_contact_phone": phone,
@@ -1720,6 +1732,9 @@ def update_client(client_id: int, data: dict) -> dict:
         name = (data.get("business_name") or "").strip()
         if not name:
             raise ValueError("Business name cannot be empty")
+        dup = sb.schema("sales").from_("clients").select("id, business_name").eq("status", "active").ilike("business_name", name).neq("id", client_id).execute()
+        if dup.data:
+            raise ValueError(f"Another client already has this name: {dup.data[0]['business_name']}")
         updates["business_name"] = name
     if "gstin" in data:
         gstin = (data.get("gstin") or "").strip() or None
