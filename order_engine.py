@@ -1716,8 +1716,15 @@ def delete_client(client_id: int) -> dict:
 def update_client(client_id: int, data: dict) -> dict:
     sb = _sb()
     updates = {}
+    if "business_name" in data:
+        name = (data.get("business_name") or "").strip()
+        if not name:
+            raise ValueError("Business name cannot be empty")
+        updates["business_name"] = name
     if "gstin" in data:
-        updates["gstin"] = (data.get("gstin") or "").strip() or None
+        gstin = (data.get("gstin") or "").strip() or None
+        updates["gstin"] = gstin
+        updates["gst_status"] = "registered" if gstin else "unregistered"
     if "fssai_no" in data:
         updates["fssai_no"] = (data.get("fssai_no") or "").strip() or None
     if "city" in data:

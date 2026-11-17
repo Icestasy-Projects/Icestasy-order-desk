@@ -1530,10 +1530,11 @@ function clientRowHtml(c) {
     const addrCards = (c.addresses || []).map(a => addressCardHtml(c, a)).join("");
     body = `
       <div class="register-form mt8">
-        <input id="client-gstin-${c.id}" class="search-input" placeholder="GSTIN" value="${escapeHtml(c.gstin)}">
-        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${c.fssai_no || ""}">
+        <input id="client-name-${c.id}" class="search-input" placeholder="Business Name" value="${escapeHtml(c.business_name || "")}">
+        <input id="client-gstin-${c.id}" class="search-input mt8" placeholder="GSTIN" value="${escapeHtml(c.gstin)}">
+        <input id="client-fssai-${c.id}" class="search-input mt8" placeholder="FSSAI No" value="${escapeHtml(c.fssai_no || "")}">
         <div id="client-error-${c.id}" class="opt-error mt8"></div>
-        <button class="btn-option btn-sm mt8" onclick="submitClientEdit(${c.id})">Save GST/FSSAI</button>
+        <button class="btn-option btn-sm mt8" onclick="submitClientEdit(${c.id})">Save Changes</button>
       </div>
       <div class="mt16" style="display:flex;flex-direction:column;gap:10px">
         ${addrCards || '<div class="opt-muted">No addresses yet</div>'}
@@ -1740,6 +1741,7 @@ function renderClients() {
 async function submitClientEdit(clientId) {
   const errBox = document.getElementById(`client-error-${clientId}`);
   const payload = {
+    business_name: document.getElementById(`client-name-${clientId}`).value.trim(),
     gstin: document.getElementById(`client-gstin-${clientId}`).value.trim(),
     fssai_no: document.getElementById(`client-fssai-${clientId}`).value.trim(),
   };
