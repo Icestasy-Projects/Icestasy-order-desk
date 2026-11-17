@@ -155,12 +155,7 @@ def _in_range(created_at: str, date_from: str, date_to: str) -> bool:
 
 
 def _sheet_header(ws, title_text: str, subtitle_text: str, last_col_letter: str):
-    ws.merge_cells(f"A1:{last_col_letter}1")
-    ws["A1"] = title_text
-    ws["A1"].font = TITLE_FONT
-    ws.merge_cells(f"A2:{last_col_letter}2")
-    ws["A2"] = subtitle_text
-    ws["A2"].font = SUBTLE_FONT
+    pass
 
 
 def _write_summary_sheet(ws, orders: list, report_type: str, subtitle_text: str):
@@ -171,7 +166,7 @@ def _write_summary_sheet(ws, orders: list, report_type: str, subtitle_text: str)
 
     _sheet_header(ws, f"Icestasy Order Desk — {REPORT_TYPE_LABELS[report_type]} Report", subtitle_text, last_col_letter)
 
-    header_row = 4
+    header_row = 1
     for col, title in enumerate(columns, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
         cell.font = HEADER_FONT
@@ -210,7 +205,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
     last_col_letter = get_column_letter(len(COLUMNS))
     _sheet_header(ws, "Icestasy Order Desk — Orders Report", subtitle_text, last_col_letter)
 
-    header_row = 4
+    header_row = 1
     for col, title in enumerate(COLUMNS, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
         cell.font = HEADER_FONT
@@ -354,7 +349,7 @@ def _write_flavour_summary_sheet(ws, lines: list, report_type: str, subtitle_tex
 
     _sheet_header(ws, f"Icestasy Order Desk — {REPORT_TYPE_LABELS[report_type]} Report", subtitle_text, last_col_letter)
 
-    header_row = 4
+    header_row = 1
     for col, title in enumerate(columns, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
         cell.font = HEADER_FONT
@@ -399,7 +394,7 @@ def _write_flavour_detail_sheet(ws, lines: list, subtitle_text: str):
     last_col_letter = get_column_letter(len(LINE_COLUMNS))
     _sheet_header(ws, "Icestasy Order Desk — Flavour Sales Detail", subtitle_text, last_col_letter)
 
-    header_row = 4
+    header_row = 1
     for col, title in enumerate(LINE_COLUMNS, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
         cell.font = HEADER_FONT
@@ -477,7 +472,7 @@ def _write_client_summary_sheet(ws, orders: list, subtitle_text: str):
     last_col_letter = get_column_letter(len(columns))
     _sheet_header(ws, "Icestasy Order Desk — Client Summary", subtitle_text, last_col_letter)
 
-    header_row = 4
+    header_row = 1
     for col, title in enumerate(columns, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
         cell.font = HEADER_FONT
@@ -586,7 +581,7 @@ def build_clients_workbook(clients: list) -> io.BytesIO:
 
     _sheet_header(ws, "Icestasy Order Desk — Client List", subtitle_text, last_col_letter)
 
-    header_row = 4
+    header_row = 1
     for col, title in enumerate(CLIENT_COLUMNS, start=1):
         cell = ws.cell(row=header_row, column=col, value=title)
         cell.font = HEADER_FONT
