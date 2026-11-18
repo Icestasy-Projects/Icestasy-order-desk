@@ -2619,9 +2619,14 @@ let editOrderLines = [];
 
 async function openEditOrder(orderId, event) {
   if (event) event.stopPropagation();
+  // Show loading modal immediately
+  let overlay = document.getElementById("editOrderOverlay");
+  if (!overlay) { overlay = document.createElement("div"); overlay.id = "editOrderOverlay"; document.body.appendChild(overlay); }
+  overlay.innerHTML = `<div class="edit-order-backdrop" onclick="closeEditOrder()"></div>
+    <div class="edit-order-panel" style="text-align:center;padding:48px 24px"><div class="searching">Loading order…</div></div>`;
   await ensureSkusCatalog();
   const res = await fetch(`/api/admin/orders/${orderId}`).then(r => r.json());
-  if (!res.ok) { alert(res.error || "Could not load order"); return; }
+  if (!res.ok) { closeEditOrder(); alert(res.error || "Could not load order"); return; }
   editOrderData = res.order;
   editOrderLines = res.order.lines.map(l => ({sku_id: l.sku_id, quantity: l.quantity}));
   renderEditOrderModal();
@@ -2642,16 +2647,6 @@ function renderEditOrderModal() {
         <span>Edit Order ${escapeHtml(o.order_no)}</span>
         <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:var(--slate-100,#f1f5f9);color:var(--slate-600,#475569);font-weight:600;text-transform:uppercase">${escapeHtml(o.status)}</span>
       </div>
-
-      <label class="fm-label mt8">Payment Mode</label>
-      <select id="editPaymentMode" class="search-input">
-        <option value="advance"${o.payment_mode==="advance"?" selected":""}>Advance</option>
-        <option value="credit"${o.payment_mode==="credit"?" selected":""}>Credit</option>
-        <option value="cod"${o.payment_mode==="cod"?" selected":""}>COD</option>
-      </select>
-
-      <label class="fm-label mt8">Discount %</label>
-      <input type="number" id="editDiscountPct" class="search-input" min="0" max="100" step="0.5" value="${o.discount_pct || 0}">
 
       <label class="fm-label mt8">Order Lines</label>
       <div id="editOrderLinesBox"></div>
@@ -2719,9 +2714,7 @@ async function saveEditOrder() {
   try {
     const body = {
       lines: validLines.map(l => ({sku_id: l.sku_id, quantity: l.quantity})),
-      payment_mode: document.getElementById("editPaymentMode").value,
       notes: document.getElementById("editNotes").value.trim(),
-      discount_pct: parseFloat(document.getElementById("editDiscountPct").value) || 0,
     };
     const res = await fetch(`/api/admin/orders/${editOrderData.id}`, {
       method: "PUT",
@@ -2737,9 +2730,12 @@ async function saveEditOrder() {
       return;
     }
 
+    const editedId = editOrderData.id;
     closeEditOrder();
     for (const key in orderLinesCache) delete orderLinesCache[key];
-    loadOrders();
+    await loadOrders();
+    // Re-expand the edited order so updated lines are visible
+    if (editedId) toggleOrderLines(editedId, false);
   } catch (e) {
     errBox.textContent = "Network error — please try again";
     errBox.style.display = "block";
