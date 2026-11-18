@@ -936,6 +936,131 @@ def create_order(client_id, payment_mode, lines, user_id, billing_address_id=Non
     return result
 
 
+def get_order_detail(order_id: int) -> dict:
+    sb = _sb()
+    order = (sb.schema("sales").from_("orders")
+             .select("id, order_no, client_id, status, payment_mode, notes, "
+                     "subtotal_amount, discount_amount, tax_amount, total_amount, "
+                     "shipping_address_id, billing_address_id, consignee_name, created_at")
+             .eq("id", order_id).limit(1).execute())
+    if not order.data:
+        raise ValueError("Order not found")
+    o = order.data[0]
+    lines = (sb.schema("sales").from_("order_lines")
+             .select("id, sku_id, quantity, unit_price, line_discount_amount, line_total, status, "
+                     "skus(sku_code, flavours(name), pack_formats(name))")
+             .eq("order_id", order_id).execute().data)
+    out_lines = []
+    for l in lines:
+        sku = l.get("skus") or {}
+        out_lines.append({
+            "id": l["id"],
+            "sku_id": l["sku_id"],
+            "sku_code": sku.get("sku_code", "—"),
+            "flavour_name": (sku.get("flavours") or {}).get("name", "—"),
+            "pack_format_name": (sku.get("pack_formats") or {}).get("name", "—"),
+            "quantity": float(l["quantity"]),
+            "unit_price": float(l["unit_price"]),
+            "line_discount_amount": float(l.get("line_discount_amount", 0)),
+            "line_total": float(l["line_total"]),
+        })
+    o["lines"] = out_lines
+    subtotal = float(o.get("subtotal_amount", 0))
+    discount = float(o.get("discount_amount", 0))
+    line_disc_total = sum(l["line_discount_amount"] for l in out_lines)
+    pct_disc = discount - line_disc_total
+    o["discount_pct"] = round((pct_disc / subtotal) * 100, 2) if subtotal > 0 and pct_disc > 0 else 0
+    return o
+
+
+def update_order(order_id: int, lines: list, user_id: int,
+                 payment_mode: str = None, notes: str = None,
+                 discount_pct: float = None) -> dict:
+    sb = _sb()
+    if discount_pct is None:
+        discount_pct = 0.0
+
+    order = (sb.schema("sales").from_("orders")
+             .select("id, order_no, client_id, status, shipping_address_id, billing_address_id")
+             .eq("id", order_id).limit(1).execute())
+    if not order.data:
+        raise ValueError("Order not found")
+    existing = order.data[0]
+    if existing["status"] in ("cancelled", "rejected"):
+        raise ValueError(f"Cannot edit — order is {existing['status']}")
+
+    if not lines:
+        raise ValueError("At least one order line is required")
+
+    place = None
+    if existing.get("shipping_address_id"):
+        addr = sb.schema("sales").from_("addresses").select("city,locality").eq("id", existing["shipping_address_id"]).limit(1).execute()
+        if addr.data:
+            place = addr.data[0].get("locality") or addr.data[0].get("city")
+    if not place:
+        client_row = sb.schema("sales").from_("clients").select("city").eq("id", existing["client_id"]).limit(1).execute()
+        if client_row.data:
+            place = (client_row.data[0].get("city") or "").strip() or None
+    _apply_catalog_prices(sb, lines, place)
+
+    for l in lines:
+        if l.get("sku_id") is None:
+            raise ValueError("Each order line needs a sku_id")
+        if not l["quantity"] > 0:
+            raise ValueError("Line quantity must be positive")
+        if not l["unit_price"] >= 0 or not l.get("line_discount", 0.0) >= 0:
+            raise ValueError("Line price and discount must not be negative")
+        if l.get("line_discount", 0.0) > l["unit_price"]:
+            raise ValueError("Line discount cannot exceed the unit price")
+    if not 0 <= discount_pct <= 100:
+        raise ValueError("Discount % must be between 0 and 100")
+
+    subtotal = round(sum(l["quantity"] * l["unit_price"] for l in lines), 2)
+    line_discount = sum(l.get("line_discount", 0.0) * l["quantity"] for l in lines)
+    pct_discount = round(subtotal * (discount_pct / 100), 2) if discount_pct else 0.0
+    discount = round(line_discount + pct_discount, 2)
+    total = round(subtotal - discount, 2)
+    if total < 0:
+        raise ValueError("Discount cannot exceed the order subtotal")
+
+    line_totals = []
+    line_discs = []
+    for l in lines:
+        qty = l["quantity"]; price = l["unit_price"]
+        base_disc = l.get("line_discount", 0.0) * qty
+        pct_share = round(qty * price * (discount_pct / 100), 2) if discount_pct else 0.0
+        line_discs.append(round(base_disc + pct_share, 2))
+        line_totals.append(round(qty * price - line_discs[-1], 2))
+    residue = round(total - sum(line_totals), 2)
+    if residue:
+        line_totals[-1] = round(line_totals[-1] + residue, 2)
+        line_discs[-1] = round(line_discs[-1] - residue, 2)
+
+    sb.schema("sales").from_("order_lines").delete().eq("order_id", order_id).execute()
+
+    line_rows = [{
+        "order_id": order_id, "sku_id": l["sku_id"],
+        "quantity": str(l["quantity"]), "unit_price": str(l["unit_price"]),
+        "line_discount_amount": str(line_discs[i]),
+        "line_total": str(line_totals[i]), "status": "active",
+    } for i, l in enumerate(lines)]
+    sb.schema("sales").from_("order_lines").insert(line_rows).execute()
+
+    update_row = {
+        "subtotal_amount": str(subtotal),
+        "discount_amount": str(discount),
+        "tax_amount": "0.00",
+        "total_amount": str(total),
+    }
+    if payment_mode is not None:
+        update_row["payment_mode"] = payment_mode
+    if notes is not None:
+        update_row["notes"] = notes
+
+    res = sb.schema("sales").from_("orders").update(update_row).eq("id", order_id).execute()
+    return res.data[0]
+
+
 _REGION_LABEL_TO_HEAD_ROLE = {v: k for k, v in REGION_HEAD_ROLES.items()}
 
 

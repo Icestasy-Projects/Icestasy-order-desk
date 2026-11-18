@@ -27,6 +27,7 @@ from order_engine import (
     fetch_report_order_lines, fetch_report_order_shipping, fetch_payment_summaries,
     get_sku_price, price_region_for_city,
     check_pending_orders, cancel_order, should_auto_hold, put_on_hold, release_hold,
+    get_order_detail, update_order,
     check_stock_for_order, mis_daily_sales, mis_weekly_sales, mis_monthly_sales,
     STOCK_REQUEST_CITIES, create_stock_request, list_stock_requests,
     approve_stock_request, reject_stock_request, city_stock_summary,
@@ -595,6 +596,39 @@ def api_stock_check():
     body = request.get_json(force=True)
     try:
         return jsonify({"ok": True, **check_stock_for_order(body.get("lines") or [])})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/orders/<int:order_id>")
+@strict_admin_required
+def api_get_order_detail(order_id):
+    try:
+        order = get_order_detail(order_id)
+        return jsonify({"ok": True, "order": order})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/orders/<int:order_id>", methods=["PUT"])
+@strict_admin_required
+def api_update_order(order_id):
+    body = request.get_json(force=True)
+    try:
+        lines, discount_pct = _order_discount_inputs(body)
+        order = update_order(
+            order_id=order_id,
+            lines=lines,
+            user_id=session["user_id"],
+            payment_mode=body.get("payment_mode"),
+            notes=body.get("notes"),
+            discount_pct=discount_pct,
+        )
+        return jsonify({"ok": True, "order": order})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
