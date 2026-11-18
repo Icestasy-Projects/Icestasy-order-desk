@@ -28,14 +28,16 @@ PAY_LABELS = {
 COLUMNS = [
     "Voucher Type Name", "Order ID", "Date", "Billing Name", "Consignee Name", "Product Info",
     "Qty", "Rate", "Taxable Value",
-    "CGST %", "CGST Amt", "SGST %", "SGST Amt", "IGST %", "IGST Amt",
+    "CGST %", "CGST 2.5% - Sale", "SGST %", "SGST 2.5% - Sale", "IGST %", "IGST Amt",
     "Round Off", "Total", "Godown", "Sales Ledger",
+    "Ack No", "Ack Date", "IRN NO",
 ]
 COLUMN_WIDTHS = [
     20, 12, 14, 28, 28, 30,
     10, 14, 16,
     8, 14, 8, 14, 8, 14,
     12, 16, 14, 22,
+    14, 14, 20,
 ]
 
 COMPANY_STATE = "Maharashtra"
@@ -236,7 +238,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
         lines = o.get("lines") or []
         if not lines:
             values = [voucher_type, order_id, order_date, client, consignee, "", "", "", "",
-                      "", "", "", "", "", "", "", "", godown, sales_ledger]
+                      "", "", "", "", "", "", "", "", godown, sales_ledger, "", "", ""]
             for col, val in enumerate(values, start=1):
                 ws.cell(row=row, column=col, value=val)
             row += 1
@@ -283,7 +285,7 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 voucher_type, order_id, order_date, client, consignee, product_info,
                 qty, rate, taxable,
                 cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt,
-                "", "", godown, sales_ledger,
+                "", "", godown, sales_ledger, "", "", "",
             ]
             for col, val in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=col, value=val)
