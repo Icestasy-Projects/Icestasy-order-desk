@@ -177,6 +177,15 @@
 .mis-empty {
   text-align: center; padding: 40px; color: var(--slate-400, #94a3b8); font-size: 14px;
 }
+.btn-edit-order {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--slate-200, #e2e8f0);
+  background: var(--white, #fff); color: var(--slate-500, #64748b); cursor: pointer;
+  transition: all .15s; padding: 0; flex-shrink: 0;
+}
+.btn-edit-order:hover { background: var(--brand-soft, #eff6ff); color: var(--brand, #2563eb); border-color: var(--brand, #2563eb); }
+.btn-edit-order:active { transform: scale(.93); }
+.btn-edit-order svg { width: 14px; height: 14px; }
 .edit-order-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999;
 }
@@ -1059,7 +1068,7 @@ function orderRow(o) {
     ? `<button class="btn-option btn-sm" onclick="markCompleted(${o.id})">${icon("check-check")} Mark Completed</button>` : "";
   const canEdit = IS_ADMIN && !o.is_sample && o.status !== "cancelled" && o.status !== "rejected";
   const editAction = canEdit
-    ? `<button class="btn-option btn-sm" onclick="openEditOrder(${o.id}, event)">${icon("pencil")} Edit</button>` : "";
+    ? `<button class="btn-edit-order" onclick="openEditOrder(${o.id}, event)" title="Edit order">${icon("pencil")}</button>` : "";
   // client_name sometimes already embeds the locality (e.g. "Banana Leaf - Santacruz West") — don't repeat it.
   const showPlace = o.place !== "—" && !o.client_name.toLowerCase().includes(o.place.toLowerCase());
   const isOpen = expandedOrderKey === orderKey(o.id, o.is_sample);
