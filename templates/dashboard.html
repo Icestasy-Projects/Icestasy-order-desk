@@ -342,6 +342,7 @@
 
         <div class="tab-bar-flat" id="groupTabs">
           <button class="tab-btn-flat active" onclick="setGrouping('none', this)">All Orders</button>
+          <button class="tab-btn-flat" onclick="setGrouping('today', this)">Today</button>
           <button class="tab-btn-flat" onclick="setGrouping('client', this)">By Client</button>
         </div>
 
@@ -736,9 +737,16 @@ function goToOrdersPage(p) {
   renderOrders();
 }
 
+function _todayIST() {
+  return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"})).toLocaleDateString("en-CA");
+}
 function filteredOrders() {
   let base = allOrders;
   if (selectedBU !== "all") base = base.filter(_orderMatchesBU);
+  if (grouping === "today") {
+    const today = _todayIST();
+    base = base.filter(o => o.created_at && o.created_at.slice(0, 10) === today);
+  }
   if (!searchQuery) return base;
   return base.filter(o =>
     (o.order_no || "").toLowerCase().includes(searchQuery) ||
@@ -1172,7 +1180,7 @@ function renderOrders() {
     renderStats(selectedBU === "all" ? allOrders : allOrders.filter(_orderMatchesBU));
     return;
   }
-  if (grouping === "none") {
+  if (grouping === "none" || grouping === "today") {
     // Rendering thousands of order rows at once is what was stalling the browser —
     // page it the same way the Flavours admin list already does.
     const totalPages = Math.max(1, Math.ceil(source.length / ORDERS_PAGE_SIZE));
