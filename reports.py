@@ -274,7 +274,8 @@ def _write_orders_sheet(ws, orders: list, subtitle_text: str):
                 igst_amt = 0.0
 
             product_info = ln.get("flavour_name") or ""
-            product_info = re.sub(r"\s*\([^)]*\)", "", product_info).strip()
+            product_info = product_info.replace("(FD)", "(Frozen Dessert)")
+            product_info = re.sub(r"\s*\((?!Frozen Dessert)[^)]*\)", "", product_info).strip()
             fmt_name = ln.get("format_name") or ""
             if fmt_name == "4L Bulk":
                 fmt_name = "Bulk"
